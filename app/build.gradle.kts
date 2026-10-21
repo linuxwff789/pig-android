@@ -16,7 +16,21 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        create("ci") {
+            storeFile = rootProject.file("keystore/ci-debug.p12")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+            storeType = "PKCS12"
+        }
+    }
+
     buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("ci")
+        }
+
         release {
             isMinifyEnabled = false
             proguardFiles(

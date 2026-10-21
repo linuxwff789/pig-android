@@ -51,7 +51,10 @@ CI builds the APK:
 3. `adb install -r app-debug.apk` (or open the file on the device).
 
 The workflow is `.github/workflows/android.yml`: JDK 17, Gradle wrapper 8.9,
-`assembleDebug`, artifact upload.
+`assembleDebug`, artifact upload. Debug builds use the committed
+`keystore/ci-debug.p12` (alias `androiddebugkey`, password `android`) so
+successive CI builds can be installed over each other. It is a debug key,
+not a release key.
 
 ## Run
 
