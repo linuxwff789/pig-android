@@ -2,7 +2,10 @@ package com.linuxwff.pigapp.ui
 
 import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +71,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -81,6 +85,7 @@ import com.linuxwff.pigapp.ChatMsg
 import com.linuxwff.pigapp.Role
 import com.linuxwff.pigapp.SessionInfo
 import com.linuxwff.pigapp.TypeScale
+import com.linuxwff.pigapp.toolPresentation
 import com.linuxwff.pigapp.UiLayout
 import com.linuxwff.pigapp.UiRequest
 import kotlinx.coroutines.launch
@@ -283,6 +288,25 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
             Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
             Text("新会话")
+        }
+        if (ui.uiPack.nav.isNotEmpty()) {
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 8.dp),
+                color = MaterialTheme.colorScheme.outline,
+            )
+            ui.uiPack.nav.forEach { item ->
+                OutlinedButton(
+                    onClick = {
+                        vm.openNavItem(item)
+                        onClose()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Build, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(item.label)
+                }
+            }
         }
         TextButton(
             onClick = {
@@ -496,29 +520,59 @@ private fun MessageRow(
     }
 }
 
+private enum class ToolMode { COLLAPSED, SUMMARY, EXPANDED }
+
 @Composable
 private fun ToolCard(message: ChatMsg, mode: String) {
-    var expanded by remember(message.id, mode) { mutableStateOf(mode != "collapsed") }
+    var viewMode by remember(message.id, mode) {
+        mutableStateOf(
+            when (mode) {
+                "expanded" -> ToolMode.EXPANDED
+                "collapsed" -> ToolMode.COLLAPSED
+                else -> ToolMode.SUMMARY
+            },
+        )
+    }
+    val view = remember(
+        message.toolName,
+        message.toolArgs,
+        message.toolResult,
+        message.toolDetails,
+        message.running,
+        message.isError,
+    ) {
+        toolPresentation(
+            name = message.toolName,
+            argsJson = message.toolArgs,
+            result = message.toolResult,
+            detailsJson = message.toolDetails,
+            isError = message.isError,
+            running = message.running,
+        )
+    }
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(14.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { expanded = !expanded },
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     Icons.Default.Build,
                     contentDescription = null,
-                    modifier = Modifier.size(16.dp),
+                    modifier = Modifier.size(15.dp),
                     tint = MaterialTheme.colorScheme.secondary,
                 )
+                Spacer(Modifier.width(6.dp))
+                Text(message.toolName ?: "tool", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    message.toolName ?: "tool",
-                    style = MaterialTheme.typography.titleSmall,
+                    view.headline,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 when {
@@ -531,39 +585,129 @@ private fun ToolCard(message: ChatMsg, mode: String) {
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
-                    else -> Text(
-                        "done",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
+            }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    view.metrics,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                ToolModeChip("收起", viewMode == ToolMode.COLLAPSED) { viewMode = ToolMode.COLLAPSED }
+                ToolModeChip("摘要", viewMode == ToolMode.SUMMARY) { viewMode = ToolMode.SUMMARY }
+                ToolModeChip("展开", viewMode == ToolMode.EXPANDED) { viewMode = ToolMode.EXPANDED }
             }
 
-            if (expanded) {
-                if (message.toolArgs.isNotBlank()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        message.toolArgs,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 12,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+            when (viewMode) {
+                ToolMode.COLLAPSED -> Unit
+                ToolMode.SUMMARY -> {
+                    Spacer(Modifier.height(4.dp))
+                    when {
+                        message.running -> Text(
+                            "运行中…",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        view.diff.isNotBlank() -> DiffBlock(
+                            view.diff.lineSequence().take(6).joinToString("\n"),
+                        )
+                        view.summary.isNotBlank() -> CodeBlock(view.summary)
+                        view.expanded.isNotBlank() -> CodeBlock(
+                            view.expanded.lineSequence().take(4).joinToString("\n"),
+                        )
+                    }
                 }
-                if (message.toolResult.isNotBlank()) {
-                    Spacer(Modifier.height(8.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        message.toolResult,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        maxLines = 40,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                ToolMode.EXPANDED -> {
+                    Spacer(Modifier.height(4.dp))
+                    when {
+                        view.diff.isNotBlank() -> DiffBlock(view.diff)
+                        view.expanded.isNotBlank() -> CodeBlock(view.expanded)
+                        view.summary.isNotBlank() -> CodeBlock(view.summary)
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ToolModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Text(
+        label,
+        style = MaterialTheme.typography.labelSmall,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        fontWeight = if (selected) FontWeight.SemiBold else null,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+@Composable
+private fun CodeBlock(text: String) {
+    if (text.isBlank()) return
+    val lines = text.lineSequence().take(200).toList()
+    val truncated = text.lineSequence().count() > 200
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.4f))
+            .padding(8.dp)
+            .horizontalScroll(rememberScrollState()),
+    ) {
+        lines.forEach { line ->
+            Text(
+                line.ifEmpty { " " },
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                softWrap = false,
+            )
+        }
+        if (truncated) {
+            Text("…", fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+private fun DiffBlock(diff: String) {
+    if (diff.isBlank()) return
+    val lines = diff.lineSequence().take(200).toList()
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.4f))
+            .padding(8.dp)
+            .horizontalScroll(rememberScrollState()),
+    ) {
+        lines.forEach { line ->
+            val color = when {
+                line.startsWith("+") && !line.startsWith("+++") -> Color(0xFF4ADE80)
+                line.startsWith("-") && !line.startsWith("---") -> MaterialTheme.colorScheme.error
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            Text(
+                line.ifEmpty { " " },
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                softWrap = false,
+                color = color,
+            )
         }
     }
 }

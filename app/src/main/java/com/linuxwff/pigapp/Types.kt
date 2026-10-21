@@ -9,6 +9,7 @@ data class ChatMsg(
     val toolName: String? = null,
     val toolArgs: String = "",
     val toolResult: String = "",
+    val toolDetails: String = "",
     val running: Boolean = false,
     val isError: Boolean = false,
     val expanded: Boolean = true,
@@ -25,6 +26,15 @@ data class SessionInfo(
 )
 
 data class AppWidget(val key: String, val lines: List<String>, val placement: String)
+
+/** A drawer entry from `nav.json`; tapping it opens `window` and runs `command`. */
+data class NavItem(
+    val id: String,
+    val label: String,
+    val window: String,
+    val command: String = "",
+    val icon: String = "",
+)
 
 data class ModelInfo(
     val provider: String,

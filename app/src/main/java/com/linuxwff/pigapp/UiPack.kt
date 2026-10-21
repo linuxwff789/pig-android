@@ -45,6 +45,7 @@ data class UiPack(
     val theme: UiTheme = UiTheme(),
     val layout: UiLayout = UiLayout(),
     val types: TypeScale = TypeScale(),
+    val nav: List<NavItem> = emptyList(),
     val files: Int = 0,
     val loadedAt: Long = 0L,
 )
@@ -78,6 +79,8 @@ object UiPackParser {
         var types = TypeScale()
         files[typographyPath]?.let { types = parseTypes(it, warnings) }
 
+        val nav = files["nav.json"]?.let { parseNav(it, warnings) } ?: emptyList()
+
         return Result(
             UiPack(
                 name = name,
@@ -85,11 +88,48 @@ object UiPackParser {
                 theme = theme,
                 layout = layout,
                 types = types,
+                nav = nav,
                 files = files.size,
                 loadedAt = System.currentTimeMillis(),
             ),
             warnings,
         )
+    }
+
+    /**
+     * `nav.json` adds buttons to the drawer: `{"items":[{"id","label","window","command","icon"}]}`.
+     * Tapping an item opens the cached window and runs the command to refresh it.
+     */
+    private fun parseNav(text: String, warnings: MutableList<String>): List<NavItem> {
+        val json = try {
+            JSONObject(text)
+        } catch (e: Exception) {
+            warnings.add("nav.json 解析失败: ${e.message}")
+            return emptyList()
+        }
+        val items = json.optJSONArray("items") ?: return emptyList()
+        val out = mutableListOf<NavItem>()
+        for (index in 0 until items.length()) {
+            val item = items.optJSONObject(index) ?: continue
+            val window = item.optString("window").take(40)
+            if (!Regex("^[a-z0-9._-]{1,40}$").matches(window)) {
+                warnings.add("nav.json 第 ${index + 1} 项 window 无效")
+                continue
+            }
+            val id = item.optString("id", window).ifBlank { window }.take(40)
+            val label = item.optString("label", id).ifBlank { id }.take(40)
+            val command = item.optString("command").trim().removePrefix("/").take(80)
+            out.add(
+                NavItem(
+                    id = id,
+                    label = label,
+                    window = window,
+                    command = command,
+                    icon = item.optString("icon").take(20),
+                ),
+            )
+        }
+        return out
     }
 
     private fun parseTheme(text: String, warnings: MutableList<String>): UiTheme {

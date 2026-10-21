@@ -31,6 +31,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val windowPositions = mutableStateMapOf<String, WindowPos>()
     private val dismissedWindows = mutableMapOf<String, String>() // pack path -> window id
+    private val knownWindows = mutableMapOf<String, AppWindow>() // window id -> last parsed definition
     private val formValues = mutableStateMapOf<String, String>() // "windowId/fieldId" -> value
 
     var models by mutableStateOf<List<ModelInfo>>(emptyList())
@@ -267,6 +268,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             action.isBlank() -> Unit
             else -> ui = ui.copy(toast = "未知动作: $action")
+        }
+    }
+
+    /**
+     * Opens a drawer entry's window. The last parsed definition is cached, so a
+     * window the user closed can be reopened without waiting for a pack push;
+     * the command is still sent to refresh its contents from the extension.
+     */
+    fun openNavItem(item: NavItem) {
+        dismissedWindows.entries.removeAll { it.value == item.window }
+        if (ui.windows.none { it.id == item.window }) {
+            knownWindows[item.window]?.let { cached ->
+                windowPositions.remove(item.window)
+                ui = ui.copy(windows = ui.windows + cached)
+            }
+        }
+        if (item.command.isNotBlank()) {
+            if (!ui.connected) {
+                ui = ui.copy(toast = "未连接 relay，无法刷新 ${item.label}")
+                return
+            }
+            client.send(
+                JSONObject()
+                    .put("id", "nav-${nextId++}")
+                    .put("type", "prompt")
+                    .put("message", "/${item.command}"),
+            )
+            ui = ui.copy(toast = "已打开 ${item.label}")
+        } else if (knownWindows[item.window] == null) {
+            ui = ui.copy(toast = "还没有 ${item.label} 窗口")
         }
     }
 
@@ -573,6 +604,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         dismissedWindows.keys.retainAll(windowFiles.keys)
+        knownWindows.entries.removeAll { it.value.source !in windowFiles.keys }
+        parsed.forEach { knownWindows[it.id] = it }
         val ids = next.map { it.id }.toSet()
         windowPositions.keys.toList().forEach { if (it !in ids) windowPositions.remove(it) }
 
@@ -637,9 +670,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val text = contentText(message)
                     val id = toolIds[message.optString("toolCallId")]
                     val position = out.indexOfFirst { it.id == id }
+                    val meta = JSONObject()
+                    message.optJSONObject("details")?.let { meta.put("details", it) }
+                    message.optJSONObject("structuredContent")?.let { meta.put("structured", it) }
                     if (position >= 0) {
                         out[position] = out[position].copy(
                             toolResult = text,
+                            toolDetails = meta.toString(),
                             isError = message.optBoolean("isError", false),
                         )
                     } else {
@@ -745,11 +782,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun handleToolEnd(event: JSONObject) {
         val id = toolMsgIds.remove(event.optString("toolCallId")) ?: return
-        val result = contentText(event.optJSONObject("result"))
+        val resultObject = event.optJSONObject("result")
+        val result = contentText(resultObject)
+        val meta = JSONObject()
+        resultObject?.optJSONObject("details")?.let { meta.put("details", it) }
+        resultObject?.optJSONObject("structuredContent")?.let { meta.put("structured", it) }
         update(id) {
             it.copy(
                 running = false,
                 toolResult = result.ifBlank { it.toolResult },
+                toolDetails = meta.toString(),
                 isError = event.optBoolean("isError", false),
             )
         }
