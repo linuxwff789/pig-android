@@ -17,7 +17,7 @@ an API key. All agent work happens in the original `pig` binary.
 
 - App launches `pig-relay` through Termux `RUN_COMMAND` (no pairing screen).
 - Streams assistant text, renders Markdown (GFM headings, lists, code fences,
-  tables, links), renders tool cards, answers `confirm` / `select` / `input` /
+  tables with alignment and inline formatting, links), renders tool cards, answers `confirm` / `select` / `input` /
   `editor` extension dialogs, and shows status updates.
 - Relay authenticates with a per-install token, forwards pig's RPC frames
   unchanged, lists projects/sessions, and pushes a hot-reloadable UI pack.
@@ -154,5 +154,9 @@ am broadcast -n com.linuxwff.pigapp/.DebugReceiver -a com.linuxwff.pigapp.DEBUG_
 `DEBUG_STATE` also writes
 `/storage/emulated/0/Android/data/com.linuxwff.pigapp/files/state.txt` (root can
 read it), which avoids relying on logcat.
+
+`DEBUG_PROMPT` / `DEBUG_FORM` act on the **active session**. Switch the app to a
+scratch session before sending test prompts; otherwise they land in whatever
+conversation is open.
 
 The receiver lives in `app/src/debug/` and is not part of release builds.
