@@ -91,8 +91,10 @@ Optional drawer entries. The relay pushes it with the rest of the pack.
 - `command` is a slash command (leading `/` optional); it runs after the window
   is restored so the extension can refresh it.
 - `icon` accepts `build`, `refresh` or `add` (unknown values fall back to build).
-- Entries appear in the drawer under 面板. A window without a nav entry can
-  still be opened by writing its file.
+- Entries appear in the drawer under 面板. A window referenced by `nav.json` is
+  **on demand**: it is not auto-opened when the pack loads (including app
+  restarts); tapping the entry restores it. A window without a nav entry still
+  opens automatically when its file appears.
 
 ## layout/chat.json
 

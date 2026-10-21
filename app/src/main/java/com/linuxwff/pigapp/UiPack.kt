@@ -100,6 +100,14 @@ object UiPackParser {
      * `nav.json` adds buttons to the drawer: `{"items":[{"id","label","window","command","icon"}]}`.
      * Tapping an item opens the cached window and runs the command to refresh it.
      */
+    /** Window ids referenced by `nav.json`; these are opened on demand, not on pack load. */
+    fun navWindowIds(files: Map<String, String>): Set<String> {
+        val text = files["nav.json"] ?: return emptySet()
+        return parseNav(text, mutableListOf())
+            .mapNotNull { it.window.takeIf { window -> window.isNotBlank() } }
+            .toSet()
+    }
+
     private fun parseNav(text: String, warnings: MutableList<String>): List<NavItem> {
         val json = try {
             JSONObject(text)

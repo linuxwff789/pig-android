@@ -592,7 +592,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * the file disappears, keep the last good window when a file fails to parse,
      * and honor the dismissed set.
      */
-    private fun reconcileWindows(files: Map<String, String>) {
+    private fun reconcileWindows(files: Map<String, String>, onDemand: Set<String> = emptySet()) {
         val windowFiles = files.filterKeys { it.startsWith("windows/") && it.endsWith(".json") }
         val parsed = mutableListOf<AppWindow>()
         val failedPaths = mutableSetOf<String>()
@@ -643,6 +643,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         parsed.forEach { window ->
             if (window.id in placed) return@forEach
+            if (window.id in onDemand) return@forEach
             if (dismissedWindows[window.source] == window.id) return@forEach
             dismissedWindows.remove(window.source)
             next.add(window)
@@ -752,7 +753,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         packFiles = files
-        reconcileWindows(files)
+        reconcileWindows(files, UiPackParser.navWindowIds(files))
 
         val hash = event.optString("hash")
         val result = UiPackParser.parse(files)
