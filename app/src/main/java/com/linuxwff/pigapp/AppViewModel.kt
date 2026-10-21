@@ -31,6 +31,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val toolMsgIds = mutableMapOf<String, String>()
 
     init {
+        current = this
         viewModelScope.launch {
             client.connected.collect { connected -> ui = ui.copy(connected = connected) }
         }
@@ -296,5 +297,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return builder.toString()
     }
 
+    override fun onCleared() {
+        if (current === this) current = null
+        super.onCleared()
+    }
+
     private fun newToken(): String = UUID.randomUUID().toString().replace("-", "")
+
+    companion object {
+        @Volatile
+        var current: AppViewModel? = null
+            private set
+    }
 }
