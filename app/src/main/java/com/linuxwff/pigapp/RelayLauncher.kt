@@ -3,6 +3,7 @@ package com.linuxwff.pigapp
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.core.content.ContextCompat
 
 object RelayLauncher {
@@ -20,8 +21,8 @@ object RelayLauncher {
      * Starts pig-relay as a Termux background command. Requires
      * `allow-external-apps = true` in ~/.termux/termux.properties.
      */
-    fun launch(context: Context, port: Int, token: String, cwd: String): Boolean {
-        if (!isTermuxInstalled(context)) return false
+    fun launch(context: Context, port: Int, token: String, cwd: String): String? {
+        if (!isTermuxInstalled(context)) return "Termux 未安装或对 Pig 不可见"
         val intent = Intent().apply {
             setClassName(TERMUX_PKG, "com.termux.app.RunCommandService")
             action = "com.termux.RUN_COMMAND"
@@ -33,15 +34,19 @@ object RelayLauncher {
             putExtra("com.termux.RUN_COMMAND_WORKDIR", cwd)
             putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
         }
-        return runCatching {
+        return try {
             context.startService(intent)
-            true
-        }.getOrElse {
-            // Only used if the OS rejects a background service start.
-            runCatching {
+            null
+        } catch (first: Exception) {
+            Log.e("RelayLauncher", "startService failed", first)
+            try {
                 ContextCompat.startForegroundService(context, intent)
-                true
-            }.getOrDefault(false)
+                null
+            } catch (second: Exception) {
+                Log.e("RelayLauncher", "startForegroundService failed", second)
+                "${first.javaClass.simpleName}: ${first.message} / " +
+                    "${second.javaClass.simpleName}: ${second.message}"
+            }
         }
     }
 }

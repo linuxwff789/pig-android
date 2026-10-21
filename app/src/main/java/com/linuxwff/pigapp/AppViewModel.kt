@@ -46,10 +46,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
             return
         }
-        if (!RelayLauncher.launch(ctx, port, token, cwd)) {
-            ui = ui.copy(
-                error = "无法启动 pig-relay：确认已安装 Termux、allow-external-apps=true，且 PATH 里有 pig-relay。",
-            )
+        val launchError = RelayLauncher.launch(ctx, port, token, cwd)
+        if (launchError != null) {
+            ui = ui.copy(error = "无法启动 pig-relay：$launchError")
             return
         }
         ui = ui.copy(error = null)
