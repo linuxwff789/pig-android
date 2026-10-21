@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -263,20 +264,34 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
     val pad = Modifier.padding(node.padding.dp)
 
     when (node.type) {
-        "column" -> Column(
-            pad.then(if (node.scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier),
-            verticalArrangement = Arrangement.spacedBy(node.spacing.dp),
-            horizontalAlignment = when (node.align) {
-                "center" -> Alignment.CenterHorizontally
-                "end" -> Alignment.End
-                else -> Alignment.Start
-            },
-        ) {
-            node.children.forEach { child ->
-                if (child.weight > 0f) {
-                    Box(Modifier.weight(child.weight)) { UiNodeView(child, windowId, vm) }
-                } else {
-                    UiNodeView(child, windowId, vm)
+        "column" -> BoxWithConstraints(pad) {
+            // A scroll container inside another vertical scroll (window body, sheet,
+            // inline panel) would be measured with infinite height. Only scroll when
+            // the incoming constraints give us a bounded height.
+            val scrollable = node.scroll && constraints.hasBoundedHeight
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (scrollable) {
+                            Modifier.verticalScroll(rememberScrollState())
+                        } else {
+                            Modifier
+                        },
+                    ),
+                verticalArrangement = Arrangement.spacedBy(node.spacing.dp),
+                horizontalAlignment = when (node.align) {
+                    "center" -> Alignment.CenterHorizontally
+                    "end" -> Alignment.End
+                    else -> Alignment.Start
+                },
+            ) {
+                node.children.forEach { child ->
+                    if (child.weight > 0f) {
+                        Box(Modifier.weight(child.weight)) { UiNodeView(child, windowId, vm) }
+                    } else {
+                        UiNodeView(child, windowId, vm)
+                    }
                 }
             }
         }
