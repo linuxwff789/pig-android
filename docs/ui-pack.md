@@ -68,6 +68,32 @@ Sizes are in sp and clamped to 8–40; `lineHeight` is clamped to 1.0–2.5.
 These values feed `PigTheme`'s `Typography` and the markdown renderer, so they
 hot-reload with the rest of the pack.
 
+## nav.json
+
+Optional drawer entries. The relay pushes it with the rest of the pack.
+
+```json
+{
+  "items": [
+    {
+      "id": "providers",
+      "label": "模型供应商",
+      "window": "providers",
+      "command": "provider-ui",
+      "icon": "build"
+    }
+  ]
+}
+```
+
+- `window` is the id of a cached `windows/<id>.json`; tapping the entry restores
+  it even if the user closed it earlier.
+- `command` is a slash command (leading `/` optional); it runs after the window
+  is restored so the extension can refresh it.
+- `icon` accepts `build`, `refresh` or `add` (unknown values fall back to build).
+- Entries appear in the drawer under 面板. A window without a nav entry can
+  still be opened by writing its file.
+
 ## layout/chat.json
 
 ```json

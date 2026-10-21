@@ -27,6 +27,8 @@ an API key. All agent work happens in the original `pig` binary.
   `switch_session` and reloads the transcript with `get_messages` (text + tool
   cards). Switching to a file modified in the last minute asks for confirmation
   because another pig process may be writing it.
+- `nav.json` drawer entries: extensions can add a button (e.g. 模型供应商) that
+  restores its window and runs a slash command to refresh it.
 - Model picker: tap the model name in the top bar to search the available
   models (context size, thinking, image support) and switch with `set_model`.
   The same dialog exposes the thinking-level chips when the model supports
