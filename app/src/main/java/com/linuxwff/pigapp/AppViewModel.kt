@@ -240,6 +240,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(pending = null)
     }
 
+    fun handleDebugEvent(text: String) {
+        val event = runCatching { JSONObject(text) }.getOrNull()
+        if (event == null) {
+            ui = ui.copy(toast = "debug event 不是 JSON")
+            return
+        }
+        handle(event)
+    }
+
+    private fun handleWidget(event: JSONObject) {
+        val key = event.optString("widgetKey", "widget").ifBlank { "widget" }
+        val lines = event.optJSONArray("widgetLines")
+        val placement = if (event.optString("widgetPlacement", "aboveEditor") == "belowEditor") {
+            "belowEditor"
+        } else {
+            "aboveEditor"
+        }
+        val next = ui.widgets.filterNot { it.key == key }.toMutableList()
+        if (lines != null) {
+            next.add(
+                AppWidget(
+                    key = key,
+                    lines = (0 until lines.length()).map { lines.optString(it) },
+                    placement = placement,
+                ),
+            )
+        }
+        ui = ui.copy(widgets = next)
+    }
+
     fun formValue(windowId: String, fieldId: String, fallback: String): String =
         formValues["$windowId/$fieldId"] ?: fallback
 
@@ -636,6 +666,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             "notify" -> ui = ui.copy(toast = event.optString("message", ""))
             "setStatus" -> ui = ui.copy(status = event.optString("statusText", ""))
+            "setTitle" -> ui = ui.copy(
+                titleOverride = event.optString("title", "").takeIf { it.isNotBlank() },
+            )
+            "setWidget" -> handleWidget(event)
             else -> Unit // setWidget/setTitle/set_editor_text are not rendered in M0.
         }
     }

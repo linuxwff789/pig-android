@@ -133,7 +133,7 @@ fun PigApp(vm: AppViewModel) {
                 TopAppBar(
                     title = {
                         Column {
-                            Text("Pig", fontWeight = FontWeight.SemiBold)
+                            Text(ui.titleOverride ?: "Pig", fontWeight = FontWeight.SemiBold)
                             Text(
                                 subtitle,
                                 style = MaterialTheme.typography.labelSmall,
@@ -168,13 +168,24 @@ fun PigApp(vm: AppViewModel) {
                 )
             },
             bottomBar = {
-                Composer(
-                    busy = ui.busy,
-                    connected = ui.connected,
-                    layout = ui.uiPack.layout,
-                    onSend = vm::sendPrompt,
-                    onStop = vm::abort,
-                )
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .imePadding(),
+                ) {
+                    InlineWindows(ui.windows, "aboveComposer", vm)
+                    WidgetPane(ui.widgets, "aboveEditor", vm)
+                    Composer(
+                        busy = ui.busy,
+                        connected = ui.connected,
+                        layout = ui.uiPack.layout,
+                        onSend = vm::sendPrompt,
+                        onStop = vm::abort,
+                    )
+                    WidgetPane(ui.widgets, "belowEditor", vm)
+                    InlineWindows(ui.windows, "belowComposer", vm)
+                }
             },
         ) { padding ->
             Column(
@@ -189,6 +200,7 @@ fun PigApp(vm: AppViewModel) {
         }
     }
     WindowLayer(ui.windows, vm)
+    SheetWindows(ui.windows, vm)
     }
 
     ui.pendingSwitch?.let { session ->
@@ -555,8 +567,6 @@ private fun Composer(
         Row(
             Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .imePadding()
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.Bottom,
         ) {

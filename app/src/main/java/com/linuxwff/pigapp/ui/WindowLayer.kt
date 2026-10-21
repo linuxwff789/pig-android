@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -23,7 +24,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -35,6 +38,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
@@ -50,19 +54,122 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.linuxwff.pigapp.AppViewModel
+import com.linuxwff.pigapp.AppWidget
 import com.linuxwff.pigapp.AppWindow
 import com.linuxwff.pigapp.UiNode
 
 @Composable
 fun WindowLayer(windows: List<AppWindow>, vm: AppViewModel) {
-    if (windows.isEmpty()) return
+    val overlays = windows.filter { it.placement == "overlay" }
+    if (overlays.isEmpty()) return
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.toFloat()
     val screenHeight = configuration.screenHeightDp.toFloat()
     Box(Modifier.fillMaxSize()) {
-        windows.forEach { window ->
+        overlays.forEach { window ->
             key(window.id) {
                 AppWindowView(window, vm, screenWidth, screenHeight)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SheetWindows(windows: List<AppWindow>, vm: AppViewModel) {
+    val sheet = windows.lastOrNull { it.placement == "sheet" } ?: return
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = { vm.closeWindow(sheet.id) },
+        sheetState = sheetState,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, bottom = 28.dp),
+        ) {
+            Text(sheet.title, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                UiNodeView(sheet.body, sheet.id, vm)
+            }
+        }
+    }
+}
+
+@Composable
+fun InlineWindows(windows: List<AppWindow>, placement: String, vm: AppViewModel) {
+    windows.filter { it.placement == placement }.forEach { window ->
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 3.dp),
+        ) {
+            Column(Modifier.fillMaxWidth().padding(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        window.title,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (window.dismissible) {
+                        IconButton(
+                            onClick = { vm.closeWindow(window.id) },
+                            modifier = Modifier.size(28.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "close ${window.title}",
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                }
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 180.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    UiNodeView(window.body, window.id, vm)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun WidgetPane(widgets: List<AppWidget>, placement: String, vm: AppViewModel) {
+    val items = widgets.filter { it.placement == placement }
+    if (items.isEmpty()) return
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+        items.forEach { widget ->
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+            ) {
+                Text(
+                    widget.lines.joinToString("\n"),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .heightIn(max = 140.dp)
+                        .verticalScroll(rememberScrollState()),
+                )
             }
         }
     }

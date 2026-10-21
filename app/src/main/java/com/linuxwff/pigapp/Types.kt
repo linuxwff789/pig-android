@@ -24,6 +24,8 @@ data class SessionInfo(
     val size: Long,
 )
 
+data class AppWidget(val key: String, val lines: List<String>, val placement: String)
+
 data class UiRequest(
     val id: String,
     val method: String,
@@ -55,4 +57,6 @@ data class AppUiState(
     val pendingSwitch: SessionInfo? = null,
     val windows: List<AppWindow> = emptyList(),
     val windowError: String? = null,
+    val widgets: List<AppWidget> = emptyList(),
+    val titleOverride: String? = null,
 )

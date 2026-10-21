@@ -79,14 +79,18 @@ object AppUiParser {
         val body = parseNode(bodyJson, 0, nodes, warnings)
             ?: return Result(null, warnings.ifEmpty { listOf("body 无效") })
 
-        val placement = json.optString("placement", "overlay")
-        if (placement != "overlay") warnings.add("placement=$placement 暂不支持，先按 overlay 显示")
+        val rawPlacement = json.optString("placement", "overlay")
+        val allowedPlacements = setOf("overlay", "sheet", "aboveComposer", "belowComposer")
+        val placement = rawPlacement.takeIf { it in allowedPlacements } ?: run {
+            warnings.add("placement=$rawPlacement 无效，按 overlay 显示")
+            "overlay"
+        }
 
         return Result(
             AppWindow(
                 id = id,
                 title = json.optString("title", id).ifBlank { id },
-                placement = "overlay",
+                placement = placement,
                 widthDp = json.optInt("width", 320).coerceIn(200, 2000),
                 heightDp = json.optInt("height", 0).coerceIn(0, 2000),
                 dismissible = json.optBoolean("dismissible", true),

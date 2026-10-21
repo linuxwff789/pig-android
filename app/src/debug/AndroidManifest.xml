@@ -18,6 +18,7 @@
                 <action android:name="com.linuxwff.pigapp.DEBUG_CLOSE_WINDOW" />
                 <action android:name="com.linuxwff.pigapp.DEBUG_FORM" />
                 <action android:name="com.linuxwff.pigapp.DEBUG_WINDOW_ACTION" />
+                <action android:name="com.linuxwff.pigapp.DEBUG_EVENT" />
             </intent-filter>
         </receiver>
     </application>

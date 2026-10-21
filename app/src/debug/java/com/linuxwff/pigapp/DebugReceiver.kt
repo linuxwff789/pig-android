@@ -18,6 +18,7 @@ import java.io.File
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_CLOSE_WINDOW --es id demo
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_FORM --es window demo --es field name --es value hello
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_WINDOW_ACTION --es window demo --es action ext:uitest.submit
+ *   am broadcast -a com.linuxwff.pigapp.DEBUG_EVENT --es json '{"type":"extension_ui_request","method":"setWidget",...}'
  *
  * Exported without a permission on purpose; this class is only compiled into
  * debug builds (app/src/debug).
@@ -64,6 +65,11 @@ class DebugReceiver : BroadcastReceiver() {
                 val action = intent.getStringExtra("action") ?: ""
                 Log.i(TAG, "window action: $windowId $action")
                 vm.handleWindowAction(windowId, action)
+            }
+            "com.linuxwff.pigapp.DEBUG_EVENT" -> {
+                val json = intent.getStringExtra("json") ?: ""
+                Log.i(TAG, "event: ${json.take(120)}")
+                vm.handleDebugEvent(json)
             }
             "com.linuxwff.pigapp.DEBUG_SWITCH" -> {
                 val path = intent.getStringExtra("path") ?: ""
