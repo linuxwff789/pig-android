@@ -187,7 +187,8 @@ fun PigApp(vm: AppViewModel) {
                 MessageList(ui, Modifier.weight(1f))
             }
         }
-        WindowLayer(ui.windows, vm)
+    }
+    WindowLayer(ui.windows, vm)
     }
 
     ui.pendingSwitch?.let { session ->
