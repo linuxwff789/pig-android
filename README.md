@@ -28,7 +28,9 @@ an API key. All agent work happens in the original `pig` binary.
 
 M1 is in: the app parses the pushed pack and applies `theme/colors.json` and
 `layout/chat.json` live (see [docs/ui-pack.md](docs/ui-pack.md)). M2 adds
-`app-ui/1` actions, `ext:` routing, and the release pipeline.
+`app-ui/1` actions, `ext:` routing, and the release pipeline. M3 turns the pack
+into arbitrary windows: the contract and milestone plan are in
+[docs/app-ui.md](docs/app-ui.md) and [docs/app-ui-plan.md](docs/app-ui-plan.md).
 
 ## Prerequisites
 
@@ -96,6 +98,8 @@ app/                     Compose client
 relay/main.go            loopback bridge, auth, UI pack watcher
 docs/protocol.md         wire protocol
 docs/ui-pack.md          declarative theme/layout schema
+docs/app-ui.md           app-ui/1 window schema (M3 contract)
+docs/app-ui-plan.md      M3 milestone order, acceptance, pitfalls
 examples/ui-pack/        sample declarative UI pack
 ```
 
