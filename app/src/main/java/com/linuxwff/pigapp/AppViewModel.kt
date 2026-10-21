@@ -30,6 +30,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     private val windowPositions = mutableStateMapOf<String, WindowPos>()
+    private val dismissedWindows = mutableMapOf<String, String>() // pack path -> window id
 
     private var nextId = 1
     private var currentAssistant: String? = null
@@ -155,6 +156,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun closeWindow(id: String) {
+        val window = ui.windows.firstOrNull { it.id == id }
+        if (window != null && window.source != "debug") {
+            dismissedWindows[window.source] = window.id
+        }
         windowPositions.remove(id)
         ui = ui.copy(windows = ui.windows.filterNot { it.id == id })
     }
@@ -318,6 +323,76 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Derives pack-backed windows from `windows/*.json` and reconciles them with
+     * the current list: add, update in place (position/z preserved), remove when
+     * the file disappears, keep the last good window when a file fails to parse,
+     * and honor the dismissed set.
+     */
+    private fun reconcileWindows(files: Map<String, String>) {
+        val windowFiles = files.filterKeys { it.startsWith("windows/") && it.endsWith(".json") }
+        val parsed = mutableListOf<AppWindow>()
+        val failedPaths = mutableSetOf<String>()
+        val warnings = mutableListOf<String>()
+        var duplicate: String? = null
+
+        windowFiles.toSortedMap().forEach { (path, text) ->
+            val result = AppUiParser.parseWindow(text, source = path)
+            val window = result.window
+            if (window == null) {
+                failedPaths.add(path)
+                warnings.add("$path: ${result.warnings.firstOrNull() ?: "invalid"}")
+            } else {
+                parsed.add(window)
+            }
+        }
+
+        val byId = LinkedHashMap<String, AppWindow>()
+        parsed.forEach { window ->
+            if (byId.containsKey(window.id)) duplicate = "重复窗口 id: ${window.id}"
+            byId[window.id] = window
+        }
+
+        val next = mutableListOf<AppWindow>()
+        val placed = mutableSetOf<String>()
+
+        ui.windows.forEach { current ->
+            if (current.source == "debug") {
+                if (!byId.containsKey(current.id)) {
+                    next.add(current)
+                    placed.add(current.id)
+                }
+                return@forEach
+            }
+            if (current.source !in windowFiles) return@forEach
+            val updated = byId[current.id]
+            when {
+                updated != null -> {
+                    next.add(updated)
+                    placed.add(updated.id)
+                }
+                current.source in failedPaths -> {
+                    next.add(current)
+                    placed.add(current.id)
+                }
+            }
+        }
+
+        parsed.forEach { window ->
+            if (window.id in placed) return@forEach
+            if (dismissedWindows[window.source] == window.id) return@forEach
+            dismissedWindows.remove(window.source)
+            next.add(window)
+            placed.add(window.id)
+        }
+
+        dismissedWindows.keys.retainAll(windowFiles.keys)
+        val ids = next.map { it.id }.toSet()
+        windowPositions.keys.toList().forEach { if (it !in ids) windowPositions.remove(it) }
+
+        ui = ui.copy(windows = next, windowError = warnings.firstOrNull() ?: duplicate)
+    }
+
     private fun handleSessions(event: JSONObject) {
         val array = event.optJSONArray("sessions")
         val sessions = buildList {
@@ -407,6 +482,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 put(key, filesObject.optString(key, ""))
             }
         }
+        reconcileWindows(files)
+
         val hash = event.optString("hash")
         val result = UiPackParser.parse(files)
         val pack = result.pack
