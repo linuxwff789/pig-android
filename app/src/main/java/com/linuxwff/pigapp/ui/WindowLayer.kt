@@ -57,7 +57,6 @@ import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.AppWidget
 import com.linuxwff.pigapp.AppWindow
 import com.linuxwff.pigapp.UiNode
-import com.mikepenz.markdown.m3.Markdown
 
 @Composable
 fun WindowLayer(windows: List<AppWindow>, vm: AppViewModel) {
@@ -301,8 +300,8 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
         }
 
         "text" -> if (node.style == "markdown") {
-            Markdown(
-                content = node.text,
+            PigMarkdown(
+                text = node.text,
                 modifier = pad.fillMaxWidth(),
             )
         } else {
