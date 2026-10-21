@@ -76,7 +76,7 @@ Content:
 
 | Type | Fields |
 | --- | --- |
-| `text` | `text`, `style`: `body/heading/label/mono/muted/danger`, `align` |
+| `text` | `text`, `style`: `body/heading/label/mono/muted/danger/markdown`, `align` |
 | `code` | `text`, `language`, `maxLines` (default 20) |
 | `progress` | `value` 0..1, or `indeterminate: true` |
 | `button` | `label`, `action`, `style`: `primary/outline/text/danger`, `enabled` |
