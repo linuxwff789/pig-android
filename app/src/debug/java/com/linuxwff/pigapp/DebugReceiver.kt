@@ -16,6 +16,8 @@ import java.io.File
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_SWITCH --es path /path/to/session.jsonl
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_WINDOW --es json '{"id":"demo",...}'
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_CLOSE_WINDOW --es id demo
+ *   am broadcast -a com.linuxwff.pigapp.DEBUG_FORM --es window demo --es field name --es value hello
+ *   am broadcast -a com.linuxwff.pigapp.DEBUG_WINDOW_ACTION --es window demo --es action ext:uitest.submit
  *
  * Exported without a permission on purpose; this class is only compiled into
  * debug builds (app/src/debug).
@@ -49,6 +51,19 @@ class DebugReceiver : BroadcastReceiver() {
                 val id = intent.getStringExtra("id") ?: ""
                 Log.i(TAG, "close window: $id")
                 vm.closeWindow(id)
+            }
+            "com.linuxwff.pigapp.DEBUG_FORM" -> {
+                vm.setFormValue(
+                    intent.getStringExtra("window") ?: "",
+                    intent.getStringExtra("field") ?: "",
+                    intent.getStringExtra("value") ?: "",
+                )
+            }
+            "com.linuxwff.pigapp.DEBUG_WINDOW_ACTION" -> {
+                val windowId = intent.getStringExtra("window") ?: ""
+                val action = intent.getStringExtra("action") ?: ""
+                Log.i(TAG, "window action: $windowId $action")
+                vm.handleWindowAction(windowId, action)
             }
             "com.linuxwff.pigapp.DEBUG_SWITCH" -> {
                 val path = intent.getStringExtra("path") ?: ""

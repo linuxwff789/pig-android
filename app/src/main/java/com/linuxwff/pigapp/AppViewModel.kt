@@ -31,6 +31,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val windowPositions = mutableStateMapOf<String, WindowPos>()
     private val dismissedWindows = mutableMapOf<String, String>() // pack path -> window id
+    private val formValues = mutableStateMapOf<String, String>() // "windowId/fieldId" -> value
 
     private var nextId = 1
     private var currentAssistant: String? = null
@@ -198,7 +199,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 clipboard.setPrimaryClip(ClipData.newPlainText("Pig", value))
                 ui = ui.copy(toast = "已复制")
             }
-            action.startsWith("ext:") -> ui = ui.copy(toast = "ext 动作将在 M3.3 支持")
+            action.startsWith("ext:") -> {
+                val command = action.removePrefix("ext:").trim()
+                if (command.isEmpty()) {
+                    ui = ui.copy(toast = "ext 动作缺少命令名")
+                    return
+                }
+                val payload = formPayload(windowId)
+                val message = if (payload == null) "/$command" else "/$command $payload"
+                client.send(
+                    JSONObject()
+                        .put("id", "act-${nextId++}")
+                        .put("type", "prompt")
+                        .put("message", message),
+                )
+                ui = ui.copy(toast = "已发送 /$command")
+            }
             action.isBlank() -> Unit
             else -> ui = ui.copy(toast = "未知动作: $action")
         }
@@ -222,6 +238,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         client.send(response)
         ui = ui.copy(pending = null)
+    }
+
+    fun formValue(windowId: String, fieldId: String, fallback: String): String =
+        formValues["$windowId/$fieldId"] ?: fallback
+
+    fun setFormValue(windowId: String, fieldId: String, value: String) {
+        if (fieldId.isBlank()) return
+        formValues["$windowId/$fieldId"] = value
+    }
+
+    fun formPayload(windowId: String): String? {
+        val window = ui.windows.firstOrNull { it.id == windowId } ?: return null
+        val fields = mutableListOf<UiNode>()
+        collectFields(window.body, fields)
+        if (fields.isEmpty()) return null
+        val values = JSONObject()
+        fields.forEach { node ->
+            val stored = formValues["$windowId/${node.fieldId}"]
+            val value = stored ?: when (node.type) {
+                "toggle" -> node.checked.toString()
+                else -> node.initialValue
+            }
+            values.put(node.fieldId, value)
+        }
+        return values.toString()
+    }
+
+    private fun collectFields(node: UiNode, out: MutableList<UiNode>) {
+        if (node.type == "textfield" || node.type == "select" || node.type == "toggle") out.add(node)
+        node.children.forEach { collectFields(it, out) }
     }
 
     private fun append(message: ChatMsg) {
@@ -608,6 +654,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         if (current === this) current = null
         windowPositions.clear()
+        formValues.clear()
         super.onCleared()
     }
 

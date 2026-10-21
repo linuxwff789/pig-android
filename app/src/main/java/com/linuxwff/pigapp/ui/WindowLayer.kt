@@ -29,6 +29,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -254,6 +257,103 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
                     enabled = node.enabled,
                     modifier = pad,
                 ) { Text(node.label) }
+            }
+        }
+
+        "textfield" -> OutlinedTextField(
+            value = vm.formValue(windowId, node.fieldId, node.initialValue),
+            onValueChange = { vm.setFormValue(windowId, node.fieldId, it) },
+            modifier = pad.fillMaxWidth(),
+            placeholder = { if (node.placeholder.isNotBlank()) Text(node.placeholder) },
+            maxLines = node.maxLines,
+            singleLine = node.maxLines == 1,
+        )
+
+        "select" -> Column(
+            pad.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            val current = vm.formValue(
+                windowId,
+                node.fieldId,
+                node.options.firstOrNull()?.value ?: node.initialValue,
+            )
+            node.options.forEach { option ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { vm.setFormValue(windowId, node.fieldId, option.value) }
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(
+                        selected = current == option.value,
+                        onClick = { vm.setFormValue(windowId, node.fieldId, option.value) },
+                    )
+                    Text(option.label, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+
+        "toggle" -> Row(
+            pad.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                node.label,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Switch(
+                checked = vm.formValue(windowId, node.fieldId, node.checked.toString()) == "true",
+                onCheckedChange = { vm.setFormValue(windowId, node.fieldId, it.toString()) },
+            )
+        }
+
+        "list" -> Column(
+            pad.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(node.spacing.dp),
+        ) {
+            node.children.forEachIndexed { index, child ->
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                }
+                UiNodeView(child, windowId, vm)
+            }
+        }
+
+        "table" -> Column(pad.fillMaxWidth()) {
+            if (node.headers.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth()) {
+                    node.headers.forEach { cell ->
+                        Text(
+                            cell,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+            }
+            node.rows.forEach { row ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                ) {
+                    row.forEach { cell ->
+                        Text(
+                            cell,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
         }
 

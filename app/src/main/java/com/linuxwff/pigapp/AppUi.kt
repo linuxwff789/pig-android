@@ -4,6 +4,8 @@ import org.json.JSONObject
 
 data class WindowPos(val x: Float, val y: Float)
 
+data class UiOption(val label: String, val value: String)
+
 data class UiNode(
     val type: String,
     val visible: Boolean = true,
@@ -24,6 +26,13 @@ data class UiNode(
     val enabled: Boolean = true,
     val language: String = "",
     val maxLines: Int = 20,
+    val fieldId: String = "",
+    val placeholder: String = "",
+    val options: List<UiOption> = emptyList(),
+    val initialValue: String = "",
+    val checked: Boolean = false,
+    val headers: List<String> = emptyList(),
+    val rows: List<List<String>> = emptyList(),
 )
 
 data class AppWindow(
@@ -46,6 +55,7 @@ object AppUiParser {
     private val idPattern = Regex("^[a-z0-9._-]{1,40}$")
     private val knownTypes = setOf(
         "column", "row", "divider", "spacer", "text", "code", "progress", "button",
+        "textfield", "select", "toggle", "list", "table",
     )
 
     data class Result(val window: AppWindow?, val warnings: List<String>)
@@ -118,6 +128,43 @@ object AppUiParser {
             }
         }
 
+        val formType = type in setOf("textfield", "select", "toggle")
+        val fieldId = json.optString("id", "").take(64).ifBlank {
+            if (formType) {
+                warnings.add("$type 缺少 id，使用 field${count[0]}")
+                "field${count[0]}"
+            } else ""
+        }
+        val valueRaw = json.opt("value")
+        val initialValue = if (type == "textfield" || type == "select") {
+            if (valueRaw is String) valueRaw.take(2048) else json.optString("text", "").take(2048)
+        } else ""
+        val checked = valueRaw is Boolean && valueRaw
+        val options = mutableListOf<UiOption>()
+        json.optJSONArray("options")?.let { array ->
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index)
+                if (item != null) {
+                    val value = item.optString("value", item.optString("label"))
+                    options.add(UiOption(item.optString("label", value), value))
+                } else {
+                    val text = array.optString(index)
+                    if (text.isNotBlank()) options.add(UiOption(text, text))
+                }
+            }
+        }
+        val headers = mutableListOf<String>()
+        json.optJSONArray("headers")?.let { array ->
+            for (index in 0 until array.length()) headers.add(array.optString(index))
+        }
+        val rows = mutableListOf<List<String>>()
+        json.optJSONArray("rows")?.let { array ->
+            for (index in 0 until array.length()) {
+                val row = array.optJSONArray(index) ?: continue
+                rows.add((0 until row.length()).map { row.optString(it) })
+            }
+        }
+
         return UiNode(
             type = type,
             visible = json.optBoolean("visible", true),
@@ -137,7 +184,18 @@ object AppUiParser {
             buttonStyle = json.optString("buttonStyle", "primary"),
             enabled = json.optBoolean("enabled", true),
             language = json.optString("language", "").take(32),
-            maxLines = json.optInt("maxLines", 20).coerceIn(1, 200),
+            maxLines = if (type == "textfield") {
+                json.optInt("maxLines", 1).coerceIn(1, 12)
+            } else {
+                json.optInt("maxLines", 20).coerceIn(1, 200)
+            },
+            fieldId = fieldId,
+            placeholder = json.optString("placeholder", "").take(128),
+            options = options,
+            initialValue = initialValue,
+            checked = checked,
+            headers = headers,
+            rows = rows,
         )
     }
 }
