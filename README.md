@@ -19,7 +19,11 @@ an API key. All agent work happens in the original `pig` binary.
 - Streams assistant text, renders tool cards, answers `confirm` / `select` /
   `input` / `editor` extension dialogs, and shows status updates.
 - Relay authenticates with a per-install token, forwards pig's RPC frames
-  unchanged, lists projects, and pushes a hot-reloadable UI pack.
+  unchanged, lists projects/sessions, and pushes a hot-reloadable UI pack.
+- Session drawer lists recent sessions (`~/.pig/agent/sessions`), switches via
+  `switch_session` and reloads the transcript with `get_messages` (text + tool
+  cards). Switching to a file modified in the last minute asks for confirmation
+  because another pig process may be writing it.
 - GitHub Actions builds a debug APK on every push.
 
 M1 is in: the app parses the pushed pack and applies `theme/colors.json` and
@@ -117,6 +121,9 @@ logcat -d -s PigDebug
 # send a prompt
 am broadcast -n com.linuxwff.pigapp/.DebugReceiver -a com.linuxwff.pigapp.DEBUG_PROMPT --es text "Reply with exactly OK"
 
+# switch to a session file
+am broadcast -n com.linuxwff.pigapp/.DebugReceiver -a com.linuxwff.pigapp.DEBUG_SWITCH --es path /path/to/session.jsonl
+
 # reconnect (relaunches the relay if needed)
 am broadcast -n com.linuxwff.pigapp/.DebugReceiver -a com.linuxwff.pigapp.DEBUG_CONNECT
 
@@ -127,5 +134,9 @@ am broadcast -n com.linuxwff.pigapp/.DebugReceiver -a com.linuxwff.pigapp.DEBUG_
 am broadcast -n com.linuxwff.pigapp/.DebugReceiver -a com.linuxwff.pigapp.DEBUG_ANSWER --es value "Allow"
 am broadcast -n com.linuxwff.pigapp/.DebugReceiver -a com.linuxwff.pigapp.DEBUG_ANSWER --ez confirmed true
 ```
+
+`DEBUG_STATE` also writes
+`/storage/emulated/0/Android/data/com.linuxwff.pigapp/files/state.txt` (root can
+read it), which avoids relying on logcat.
 
 The receiver lives in `app/src/debug/` and is not part of release builds.
