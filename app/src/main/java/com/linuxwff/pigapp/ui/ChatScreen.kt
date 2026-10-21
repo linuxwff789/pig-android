@@ -80,6 +80,7 @@ import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.ChatMsg
 import com.linuxwff.pigapp.Role
 import com.linuxwff.pigapp.SessionInfo
+import com.linuxwff.pigapp.TypeScale
 import com.linuxwff.pigapp.UiLayout
 import com.linuxwff.pigapp.UiRequest
 import kotlinx.coroutines.launch
@@ -430,13 +431,23 @@ private fun MessageList(ui: AppUiState, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(ui.messages, key = { it.id }) { message ->
-            MessageRow(message, ui.uiPack.layout.assistantLabel, ui.uiPack.layout.toolCards)
+            MessageRow(
+                message,
+                ui.uiPack.layout.assistantLabel,
+                ui.uiPack.layout.toolCards,
+                ui.uiPack.types,
+            )
         }
     }
 }
 
 @Composable
-private fun MessageRow(message: ChatMsg, assistantLabel: String, toolMode: String) {
+private fun MessageRow(
+    message: ChatMsg,
+    assistantLabel: String,
+    toolMode: String,
+    types: TypeScale,
+) {
     when (message.role) {
         Role.USER -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             Surface(
@@ -466,7 +477,7 @@ private fun MessageRow(message: ChatMsg, assistantLabel: String, toolMode: Strin
                 PigMarkdown(
                     text = message.text.ifBlank { "…" },
                     modifier = Modifier.fillMaxWidth(),
-                    types = ui.uiPack.types,
+                    types = types,
                 )
             }
         }
