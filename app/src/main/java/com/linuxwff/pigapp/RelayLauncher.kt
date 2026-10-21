@@ -22,7 +22,6 @@ object RelayLauncher {
      * `allow-external-apps = true` in ~/.termux/termux.properties.
      */
     fun launch(context: Context, port: Int, token: String, cwd: String): String? {
-        if (!isTermuxInstalled(context)) return "Termux 未安装或对 Pig 不可见"
         val intent = Intent().apply {
             setClassName(TERMUX_PKG, "com.termux.app.RunCommandService")
             action = "com.termux.RUN_COMMAND"
