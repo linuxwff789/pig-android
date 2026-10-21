@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.util.UUID
@@ -54,6 +55,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(error = null)
         client.close()
         client.connect()
+        viewModelScope.launch {
+            // A leftover relay from an older install may still hold the port
+            // and reject our token; it exits on the bad auth. Retry the launch
+            // so the fresh relay can bind.
+            repeat(3) {
+                delay(1500)
+                if (!client.connected.value) {
+                    RelayLauncher.launch(ctx, port, token, cwd)
+                }
+            }
+        }
     }
 
     fun reconnect() {
@@ -116,6 +128,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun handle(event: JSONObject) {
         when (val type = event.optString("type")) {
             "relay_hello" -> {
+                ui = ui.copy(error = null)
                 client.send(JSONObject().put("id", "state-1").put("type", "get_state"))
                 client.send(JSONObject().put("id", "stats-1").put("type", "get_session_stats"))
             }

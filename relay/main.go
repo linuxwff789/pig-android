@@ -24,11 +24,17 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
 
 const protocol = "relay/1"
+
+// hadClient records whether any connection ever authenticated. A relay that
+// has never had a client may be a leftover from an older app install whose
+// token no longer matches; it exits instead of blocking the port.
+var hadClient atomic.Bool
 
 type frame map[string]any
 
@@ -476,8 +482,16 @@ func serve(conn net.Conn, token, cwd, uiDir, pigBin string) {
 	reader, err := authenticate(conn, token)
 	if err != nil {
 		_ = (&connWriter{conn: conn}).send(frame{"type": "relay_error", "message": "auth failed: " + err.Error()})
+		if !hadClient.Load() {
+			go func() {
+				time.Sleep(300 * time.Millisecond)
+				log.Printf("no client ever authenticated; releasing port")
+				os.Exit(0)
+			}()
+		}
 		return
 	}
+	hadClient.Store(true)
 
 	s := &session{
 		conn:   conn,
