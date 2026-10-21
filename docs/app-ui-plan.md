@@ -70,7 +70,14 @@ Acceptance:
 - Writing broken JSON keeps the old window and surfaces the error.
 - Theme/layout edits still apply while a window is open.
 
-## M3.3 — actions + forms
+## M3.3 — actions + forms — DONE
+
+Verified the host's command-name rules with a throwaway extension: `nt.dot`,
+`nt:colon`, `nt_underscore`, `nt-dash` all dispatched and received their args.
+End-to-end: a pack window with `textfield`/`select`/`toggle`/`table`, values set
+via debug, the Submit button (`ext:uitest.submit`) produced
+`{"name":"alice","env":"dev","verbose":"true"}` in the extension's log. The test
+extension and its settings entry were removed afterwards.
 
 Scope:
 

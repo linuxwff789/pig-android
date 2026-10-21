@@ -1,0 +1,65 @@
+{
+  "appUI": 1,
+  "id": "form",
+  "title": "Form demo",
+  "width": 340,
+  "height": 540,
+  "body": {
+    "type": "column",
+    "spacing": 10,
+    "children": [
+      {
+        "type": "text",
+        "text": "Window form",
+        "style": "heading"
+      },
+      {
+        "type": "textfield",
+        "id": "name",
+        "placeholder": "Your name",
+        "maxLines": 1
+      },
+      {
+        "type": "select",
+        "id": "env",
+        "options": [
+          {
+            "label": "Dev",
+            "value": "dev"
+          },
+          {
+            "label": "Prod",
+            "value": "prod"
+          }
+        ]
+      },
+      {
+        "type": "toggle",
+        "id": "verbose",
+        "label": "Verbose"
+      },
+      {
+        "type": "table",
+        "headers": [
+          "Key",
+          "Value"
+        ],
+        "rows": [
+          [
+            "env",
+            "dev"
+          ],
+          [
+            "retries",
+            "3"
+          ]
+        ]
+      },
+      {
+        "type": "button",
+        "label": "Submit",
+        "action": "ext:demo.submit"
+      }
+    ]
+  }
+}

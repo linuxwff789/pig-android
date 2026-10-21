@@ -1,8 +1,8 @@
 # `app-ui/1` — declarative windows for the Pig app
 
-Status: **M3.2 implemented** — parser, `overlay` placement, the eight v1
-components, `builtin:close` / `builtin:copy`, debug injection, and the file
-channel with hot reload / add-update-remove reconciliation / dismissal.
+Status: **M3.3 implemented** — parser, `overlay`, the v1 components plus forms
+and tables, `builtin:` and `ext:` actions, debug injection, and the file channel
+with hot reload / add-update-remove reconciliation / dismissal.
 
 The goal is TUI-like extensibility without shipping executable UI code:
 extensions (or a UI pack) write JSON, the app renders it with Compose.
@@ -80,7 +80,15 @@ Content:
 | `progress` | `value` 0..1, or `indeterminate: true` |
 | `button` | `label`, `action`, `style`: `primary/outline/text/danger`, `enabled` |
 
-M3.3 adds `textfield`, `select`, `toggle`, `list`, `table`.
+| `textfield` | `id`, `value`, `placeholder`, `maxLines` |
+| `select` | `id`, `value`, `options`: `[{label,value}]` |
+| `toggle` | `id`, `label`, `value` (bool) |
+| `list` | `children` (dividers between them) |
+| `table` | `headers`, `rows`: array of string arrays |
+
+Form fields need an `id`; it becomes the JSON key sent with the action. A
+missing `id` gets a generated `fieldN` and a warning.
+
 M3.5 may add `webview` (off by default, local assets only).
 
 Unknown types render a small `[unsupported: type]` placeholder and add a
@@ -94,10 +102,11 @@ warning; they never crash the window.
 
 - `builtin:close` — close the window that owns the control (M3.1).
 - `builtin:copy:<text>` — copy text to the clipboard (M3.1).
-- `ext:<command>` — strip the prefix and send RPC `prompt` with `/<command>`
-  (M3.3). The extension registers a normal slash command; arguments are a JSON
-  object encoded after the command when the window has form values.
-- `prompt:<text>` — send the text as a normal prompt (M3.3, opt-in).
+- `ext:<command>` — strip the prefix and send RPC `prompt` with `/<command>`.
+  Dots, colons, underscores and dashes in command names were verified against a
+  real extension. Form values are appended as one compact JSON argument:
+  `/uitest.submit {"name":"alice","env":"dev","verbose":"true"}`.
+- `prompt:<text>` — not implemented yet (would bypass the command registry).
 
 `ext:` is deliberately deferred until a test extension command proves the
 command-name rules (the `/skill:` namespace shows that colons are special).
