@@ -100,3 +100,30 @@ examples/ui-pack/        sample declarative UI pack
   in Termux. That is the trade-off for the pairing-free launch path. If you do
   not want it, start the relay from a Termux service instead.
 - API keys stay in Termux (`~/.pig/agent/auth.json`); the app never sees them.
+
+## Drive the app from the shell (debug builds)
+
+Debug builds register `com.linuxwff.pigapp/.DebugReceiver`, so you can exercise
+the client without touching the screen. Always pass `-n`; the app may be in the
+background, and implicit broadcasts are not delivered to cached apps.
+
+```bash
+# current connection / model / messages (logcat tag PigDebug)
+am broadcast -n com.linuxwff.pigapp/.DebugReceiver -a com.linuxwff.pigapp.DEBUG_STATE
+logcat -d -s PigDebug
+
+# send a prompt
+am broadcast -n com.linuxwff.pigapp/.DebugReceiver -a com.linuxwff.pigapp.DEBUG_PROMPT --es text "Reply with exactly OK"
+
+# reconnect (relaunches the relay if needed)
+am broadcast -n com.linuxwff.pigapp/.DebugReceiver -a com.linuxwff.pigapp.DEBUG_CONNECT
+
+# abort the active turn
+am broadcast -n com.linuxwff.pigapp/.DebugReceiver -a com.linuxwff.pigapp.DEBUG_ABORT
+
+# answer a pending confirm/select/input dialog
+am broadcast -n com.linuxwff.pigapp/.DebugReceiver -a com.linuxwff.pigapp.DEBUG_ANSWER --es value "Allow"
+am broadcast -n com.linuxwff.pigapp/.DebugReceiver -a com.linuxwff.pigapp.DEBUG_ANSWER --ez confirmed true
+```
+
+The receiver lives in `app/src/debug/` and is not part of release builds.

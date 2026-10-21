@@ -126,6 +126,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(messages = ui.messages.map { if (it.id == id) block(it) else it })
     }
 
+    private fun remove(id: String) {
+        ui = ui.copy(messages = ui.messages.filterNot { it.id == id })
+    }
+
     private fun handle(event: JSONObject) {
         when (val type = event.optString("type")) {
             "relay_hello" -> {
@@ -185,10 +189,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     model?.optString("provider")?.takeIf { it.isNotBlank() },
                     model?.optString("id")?.takeIf { it.isNotBlank() },
                 ).joinToString("/")
+                val sessionId = data.optString("sessionId", "")
+                val switched = sessionId.isNotBlank() &&
+                    ui.sessionId.isNotBlank() &&
+                    sessionId != ui.sessionId
+                if (switched) currentAssistant = null
                 ui = ui.copy(
                     model = label,
-                    sessionId = data.optString("sessionId", ""),
+                    sessionId = sessionId,
                     busy = data.optBoolean("isStreaming", ui.busy),
+                    messages = if (switched) emptyList() else ui.messages,
                 )
             }
             "get_session_stats" -> {
@@ -224,6 +234,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val id = currentAssistant ?: return
         val text = contentText(message)
         update(id) { it.copy(text = text.ifBlank { it.text }) }
+        // Tool-call-only assistant messages have no text; the tool card is the
+        // visible representation, so drop the empty bubble.
+        if (ui.messages.firstOrNull { it.id == id }?.text.isNullOrBlank()) remove(id)
         currentAssistant = null
     }
 
