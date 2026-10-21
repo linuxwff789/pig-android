@@ -35,6 +35,8 @@ class DebugReceiver : BroadcastReceiver() {
                 vm.sendPrompt(text)
             }
             "com.linuxwff.pigapp.DEBUG_ABORT" -> vm.abort()
+            "com.linuxwff.pigapp.DEBUG_SWITCH_CONFIRM" -> vm.confirmSwitch()
+            "com.linuxwff.pigapp.DEBUG_SWITCH_CANCEL" -> vm.cancelSwitch()
             "com.linuxwff.pigapp.DEBUG_SWITCH" -> {
                 val path = intent.getStringExtra("path") ?: ""
                 Log.i(TAG, "switch session: $path")

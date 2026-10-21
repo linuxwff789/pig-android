@@ -185,6 +185,26 @@ fun PigApp(vm: AppViewModel) {
         }
     }
 
+    ui.pendingSwitch?.let { session ->
+        val title = session.name.ifBlank { session.preview.ifBlank { "未命名会话" } }
+        AlertDialog(
+            onDismissRequest = vm::cancelSwitch,
+            title = { Text("切换会话") },
+            text = {
+                Text(
+                    "「$title」最近 1 分钟内被修改，可能正被另一个 pig 进程使用。" +
+                        "两个进程写同一个会话文件可能损坏它。",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = vm::confirmSwitch) { Text("仍要切换") }
+            },
+            dismissButton = {
+                TextButton(onClick = vm::cancelSwitch) { Text("取消") }
+            },
+        )
+    }
+
     ui.pending?.let { PendingDialog(it, vm) }
 }
 

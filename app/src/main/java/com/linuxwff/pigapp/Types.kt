@@ -51,4 +51,6 @@ data class AppUiState(
     val contextPercent: Double? = null,
     val sessions: List<SessionInfo> = emptyList(),
     val sessionsLoading: Boolean = false,
+    val sessionFile: String = "",
+    val pendingSwitch: SessionInfo? = null,
 )

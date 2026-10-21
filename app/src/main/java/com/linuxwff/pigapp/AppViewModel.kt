@@ -95,6 +95,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun switchSession(path: String) {
+        val session = ui.sessions.firstOrNull { it.path == path }
+        val recent = session != null && System.currentTimeMillis() - session.updated < 60_000
+        if (recent && path != ui.sessionFile) {
+            ui = ui.copy(pendingSwitch = session)
+            return
+        }
+        doSwitch(path)
+    }
+
+    fun confirmSwitch() {
+        val session = ui.pendingSwitch ?: return
+        ui = ui.copy(pendingSwitch = null)
+        doSwitch(session.path)
+    }
+
+    fun cancelSwitch() {
+        ui = ui.copy(pendingSwitch = null)
+    }
+
+    private fun doSwitch(path: String) {
         ui = ui.copy(status = "switching", messages = emptyList())
         client.send(
             JSONObject()
@@ -211,6 +231,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 ui = ui.copy(
                     model = label,
                     sessionId = sessionId,
+                    sessionFile = data.optString("sessionFile", ui.sessionFile),
                     busy = data.optBoolean("isStreaming", ui.busy),
                     messages = if (switched) emptyList() else ui.messages,
                 )
