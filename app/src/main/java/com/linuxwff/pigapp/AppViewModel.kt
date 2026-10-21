@@ -31,7 +31,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val windowPositions = mutableStateMapOf<String, WindowPos>()
     private val dismissedWindows = mutableMapOf<String, String>() // pack path -> window id
-    private var packFiles: Map<String, String> = emptyMap()
     private val knownWindows = mutableMapOf<String, AppWindow>() // window id -> last parsed definition
     private val formValues = mutableStateMapOf<String, String>() // "windowId/fieldId" -> value
 
@@ -146,51 +145,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .put("type", "set_thinking_level")
                 .put("level", level),
         )
-    }
-
-    fun runNav(id: String) {
-        val item = ui.uiPack.nav.firstOrNull { it.id == id }
-        if (item == null) {
-            ui = ui.copy(toast = "没有导航项 $id")
-            return
-        }
-        val windowId = item.window
-        val existing = windowId.takeIf { it.isNotBlank() }
-            ?.let { wanted -> ui.windows.firstOrNull { it.id == wanted } }
-        if (existing != null) {
-            focusWindow(existing.id)
-        } else if (windowId.isNotBlank()) {
-            // The window file is unchanged after closing, so the relay will not
-            // push a new pack. Restore it from the cached pack snapshot.
-            val path = packFiles.keys.firstOrNull {
-                it == "windows/$windowId.json" || it.endsWith("/$windowId.json")
-            }
-            val cached = path?.let { packFiles[it] }
-            if (path != null && cached != null) {
-                dismissedWindows.remove(path)
-                AppUiParser.parseWindow(cached, source = path).window?.let { restored ->
-                    ui = ui.copy(windows = ui.windows + restored)
-                }
-            }
-        }
-        if (item.command.isNotBlank()) {
-            // Clearing the dismissal first lets the command's rewritten window
-            // reappear even if the user closed it earlier.
-            if (windowId.isNotBlank()) {
-                dismissedWindows.entries.removeAll { it.value == windowId }
-            }
-            client.send(
-                JSONObject()
-                    .put("id", "nav-${nextId++}")
-                    .put("type", "prompt")
-                    .put("message", "/" + item.command.removePrefix("/")),
-            )
-            ui = ui.copy(toast = "已执行 /${item.command.removePrefix("/")}")
-        } else if (existing == null && windowId.isNotBlank()) {
-            dismissedWindows.entries.removeAll { it.value == windowId }
-            client.send(JSONObject().put("type", "relay_ui"))
-            ui = ui.copy(toast = "已刷新窗口 ${item.label}")
-        }
     }
 
     fun requestSessions() {
@@ -752,7 +706,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 put(key, filesObject.optString(key, ""))
             }
         }
-        packFiles = files
         reconcileWindows(files, UiPackParser.navWindowIds(files))
 
         val hash = event.optString("hash")

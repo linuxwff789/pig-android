@@ -291,25 +291,6 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
         }
         if (ui.uiPack.nav.isNotEmpty()) {
             HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = MaterialTheme.colorScheme.outline,
-            )
-            ui.uiPack.nav.forEach { item ->
-                OutlinedButton(
-                    onClick = {
-                        vm.openNavItem(item)
-                        onClose()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Default.Build, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(item.label)
-                }
-            }
-        }
-        if (ui.uiPack.nav.isNotEmpty()) {
-            HorizontalDivider(
                 modifier = Modifier.padding(vertical = 4.dp),
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -321,7 +302,7 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
             ui.uiPack.nav.forEach { item ->
                 OutlinedButton(
                     onClick = {
-                        vm.runNav(item.id)
+                        vm.openNavItem(item)
                         onClose()
                     },
                     modifier = Modifier.fillMaxWidth(),

@@ -71,7 +71,8 @@ class DebugReceiver : BroadcastReceiver() {
             "com.linuxwff.pigapp.DEBUG_NAV" -> {
                 val id = intent.getStringExtra("id") ?: ""
                 Log.i(TAG, "nav: $id")
-                vm.runNav(id)
+                val item = vm.ui.uiPack.nav.firstOrNull { it.id == id }
+                if (item != null) vm.openNavItem(item) else Log.w(TAG, "no nav item $id")
             }
             "com.linuxwff.pigapp.DEBUG_MODELS" -> vm.openModelPicker()
             "com.linuxwff.pigapp.DEBUG_SET_MODEL" -> {
