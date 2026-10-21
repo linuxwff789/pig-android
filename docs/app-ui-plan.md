@@ -18,7 +18,14 @@ acceptance criteria and the pitfall checklist.
 - Do not change the existing `relay_ui_pack` wire format. Windows ride in the
   same `files` map under `windows/`.
 
-## M3.1 — renderer + overlay + debug injection
+## M3.1 — renderer + overlay + debug injection — DONE
+
+Verified on device: injected a 340×460 window (`text`, `muted`, `progress`,
+`code`, `button`), state showed
+`windows=[AppWindow(id=demo, title=Deploy, 340x460)]`; `DEBUG_CLOSE_WINDOW`
+emptied it; invalid JSON set `windowError` without affecting the app. Visual
+confirmation is pending because `uiautomator dump` starts returning
+`null root node` on this device; state-file assertions are the fallback.
 
 Scope:
 

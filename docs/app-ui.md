@@ -1,7 +1,8 @@
 # `app-ui/1` — declarative windows for the Pig app
 
-Status: **design contract for M3**. Nothing here is implemented yet; the app
-currently renders only the chat transcript and the fixed drawers.
+Status: **M3.1 implemented** — parser, `overlay` placement, the eight v1
+components, `builtin:close` / `builtin:copy`, and debug injection. The file
+channel (`windows/*.json`) and hot reload are M3.2.
 
 The goal is TUI-like extensibility without shipping executable UI code:
 extensions (or a UI pack) write JSON, the app renders it with Compose.
