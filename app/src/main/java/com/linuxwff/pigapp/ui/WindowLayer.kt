@@ -57,6 +57,7 @@ import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.AppWidget
 import com.linuxwff.pigapp.AppWindow
 import com.linuxwff.pigapp.UiNode
+import com.mikepenz.markdown.m3.Markdown
 
 @Composable
 fun WindowLayer(windows: List<AppWindow>, vm: AppViewModel) {
@@ -299,17 +300,24 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
             }
         }
 
-        "text" -> Text(
-            node.text,
-            modifier = pad,
-            style = textStyle(node.style),
-            color = textColor(node.style),
-            textAlign = when (node.align) {
-                "center" -> TextAlign.Center
-                "end" -> TextAlign.End
-                else -> TextAlign.Start
-            },
-        )
+        "text" -> if (node.style == "markdown") {
+            Markdown(
+                content = node.text,
+                modifier = pad.fillMaxWidth(),
+            )
+        } else {
+            Text(
+                node.text,
+                modifier = pad,
+                style = textStyle(node.style),
+                color = textColor(node.style),
+                textAlign = when (node.align) {
+                    "center" -> TextAlign.Center
+                    "end" -> TextAlign.End
+                    else -> TextAlign.Start
+                },
+            )
+        }
 
         "code" -> Box(
             pad

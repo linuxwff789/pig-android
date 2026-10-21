@@ -80,6 +80,7 @@ import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.ChatMsg
 import com.linuxwff.pigapp.Role
 import com.linuxwff.pigapp.SessionInfo
+import com.mikepenz.markdown.m3.Markdown
 import com.linuxwff.pigapp.UiLayout
 import com.linuxwff.pigapp.UiRequest
 import kotlinx.coroutines.launch
@@ -463,9 +464,9 @@ private fun MessageRow(message: ChatMsg, assistantLabel: String, toolMode: Strin
             )
             Spacer(Modifier.height(4.dp))
             SelectionContainer {
-                Text(
-                    message.text.ifBlank { "…" },
-                    style = MaterialTheme.typography.bodyLarge,
+                Markdown(
+                    content = message.text.ifBlank { "…" },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
