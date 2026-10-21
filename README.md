@@ -22,8 +22,9 @@ an API key. All agent work happens in the original `pig` binary.
   unchanged, lists projects, and pushes a hot-reloadable UI pack.
 - GitHub Actions builds a debug APK on every push.
 
-M1 adds the declarative UI pack schema (theme/layout/panels/renderers) and
-applies it at runtime. M2 adds `app-ui/1` actions and `ext:` routing.
+M1 is in: the app parses the pushed pack and applies `theme/colors.json` and
+`layout/chat.json` live (see [docs/ui-pack.md](docs/ui-pack.md)). M2 adds
+`app-ui/1` actions, `ext:` routing, and the release pipeline.
 
 ## Prerequisites
 
@@ -90,6 +91,7 @@ app/                     Compose client
     ui/ChatScreen.kt     sidebar, transcript, tool cards, dialogs
 relay/main.go            loopback bridge, auth, UI pack watcher
 docs/protocol.md         wire protocol
+docs/ui-pack.md          declarative theme/layout schema
 examples/ui-pack/        sample declarative UI pack
 ```
 
