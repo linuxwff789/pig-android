@@ -87,7 +87,10 @@ hot-reload with the rest of the pack.
 ```
 
 - `sidebar.widthDp` is clamped to 240–560.
-- `chat.toolCards`: `collapsible` (default), `expanded`, or `collapsed`.
+- `chat.toolCards`: initial tool-card mode — `collapsible`/`collapsed` start in
+  summary, `expanded` shows the full output. The card always has 收起 / 摘要 /
+  展开 chips; `write` reports lines and bytes, `edit` reports added/removed
+  lines and renders the diff with colored +/- lines.
 - `chat.showUsage` adds the context percentage to the top bar.
 - `composer.maxLines` is clamped to 1–12.
 - `sendOnEnter` changes the IME action to Send.

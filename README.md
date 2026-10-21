@@ -17,7 +17,9 @@ an API key. All agent work happens in the original `pig` binary.
 
 - App launches `pig-relay` through Termux `RUN_COMMAND` (no pairing screen).
 - Streams assistant text, renders Markdown (GFM headings, lists, code fences,
-  tables with alignment and inline formatting, links), renders tool cards, answers `confirm` / `select` / `input` /
+  tables with alignment and inline formatting, links), renders tool cards with
+  collapse/summary/expand modes (`write` shows lines/bytes, `edit` shows
+  added/removed counts and a colored diff), answers `confirm` / `select` / `input` /
   `editor` extension dialogs, and shows status updates.
 - Relay authenticates with a per-install token, forwards pig's RPC frames
   unchanged, lists projects/sessions, and pushes a hot-reloadable UI pack.
