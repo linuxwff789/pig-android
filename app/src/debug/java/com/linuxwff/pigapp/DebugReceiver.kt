@@ -19,6 +19,8 @@ import java.io.File
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_FORM --es window demo --es field name --es value hello
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_WINDOW_ACTION --es window demo --es action ext:uitest.submit
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_EVENT --es json '{"type":"extension_ui_request","method":"setWidget",...}'
+ *   am broadcast -a com.linuxwff.pigapp.DEBUG_SET_MODEL --es provider deepseek --es model deepseek-flash
+ *   am broadcast -a com.linuxwff.pigapp.DEBUG_THINKING --es level high
  *
  * Exported without a permission on purpose; this class is only compiled into
  * debug builds (app/src/debug).
@@ -65,6 +67,18 @@ class DebugReceiver : BroadcastReceiver() {
                 val action = intent.getStringExtra("action") ?: ""
                 Log.i(TAG, "window action: $windowId $action")
                 vm.handleWindowAction(windowId, action)
+            }
+            "com.linuxwff.pigapp.DEBUG_MODELS" -> vm.openModelPicker()
+            "com.linuxwff.pigapp.DEBUG_SET_MODEL" -> {
+                val provider = intent.getStringExtra("provider") ?: ""
+                val model = intent.getStringExtra("model") ?: ""
+                Log.i(TAG, "set model: $provider/$model")
+                vm.selectModelById(provider, model)
+            }
+            "com.linuxwff.pigapp.DEBUG_THINKING" -> {
+                val level = intent.getStringExtra("level") ?: ""
+                Log.i(TAG, "thinking: $level")
+                vm.setThinkingLevel(level)
             }
             "com.linuxwff.pigapp.DEBUG_EVENT" -> {
                 val json = intent.getStringExtra("json") ?: ""

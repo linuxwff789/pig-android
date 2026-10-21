@@ -26,6 +26,16 @@ data class SessionInfo(
 
 data class AppWidget(val key: String, val lines: List<String>, val placement: String)
 
+data class ModelInfo(
+    val provider: String,
+    val id: String,
+    val name: String,
+    val contextWindow: Int,
+    val maxTokens: Int,
+    val reasoning: Boolean,
+    val images: Boolean,
+)
+
 data class UiRequest(
     val id: String,
     val method: String,
@@ -59,4 +69,8 @@ data class AppUiState(
     val windowError: String? = null,
     val widgets: List<AppWidget> = emptyList(),
     val titleOverride: String? = null,
+    val availableModelCount: Int = 0,
+    val contextWindow: Int = 0,
+    val thinkingLevel: String = "off",
+    val thinkingLevels: List<String> = emptyList(),
 )

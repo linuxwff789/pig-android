@@ -33,6 +33,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val dismissedWindows = mutableMapOf<String, String>() // pack path -> window id
     private val formValues = mutableStateMapOf<String, String>() // "windowId/fieldId" -> value
 
+    var models by mutableStateOf<List<ModelInfo>>(emptyList())
+        private set
+    var modelsLoading by mutableStateOf(false)
+        private set
+    var showModelPicker by mutableStateOf(false)
+        private set
+
     private var nextId = 1
     private var currentAssistant: String? = null
     private val toolMsgIds = mutableMapOf<String, String>()
@@ -95,6 +102,49 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun abort() = client.send(JSONObject().put("type", "abort"))
+
+    fun openModelPicker() {
+        showModelPicker = true
+        requestModels()
+    }
+
+    fun closeModelPicker() {
+        showModelPicker = false
+    }
+
+    fun requestModels() {
+        modelsLoading = true
+        client.send(JSONObject().put("id", "models-${nextId++}").put("type", "get_available_models"))
+        client.send(
+            JSONObject().put("id", "levels-${nextId++}").put("type", "get_available_thinking_levels"),
+        )
+    }
+
+    fun selectModel(model: ModelInfo) {
+        showModelPicker = false
+        client.send(
+            JSONObject()
+                .put("id", "setmodel-${nextId++}")
+                .put("type", "set_model")
+                .put("provider", model.provider)
+                .put("modelId", model.id),
+        )
+    }
+
+    fun selectModelById(provider: String, id: String) {
+        val known = models.firstOrNull { it.provider == provider && it.id == id }
+        selectModel(known ?: ModelInfo(provider, id, id, 0, 0, false, false))
+    }
+
+    fun setThinkingLevel(level: String) {
+        if (level.isBlank()) return
+        client.send(
+            JSONObject()
+                .put("id", "think-${nextId++}")
+                .put("type", "set_thinking_level")
+                .put("level", level),
+        )
+    }
 
     fun requestSessions() {
         ui = ui.copy(sessionsLoading = true)
@@ -249,6 +299,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         handle(event)
     }
 
+    private fun modelInfo(json: JSONObject): ModelInfo {
+        val input = json.optJSONArray("input")
+        val images = input != null && (0 until input.length()).any { input.optString(it) == "image" }
+        return ModelInfo(
+            provider = json.optString("provider"),
+            id = json.optString("id"),
+            name = json.optString("name", json.optString("id")),
+            contextWindow = json.optInt("contextWindow", 0),
+            maxTokens = json.optInt("maxTokens", 0),
+            reasoning = json.optBoolean("reasoning", false),
+            images = images,
+        )
+    }
+
     private fun handleWidget(event: JSONObject) {
         val key = event.optString("widgetKey", "widget").ifBlank { "widget" }
         val lines = event.optJSONArray("widgetLines")
@@ -381,6 +445,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     sessionFile = data.optString("sessionFile", ui.sessionFile),
                     busy = data.optBoolean("isStreaming", ui.busy),
                     messages = if (switched) emptyList() else ui.messages,
+                    contextWindow = model?.optInt("contextWindow", ui.contextWindow)
+                        ?: ui.contextWindow,
+                    thinkingLevel = data.optString("thinkingLevel", ui.thinkingLevel),
                 )
             }
             "get_session_stats" -> {
@@ -390,6 +457,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             "get_messages" -> data.optJSONArray("messages")?.let { renderHistory(it) }
+            "get_available_models" -> {
+                val array = data.optJSONArray("models")
+                val list = buildList {
+                    if (array != null) {
+                        for (index in 0 until array.length()) {
+                            array.optJSONObject(index)?.let { add(modelInfo(it)) }
+                        }
+                    }
+                }
+                models = list.sortedWith(compareBy({ it.provider }, { it.id }))
+                modelsLoading = false
+                ui = ui.copy(availableModelCount = models.size)
+            }
+            "get_available_thinking_levels" -> {
+                val levels = data.optJSONArray("levels")
+                ui = ui.copy(
+                    thinkingLevels = if (levels == null) {
+                        emptyList()
+                    } else {
+                        (0 until levels.length()).map { levels.optString(it) }
+                    },
+                )
+            }
+            "set_model" -> {
+                val provider = data.optString("provider", ui.model.substringBefore('/'))
+                val id = data.optString("id", ui.model.substringAfter('/'))
+                ui = ui.copy(
+                    model = "$provider/$id",
+                    contextWindow = data.optInt("contextWindow", ui.contextWindow),
+                )
+                client.send(
+                    JSONObject().put("id", "levels-${nextId++}")
+                        .put("type", "get_available_thinking_levels"),
+                )
+                client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
+            }
+            "set_thinking_level" -> {
+                val level = data.optString("level", "").ifBlank { ui.thinkingLevel }
+                ui = ui.copy(thinkingLevel = level)
+                client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
+            }
             "switch_session", "new_session" -> {
                 ui = ui.copy(messages = emptyList(), status = "")
                 client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))

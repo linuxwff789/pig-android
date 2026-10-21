@@ -99,6 +99,7 @@ fun PigApp(vm: AppViewModel) {
         if (ui.uiPack.layout.showUsage) {
             ui.contextPercent?.let { append("  ·  %.1f%%".format(it)) }
         }
+        if (ui.connected) append("  ▾")
     }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -136,6 +137,7 @@ fun PigApp(vm: AppViewModel) {
                             Text(ui.titleOverride ?: "Pig", fontWeight = FontWeight.SemiBold)
                             Text(
                                 subtitle,
+                                modifier = Modifier.clickable { vm.openModelPicker() },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (ui.connected) {
                                     MaterialTheme.colorScheme.secondary
@@ -224,6 +226,7 @@ fun PigApp(vm: AppViewModel) {
     }
 
     ui.pending?.let { PendingDialog(it, vm) }
+    ModelPickerDialog(vm)
 }
 
 @Composable
