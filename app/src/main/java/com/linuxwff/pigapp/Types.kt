@@ -53,4 +53,6 @@ data class AppUiState(
     val sessionsLoading: Boolean = false,
     val sessionFile: String = "",
     val pendingSwitch: SessionInfo? = null,
+    val windows: List<AppWindow> = emptyList(),
+    val windowError: String? = null,
 )

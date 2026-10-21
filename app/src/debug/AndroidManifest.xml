@@ -14,6 +14,8 @@
                 <action android:name="com.linuxwff.pigapp.DEBUG_SWITCH" />
                 <action android:name="com.linuxwff.pigapp.DEBUG_SWITCH_CONFIRM" />
                 <action android:name="com.linuxwff.pigapp.DEBUG_SWITCH_CANCEL" />
+                <action android:name="com.linuxwff.pigapp.DEBUG_WINDOW" />
+                <action android:name="com.linuxwff.pigapp.DEBUG_CLOSE_WINDOW" />
             </intent-filter>
         </receiver>
     </application>

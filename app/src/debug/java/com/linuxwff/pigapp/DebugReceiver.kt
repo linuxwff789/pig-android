@@ -14,6 +14,8 @@ import java.io.File
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_CONNECT
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_ABORT
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_SWITCH --es path /path/to/session.jsonl
+ *   am broadcast -a com.linuxwff.pigapp.DEBUG_WINDOW --es json '{"id":"demo",...}'
+ *   am broadcast -a com.linuxwff.pigapp.DEBUG_CLOSE_WINDOW --es id demo
  *
  * Exported without a permission on purpose; this class is only compiled into
  * debug builds (app/src/debug).
@@ -38,6 +40,16 @@ class DebugReceiver : BroadcastReceiver() {
             "com.linuxwff.pigapp.DEBUG_ABORT" -> vm.abort()
             "com.linuxwff.pigapp.DEBUG_SWITCH_CONFIRM" -> vm.confirmSwitch()
             "com.linuxwff.pigapp.DEBUG_SWITCH_CANCEL" -> vm.cancelSwitch()
+            "com.linuxwff.pigapp.DEBUG_WINDOW" -> {
+                val json = intent.getStringExtra("json") ?: ""
+                Log.i(TAG, "inject window: ${json.take(120)}")
+                vm.injectWindow(json)
+            }
+            "com.linuxwff.pigapp.DEBUG_CLOSE_WINDOW" -> {
+                val id = intent.getStringExtra("id") ?: ""
+                Log.i(TAG, "close window: $id")
+                vm.closeWindow(id)
+            }
             "com.linuxwff.pigapp.DEBUG_SWITCH" -> {
                 val path = intent.getStringExtra("path") ?: ""
                 Log.i(TAG, "switch session: $path")

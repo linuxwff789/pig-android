@@ -1,6 +1,7 @@
 package com.linuxwff.pigapp.ui
 
 import android.text.format.DateUtils
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -103,6 +104,8 @@ fun PigApp(vm: AppViewModel) {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
 
+    BackHandler(enabled = ui.windows.isNotEmpty()) { vm.closeTopWindow() }
+
     LaunchedEffect(ui.toast) {
         val toast = ui.toast
         if (toast != null) {
@@ -111,6 +114,7 @@ fun PigApp(vm: AppViewModel) {
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -183,6 +187,7 @@ fun PigApp(vm: AppViewModel) {
                 MessageList(ui, Modifier.weight(1f))
             }
         }
+        WindowLayer(ui.windows, vm)
     }
 
     ui.pendingSwitch?.let { session ->

@@ -1,8 +1,11 @@
 package com.linuxwff.pigapp
 
 import android.app.Application
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -25,6 +28,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     var ui by mutableStateOf(AppUiState())
         private set
+
+    private val windowPositions = mutableStateMapOf<String, WindowPos>()
 
     private var nextId = 1
     private var currentAssistant: String? = null
@@ -131,6 +136,67 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearLocal() {
         ui = ui.copy(messages = emptyList())
+    }
+
+    fun injectWindow(text: String) {
+        val result = AppUiParser.parseWindow(text)
+        val window = result.window
+        if (window == null) {
+            ui = ui.copy(windowError = result.warnings.firstOrNull() ?: "窗口无效")
+            return
+        }
+        val existing = ui.windows.any { it.id == window.id }
+        val windows = if (existing) {
+            ui.windows.map { if (it.id == window.id) window else it }
+        } else {
+            ui.windows + window
+        }
+        ui = ui.copy(windows = windows, windowError = result.warnings.firstOrNull())
+    }
+
+    fun closeWindow(id: String) {
+        windowPositions.remove(id)
+        ui = ui.copy(windows = ui.windows.filterNot { it.id == id })
+    }
+
+    fun closeTopWindow() {
+        ui.windows.lastOrNull()?.let { closeWindow(it.id) }
+    }
+
+    fun focusWindow(id: String) {
+        val window = ui.windows.firstOrNull { it.id == id } ?: return
+        if (ui.windows.lastOrNull()?.id == id) return
+        ui = ui.copy(windows = ui.windows.filterNot { it.id == id } + window)
+    }
+
+    fun positionOf(id: String): WindowPos {
+        windowPositions[id]?.let { return it }
+        val index = ui.windows.indexOfFirst { it.id == id }.coerceAtLeast(0)
+        return WindowPos(16f + (index % 5) * 14f, 96f + (index % 5) * 18f)
+    }
+
+    fun moveWindow(id: String, dx: Float, dy: Float, maxX: Float, maxY: Float) {
+        val current = positionOf(id)
+        windowPositions[id] = WindowPos(
+            (current.x + dx).coerceIn(0f, maxX),
+            (current.y + dy).coerceIn(0f, maxY),
+        )
+    }
+
+    fun handleWindowAction(windowId: String, action: String) {
+        when {
+            action == "builtin:close" -> closeWindow(windowId)
+            action.startsWith("builtin:copy:") -> {
+                val value = action.removePrefix("builtin:copy:")
+                val clipboard = getApplication<Application>()
+                    .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Pig", value))
+                ui = ui.copy(toast = "已复制")
+            }
+            action.startsWith("ext:") -> ui = ui.copy(toast = "ext 动作将在 M3.3 支持")
+            action.isBlank() -> Unit
+            else -> ui = ui.copy(toast = "未知动作: $action")
+        }
     }
 
     fun dismissError() {
@@ -464,6 +530,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         if (current === this) current = null
+        windowPositions.clear()
         super.onCleared()
     }
 
