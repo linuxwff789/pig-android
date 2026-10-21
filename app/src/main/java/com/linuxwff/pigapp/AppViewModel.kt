@@ -324,7 +324,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Derives pack-backed windows from `windows/*.json` and reconciles them with
+     * Derives pack-backed windows from `windows/<id>.json` and reconciles them with
      * the current list: add, update in place (position/z preserved), remove when
      * the file disappears, keep the last good window when a file fails to parse,
      * and honor the dismissed set.
