@@ -308,6 +308,35 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
                 }
             }
         }
+        if (ui.uiPack.nav.isNotEmpty()) {
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 4.dp),
+                color = MaterialTheme.colorScheme.outline,
+            )
+            Text(
+                "面板",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ui.uiPack.nav.forEach { item ->
+                OutlinedButton(
+                    onClick = {
+                        vm.runNav(item.id)
+                        onClose()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(
+                        navIcon(item.icon),
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(item.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+
         TextButton(
             onClick = {
                 vm.clearLocal()
@@ -387,6 +416,13 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+private fun navIcon(name: String) = when (name.lowercase()) {
+    "refresh" -> Icons.Default.Refresh
+    "add" -> Icons.Default.Add
+    "settings", "build" -> Icons.Default.Build
+    else -> Icons.Default.Build
 }
 
 @Composable

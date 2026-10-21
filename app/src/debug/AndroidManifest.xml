@@ -19,6 +19,7 @@
                 <action android:name="com.linuxwff.pigapp.DEBUG_FORM" />
                 <action android:name="com.linuxwff.pigapp.DEBUG_WINDOW_ACTION" />
                 <action android:name="com.linuxwff.pigapp.DEBUG_EVENT" />
+                <action android:name="com.linuxwff.pigapp.DEBUG_NAV" />
                 <action android:name="com.linuxwff.pigapp.DEBUG_MODELS" />
                 <action android:name="com.linuxwff.pigapp.DEBUG_SET_MODEL" />
                 <action android:name="com.linuxwff.pigapp.DEBUG_THINKING" />

@@ -68,6 +68,11 @@ class DebugReceiver : BroadcastReceiver() {
                 Log.i(TAG, "window action: $windowId $action")
                 vm.handleWindowAction(windowId, action)
             }
+            "com.linuxwff.pigapp.DEBUG_NAV" -> {
+                val id = intent.getStringExtra("id") ?: ""
+                Log.i(TAG, "nav: $id")
+                vm.runNav(id)
+            }
             "com.linuxwff.pigapp.DEBUG_MODELS" -> vm.openModelPicker()
             "com.linuxwff.pigapp.DEBUG_SET_MODEL" -> {
                 val provider = intent.getStringExtra("provider") ?: ""

@@ -147,6 +147,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    fun runNav(id: String) {
+        val item = ui.uiPack.nav.firstOrNull { it.id == id }
+        if (item == null) {
+            ui = ui.copy(toast = "没有导航项 $id")
+            return
+        }
+        val windowId = item.window
+        val existing = windowId.takeIf { it.isNotBlank() }
+            ?.let { wanted -> ui.windows.firstOrNull { it.id == wanted } }
+        if (existing != null) {
+            focusWindow(existing.id)
+        }
+        if (item.command.isNotBlank()) {
+            // Clearing the dismissal first lets the command's rewritten window
+            // reappear even if the user closed it earlier.
+            if (windowId.isNotBlank()) {
+                dismissedWindows.entries.removeAll { it.value == windowId }
+            }
+            client.send(
+                JSONObject()
+                    .put("id", "nav-${nextId++}")
+                    .put("type", "prompt")
+                    .put("message", "/" + item.command.removePrefix("/")),
+            )
+            ui = ui.copy(toast = "已执行 /${item.command.removePrefix("/")}")
+        } else if (existing == null && windowId.isNotBlank()) {
+            dismissedWindows.entries.removeAll { it.value == windowId }
+            client.send(JSONObject().put("type", "relay_ui"))
+            ui = ui.copy(toast = "已刷新窗口 ${item.label}")
+        }
+    }
+
     fun requestSessions() {
         ui = ui.copy(sessionsLoading = true)
         client.send(JSONObject().put("id", "sessions-${nextId++}").put("type", "relay_sessions"))
