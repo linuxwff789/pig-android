@@ -36,7 +36,7 @@ fun PigMarkdown(text: String, modifier: Modifier = Modifier) {
                 } else {
                     // Unknown block: show its raw source instead of dropping it.
                     Text(
-                        model.node.getTextInNode(model.content).trim(),
+                        model.node.getTextInNode(model.content).toString().trim(),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -58,18 +58,18 @@ private fun MarkdownTable(model: MarkdownComponentModel) {
 
     val headers = headerNode?.children.orEmpty()
         .filter { it.type == GFMTokenTypes.CELL }
-        .map { it.getTextInNode(content).trim() }
+        .map { it.getTextInNode(content).toString().trim() }
     val rows = model.node.children
         .filter { it.type == GFMElementTypes.ROW }
         .map { row ->
             row.children
                 .filter { it.type == GFMTokenTypes.CELL }
-                .map { it.getTextInNode(content).trim() }
+                .map { it.getTextInNode(content).toString().trim() }
         }
 
     val columns = maxOf(headers.size, rows.maxOfOrNull { it.size } ?: 0)
     if (columns == 0) return
-    val alignments = parseAlignments(separator?.getTextInNode(content), columns)
+    val alignments = parseAlignments(separator?.getTextInNode(content)?.toString(), columns)
 
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         if (headers.isNotEmpty()) {
