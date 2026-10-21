@@ -1,8 +1,8 @@
 # `app-ui/1` — declarative windows for the Pig app
 
-Status: **M3.1 implemented** — parser, `overlay` placement, the eight v1
-components, `builtin:close` / `builtin:copy`, and debug injection. The file
-channel (`windows/*.json`) and hot reload are M3.2.
+Status: **M3.2 implemented** — parser, `overlay` placement, the eight v1
+components, `builtin:close` / `builtin:copy`, debug injection, and the file
+channel with hot reload / add-update-remove reconciliation / dismissal.
 
 The goal is TUI-like extensibility without shipping executable UI code:
 extensions (or a UI pack) write JSON, the app renders it with Compose.

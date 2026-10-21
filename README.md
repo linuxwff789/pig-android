@@ -29,8 +29,9 @@ an API key. All agent work happens in the original `pig` binary.
 M1 is in: the app parses the pushed pack and applies `theme/colors.json` and
 `layout/chat.json` live (see [docs/ui-pack.md](docs/ui-pack.md)). M2 adds
 `app-ui/1` actions, `ext:` routing, and the release pipeline. M3 turns the pack
-into arbitrary windows: the contract and milestone plan are in
-[docs/app-ui.md](docs/app-ui.md) and [docs/app-ui-plan.md](docs/app-ui-plan.md).
+into arbitrary windows; the overlay renderer and the `windows/` file channel
+(hot reload, add/update/remove, dismissal) are in. Contract and plan:
+[docs/app-ui.md](docs/app-ui.md), [docs/app-ui-plan.md](docs/app-ui-plan.md).
 
 ## Prerequisites
 

@@ -1,0 +1,49 @@
+{
+  "appUI": 1,
+  "id": "deploy",
+  "title": "Deploy",
+  "width": 340,
+  "height": 440,
+  "body": {
+    "type": "column",
+    "spacing": 10,
+    "children": [
+      {
+        "type": "text",
+        "text": "Pack-backed window",
+        "style": "heading"
+      },
+      {
+        "type": "text",
+        "text": "Edit this file to hot-update",
+        "style": "muted"
+      },
+      {
+        "type": "progress",
+        "value": 0.42
+      },
+      {
+        "type": "code",
+        "text": "go test ./...\nok  pig/coding\nok  pig/relay",
+        "maxLines": 4
+      },
+      {
+        "type": "row",
+        "spacing": 8,
+        "children": [
+          {
+            "type": "button",
+            "label": "Copy",
+            "action": "builtin:copy:hello from a window",
+            "buttonStyle": "outline"
+          },
+          {
+            "type": "button",
+            "label": "Close",
+            "action": "builtin:close"
+          }
+        ]
+      }
+    ]
+  }
+}

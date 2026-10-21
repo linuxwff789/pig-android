@@ -45,7 +45,14 @@ Acceptance:
 - Invalid JSON → `windowError`, no window, app still usable.
 - Back closes the top window before leaving the app.
 
-## M3.2 — file channel + hot reload
+## M3.2 — file channel + hot reload — DONE
+
+Verified on device with `windows/deploy.json`: file appeared in the state as
+`AppWindow(id=deploy, title=Deploy v1, 340x440)`; editing it became
+`Deploy v2, 340x500` without restart; closing it and editing again stayed
+closed; deleting the file cleared the dismissal and re-adding it opened
+`Deploy v4`; broken JSON kept the last good window and set
+`windowError=windows/deploy.json: JSON 解析失败…`.
 
 Scope:
 
