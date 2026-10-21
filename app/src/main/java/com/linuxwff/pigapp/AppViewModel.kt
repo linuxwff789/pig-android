@@ -31,6 +31,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val windowPositions = mutableStateMapOf<String, WindowPos>()
     private val dismissedWindows = mutableMapOf<String, String>() // pack path -> window id
+    private var packFiles: Map<String, String> = emptyMap()
     private val knownWindows = mutableMapOf<String, AppWindow>() // window id -> last parsed definition
     private val formValues = mutableStateMapOf<String, String>() // "windowId/fieldId" -> value
 
@@ -158,6 +159,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             ?.let { wanted -> ui.windows.firstOrNull { it.id == wanted } }
         if (existing != null) {
             focusWindow(existing.id)
+        } else if (windowId.isNotBlank()) {
+            // The window file is unchanged after closing, so the relay will not
+            // push a new pack. Restore it from the cached pack snapshot.
+            val path = packFiles.keys.firstOrNull {
+                it == "windows/$windowId.json" || it.endsWith("/$windowId.json")
+            }
+            val cached = path?.let { packFiles[it] }
+            if (path != null && cached != null) {
+                dismissedWindows.remove(path)
+                AppUiParser.parseWindow(cached, source = path).window?.let { restored ->
+                    ui = ui.copy(windows = ui.windows + restored)
+                }
+            }
         }
         if (item.command.isNotBlank()) {
             // Clearing the dismissal first lets the command's rewritten window
@@ -737,6 +751,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 put(key, filesObject.optString(key, ""))
             }
         }
+        packFiles = files
         reconcileWindows(files)
 
         val hash = event.optString("hash")
