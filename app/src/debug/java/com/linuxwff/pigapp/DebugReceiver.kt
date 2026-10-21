@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import java.io.File
 
 /**
  * Debug-build only. Drive the app from a shell:
@@ -49,7 +50,15 @@ class DebugReceiver : BroadcastReceiver() {
                     cancelled = intent.getBooleanExtra("cancelled", false),
                 )
             }
-            "com.linuxwff.pigapp.DEBUG_STATE" -> Log.i(TAG, vm.ui.toString())
+            "com.linuxwff.pigapp.DEBUG_STATE" -> {
+                val text = vm.ui.toString()
+                Log.i(TAG, text)
+                setResultData(text)
+                runCatching {
+                    val dir = context.getExternalFilesDir(null) ?: context.filesDir
+                    File(dir, "state.txt").writeText(text)
+                }.onFailure { Log.w(TAG, "state file: ${it.message}") }
+            }
             else -> Log.w(TAG, "unknown action ${intent.action}")
         }
     }
