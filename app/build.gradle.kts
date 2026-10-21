@@ -4,6 +4,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val versionCodeOverride = providers.gradleProperty("versionCode").orNull?.toIntOrNull()
+val versionNameOverride = providers.gradleProperty("versionName").orNull
+
 android {
     namespace = "com.linuxwff.pigapp"
     compileSdk = 35
@@ -12,11 +15,22 @@ android {
         applicationId = "com.linuxwff.pigapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = versionCodeOverride ?: 1
+        versionName = versionNameOverride ?: "0.1.0"
     }
 
     signingConfigs {
+        val releaseStore = System.getenv("PIG_RELEASE_STORE_FILE")
+        if (!releaseStore.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(releaseStore)
+                storePassword = System.getenv("PIG_RELEASE_STORE_PASSWORD")
+                keyAlias = System.getenv("PIG_RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("PIG_RELEASE_KEY_PASSWORD")
+                storeType = "PKCS12"
+            }
+        }
+
         create("ci") {
             storeFile = rootProject.file("keystore/ci-debug.p12")
             storePassword = "android"
@@ -32,6 +46,7 @@ android {
         }
 
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

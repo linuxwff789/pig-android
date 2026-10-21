@@ -66,11 +66,20 @@ CI builds the APK:
 2. Download the `pig-debug-apk` artifact from the Actions run.
 3. `adb install -r app-debug.apk` (or open the file on the device).
 
-The workflow is `.github/workflows/android.yml`: JDK 17, Gradle wrapper 8.9,
-`assembleDebug`, artifact upload. Debug builds use the committed
+The debug workflow is `.github/workflows/android.yml`: JDK 17, Gradle wrapper
+8.9, `assembleDebug`, artifact upload. Debug builds use the committed
 `keystore/ci-debug.p12` (alias `androiddebugkey`, password `android`) so
-successive CI builds can be installed over each other. It is a debug key,
-not a release key.
+successive CI builds can be installed over each other.
+
+Release builds use `.github/workflows/release.yml`, triggered by a `v*` tag or
+manually. The keystore comes from the `RELEASE_KEYSTORE_BASE64`,
+`RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASSWORD`
+Actions secrets; the version name is the tag without `v` and the version code
+is the commit count. The local backup lives at
+`~/.pig-android-release/pig-release.p12` (not in the repo). A tag also creates a
+GitHub Release with the APK attached. The release key differs from the debug
+key, so installing a release APK over an installed debug build requires
+uninstalling the debug app once.
 
 ## Run
 
