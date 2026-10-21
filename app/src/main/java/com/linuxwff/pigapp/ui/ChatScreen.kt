@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -66,6 +68,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,6 +76,7 @@ import com.linuxwff.pigapp.AppUiState
 import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.ChatMsg
 import com.linuxwff.pigapp.Role
+import com.linuxwff.pigapp.UiLayout
 import com.linuxwff.pigapp.UiRequest
 import kotlinx.coroutines.launch
 
@@ -80,6 +84,18 @@ import kotlinx.coroutines.launch
 @Composable
 fun PigApp(vm: AppViewModel) {
     val ui = vm.ui
+    val subtitle = buildString {
+        append(
+            when {
+                ui.connected && ui.model.isNotBlank() -> ui.model
+                ui.connected -> "connected"
+                else -> "offline"
+            },
+        )
+        if (ui.uiPack.layout.showUsage) {
+            ui.contextPercent?.let { append("  ·  %.1f%%".format(it)) }
+        }
+    }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -95,7 +111,10 @@ fun PigApp(vm: AppViewModel) {
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet(drawerContainerColor = MaterialTheme.colorScheme.surface) {
+            ModalDrawerSheet(
+                modifier = Modifier.width(ui.uiPack.layout.sidebarWidthDp.dp),
+                drawerContainerColor = MaterialTheme.colorScheme.surface,
+            ) {
                 DrawerContent(vm, ui) { scope.launch { drawerState.close() } }
             }
         },
@@ -109,11 +128,7 @@ fun PigApp(vm: AppViewModel) {
                         Column {
                             Text("Pig", fontWeight = FontWeight.SemiBold)
                             Text(
-                                when {
-                                    ui.connected && ui.model.isNotBlank() -> ui.model
-                                    ui.connected -> "connected"
-                                    else -> "offline"
-                                },
+                                subtitle,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (ui.connected) {
                                     MaterialTheme.colorScheme.secondary
@@ -149,6 +164,7 @@ fun PigApp(vm: AppViewModel) {
                 Composer(
                     busy = ui.busy,
                     connected = ui.connected,
+                    layout = ui.uiPack.layout,
                     onSend = vm::sendPrompt,
                     onStop = vm::abort,
                 )
@@ -235,15 +251,22 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
 
         Spacer(Modifier.weight(1f))
         Text(
-            "UI pack: ${ui.uiPackFiles} files",
+            "UI pack: ${ui.uiPack.name} v${ui.uiPack.version}",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            ui.uiPackHash.take(12).ifBlank { "no pack" },
+            "${ui.uiPackFiles} files · ${ui.uiPackHash.take(8).ifBlank { "no pack" }}",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        ui.uiPackError?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
         Text(
             "cwd ${vm.cwd}",
             style = MaterialTheme.typography.labelSmall,
@@ -290,13 +313,13 @@ private fun MessageList(ui: AppUiState, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(ui.messages, key = { it.id }) { message ->
-            MessageRow(message)
+            MessageRow(message, ui.uiPack.layout.assistantLabel, ui.uiPack.layout.toolCards)
         }
     }
 }
 
 @Composable
-private fun MessageRow(message: ChatMsg) {
+private fun MessageRow(message: ChatMsg, assistantLabel: String, toolMode: String) {
     when (message.role) {
         Role.USER -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             Surface(
@@ -317,7 +340,7 @@ private fun MessageRow(message: ChatMsg) {
 
         Role.ASSISTANT -> Column(Modifier.fillMaxWidth()) {
             Text(
-                "PIG",
+                assistantLabel,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -330,7 +353,7 @@ private fun MessageRow(message: ChatMsg) {
             }
         }
 
-        Role.TOOL -> ToolCard(message)
+        Role.TOOL -> ToolCard(message, toolMode)
 
         Role.NOTICE -> Text(
             message.text,
@@ -345,8 +368,8 @@ private fun MessageRow(message: ChatMsg) {
 }
 
 @Composable
-private fun ToolCard(message: ChatMsg) {
-    var expanded by remember(message.id) { mutableStateOf(true) }
+private fun ToolCard(message: ChatMsg, mode: String) {
+    var expanded by remember(message.id, mode) { mutableStateOf(mode != "collapsed") }
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -420,6 +443,7 @@ private fun ToolCard(message: ChatMsg) {
 private fun Composer(
     busy: Boolean,
     connected: Boolean,
+    layout: UiLayout,
     onSend: (String) -> Unit,
     onStop: () -> Unit,
 ) {
@@ -438,9 +462,20 @@ private fun Composer(
                 value = text,
                 onValueChange = { text = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("给 Pig 发消息…") },
-                maxLines = 6,
+                placeholder = { Text(layout.composerPlaceholder) },
+                maxLines = layout.composerMaxLines,
                 shape = RoundedCornerShape(18.dp),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = if (layout.sendOnEnter) ImeAction.Send else ImeAction.Default,
+                ),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        if (layout.sendOnEnter && text.isNotBlank() && !busy) {
+                            onSend(text)
+                            text = ""
+                        }
+                    },
+                ),
             )
             Spacer(Modifier.width(8.dp))
             FilledIconButton(

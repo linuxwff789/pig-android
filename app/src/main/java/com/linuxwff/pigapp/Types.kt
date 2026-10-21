@@ -36,4 +36,7 @@ data class AppUiState(
     val toast: String? = null,
     val uiPackHash: String = "",
     val uiPackFiles: Int = 0,
+    val uiPack: UiPack = UiPack(),
+    val uiPackError: String? = null,
+    val contextPercent: Double? = null,
 )

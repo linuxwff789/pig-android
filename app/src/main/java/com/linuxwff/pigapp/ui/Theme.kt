@@ -5,28 +5,12 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
-
-private val PigColors = darkColorScheme(
-    primary = Color(0xFF8B7CFF),
-    onPrimary = Color(0xFF0B0A12),
-    primaryContainer = Color(0xFF2A2350),
-    onPrimaryContainer = Color(0xFFE3DEFF),
-    secondary = Color(0xFF4CD7F6),
-    onSecondary = Color(0xFF00202A),
-    background = Color(0xFF0E1014),
-    onBackground = Color(0xFFE6E8EF),
-    surface = Color(0xFF161A22),
-    onSurface = Color(0xFFE6E8EF),
-    surfaceVariant = Color(0xFF1E2430),
-    onSurfaceVariant = Color(0xFFA8B0C0),
-    outline = Color(0xFF2C3442),
-    error = Color(0xFFFF6B6B),
-    errorContainer = Color(0xFF3A1418),
-    onErrorContainer = Color(0xFFFFD9DB),
-)
+import com.linuxwff.pigapp.UiPack
 
 private val PigTypography = Typography(
     bodyLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 15.sp, lineHeight = 23.sp),
@@ -34,10 +18,31 @@ private val PigTypography = Typography(
     labelSmall = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 15.sp),
 )
 
+/** Theme comes from the hot-reloaded UI pack; defaults match examples/ui-pack. */
 @Composable
-fun PigTheme(content: @Composable () -> Unit) {
+fun PigTheme(pack: UiPack, content: @Composable () -> Unit) {
+    val t = pack.theme
+    val onPrimary = if (t.primary.luminance() > 0.55f) Color(0xFF0B0A12) else Color.White
+    val onSecondary = if (t.secondary.luminance() > 0.55f) Color(0xFF00202A) else Color.White
     MaterialTheme(
-        colorScheme = PigColors,
+        colorScheme = darkColorScheme(
+            primary = t.primary,
+            onPrimary = onPrimary,
+            primaryContainer = t.primary.copy(alpha = 0.22f).compositeOver(t.background),
+            onPrimaryContainer = t.text,
+            secondary = t.secondary,
+            onSecondary = onSecondary,
+            background = t.background,
+            onBackground = t.text,
+            surface = t.surface,
+            onSurface = t.text,
+            surfaceVariant = t.surfaceVariant,
+            onSurfaceVariant = t.textMuted,
+            outline = t.textMuted.copy(alpha = 0.4f),
+            error = t.danger,
+            errorContainer = t.danger.copy(alpha = 0.18f).compositeOver(t.background),
+            onErrorContainer = t.text,
+        ),
         typography = PigTypography,
         content = content,
     )

@@ -22,7 +22,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            PigTheme {
+            PigTheme(vm.ui.uiPack) {
                 PigApp(vm)
             }
         }

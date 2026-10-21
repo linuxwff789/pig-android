@@ -143,10 +143,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 status = "",
                 error = "pig 已退出（code ${event.optInt("code")}）",
             )
-            "relay_ui_pack" -> ui = ui.copy(
-                uiPackHash = event.optString("hash"),
-                uiPackFiles = event.optJSONObject("files")?.length() ?: 0,
-            )
+            "relay_ui_pack" -> handleUiPack(event)
             "response" -> handleResponse(event)
             "agent_start" -> ui = ui.copy(busy = true, status = "thinking")
             "turn_start" -> ui = ui.copy(status = "working")
@@ -204,11 +201,41 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "get_session_stats" -> {
                 val usage = data.optJSONObject("contextUsage")
                 if (usage != null) {
-                    val percent = usage.optDouble("percent", 0.0)
-                    ui = ui.copy(status = if (percent > 0) "context ${"%.1f".format(percent)}%" else ui.status)
+                    ui = ui.copy(contextPercent = usage.optDouble("percent", 0.0))
                 }
             }
         }
+    }
+
+    private fun handleUiPack(event: JSONObject) {
+        val filesObject = event.optJSONObject("files") ?: JSONObject()
+        val files = buildMap {
+            val keys = filesObject.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                put(key, filesObject.optString(key, ""))
+            }
+        }
+        val hash = event.optString("hash")
+        val result = UiPackParser.parse(files)
+        val pack = result.pack
+        if (pack == null) {
+            val message = result.warnings.firstOrNull() ?: "unknown error"
+            ui = ui.copy(uiPackError = message, toast = "UI pack 未应用: $message")
+            return
+        }
+        val changed = ui.uiPackHash.isNotEmpty() && hash != ui.uiPackHash
+        ui = ui.copy(
+            uiPack = pack,
+            uiPackHash = hash,
+            uiPackFiles = files.size,
+            uiPackError = result.warnings.firstOrNull(),
+            toast = when {
+                changed -> "UI pack 已应用: ${pack.name} v${pack.version}"
+                result.warnings.isNotEmpty() -> result.warnings.joinToString("; ")
+                else -> ui.toast
+            },
+        )
     }
 
     private fun handleMessageStart(message: JSONObject?) {
