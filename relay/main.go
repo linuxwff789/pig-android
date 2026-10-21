@@ -92,14 +92,15 @@ func (p *pigProcess) stop() {
 }
 
 type session struct {
-	conn    net.Conn
-	out     *connWriter
-	token   string
-	cwd     string
-	uiDir   string
-	pigBin  string
-	closed  chan struct{}
-	closeMu sync.Once
+	conn        net.Conn
+	out         *connWriter
+	token       string
+	cwd         string
+	uiDir       string
+	sessionsDir string
+	pigBin      string
+	closed      chan struct{}
+	closeMu     sync.Once
 
 	pigMu sync.Mutex
 	pig   *pigProcess
@@ -257,6 +258,8 @@ func (s *session) handleClientLine(line []byte) {
 			root = s.cwd
 		}
 		_ = s.out.send(frame{"type": "relay_projects", "id": head.ID, "root": root, "projects": listProjects(root)})
+	case "relay_sessions":
+		_ = s.out.send(frame{"type": "relay_sessions", "id": head.ID, "sessions": listSessions(s.sessionsDir)})
 	case "relay_ui":
 		files, hash, err := scanUI(s.uiDir)
 		if err != nil {
@@ -286,6 +289,126 @@ func (s *session) watchUI() {
 		last = hash
 		_ = s.out.send(frame{"type": "relay_ui_pack", "hash": hash, "files": files})
 	}
+}
+
+type sessionFile struct {
+	path string
+	info os.FileInfo
+}
+
+// listSessions returns the most recently updated Session files, newest first.
+func listSessions(dir string) []map[string]any {
+	var files []sessionFile
+	projects, err := os.ReadDir(dir)
+	if err != nil {
+		return []map[string]any{}
+	}
+	for _, project := range projects {
+		if !project.IsDir() {
+			continue
+		}
+		entries, err := os.ReadDir(filepath.Join(dir, project.Name()))
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			files = append(files, sessionFile{filepath.Join(dir, project.Name(), entry.Name()), info})
+		}
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].info.ModTime().After(files[j].info.ModTime())
+	})
+	if len(files) > 60 {
+		files = files[:60]
+	}
+	out := make([]map[string]any, 0, len(files))
+	for _, file := range files {
+		out = append(out, readSessionMeta(file.path, file.info))
+	}
+	return out
+}
+
+func readSessionMeta(path string, info os.FileInfo) map[string]any {
+	meta := map[string]any{
+		"path":    path,
+		"updated": info.ModTime().UnixMilli(),
+		"size":    info.Size(),
+		"id":      "",
+		"cwd":     "",
+		"name":    "",
+		"preview": "",
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return meta
+	}
+	defer file.Close()
+
+	reader := bufio.NewReaderSize(io.LimitReader(file, 256*1024), 64*1024)
+	line, err := reader.ReadBytes('\n')
+	if err == nil || len(line) > 0 {
+		var header struct {
+			ID  string `json:"id"`
+			CWD string `json:"cwd"`
+		}
+		if json.Unmarshal(line, &header) == nil {
+			meta["id"] = header.ID
+			meta["cwd"] = header.CWD
+		}
+	}
+
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 16*1024), 512*1024)
+	name, preview := "", ""
+	for scanner.Scan() {
+		var entry struct {
+			Type    string `json:"type"`
+			Name    string `json:"name"`
+			Message struct {
+				Role    string `json:"role"`
+				Content []struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"content"`
+			} `json:"message"`
+		}
+		if json.Unmarshal(scanner.Bytes(), &entry) != nil {
+			continue
+		}
+		if entry.Type == "session_info" && entry.Name != "" {
+			name = entry.Name
+		}
+		if preview == "" && entry.Message.Role == "user" {
+			for _, block := range entry.Message.Content {
+				if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
+					preview = truncateRunes(block.Text, 80)
+					break
+				}
+			}
+		}
+		if name != "" && preview != "" {
+			break
+		}
+	}
+	meta["name"] = name
+	meta["preview"] = preview
+	return meta
+}
+
+func truncateRunes(text string, limit int) string {
+	text = strings.ReplaceAll(strings.TrimSpace(text), "\n", " ")
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return text
+	}
+	return string(runes[:limit]) + "…"
 }
 
 func listProjects(root string) []map[string]string {
@@ -452,6 +575,11 @@ func main() {
 	if *uiDir == "" {
 		*uiDir = filepath.Join(*cwd, ".pig", "android-ui")
 	}
+	agentDir := os.Getenv("PIG_CODING_AGENT_DIR")
+	if agentDir == "" {
+		agentDir = filepath.Join(*cwd, ".pig", "agent")
+	}
+	sessionsDir := filepath.Join(agentDir, "sessions")
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", *listen, *port))
 	if err != nil {
@@ -472,11 +600,11 @@ func main() {
 			log.Printf("accept: %v", err)
 			return
 		}
-		go serve(conn, *token, *cwd, *uiDir, *pigBin)
+		go serve(conn, *token, *cwd, *uiDir, sessionsDir, *pigBin)
 	}
 }
 
-func serve(conn net.Conn, token, cwd, uiDir, pigBin string) {
+func serve(conn net.Conn, token, cwd, uiDir, sessionsDir, pigBin string) {
 	defer conn.Close()
 
 	reader, err := authenticate(conn, token)
@@ -494,13 +622,14 @@ func serve(conn net.Conn, token, cwd, uiDir, pigBin string) {
 	hadClient.Store(true)
 
 	s := &session{
-		conn:   conn,
-		out:    &connWriter{conn: conn},
-		token:  token,
-		cwd:    cwd,
-		uiDir:  uiDir,
-		pigBin: pigBin,
-		closed: make(chan struct{}),
+		conn:        conn,
+		out:         &connWriter{conn: conn},
+		token:       token,
+		cwd:         cwd,
+		uiDir:       uiDir,
+		sessionsDir: sessionsDir,
+		pigBin:      pigBin,
+		closed:      make(chan struct{}),
 	}
 	defer s.shutdown()
 

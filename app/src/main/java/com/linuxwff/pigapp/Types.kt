@@ -14,6 +14,16 @@ data class ChatMsg(
     val expanded: Boolean = true,
 )
 
+data class SessionInfo(
+    val path: String,
+    val id: String,
+    val cwd: String,
+    val name: String,
+    val preview: String,
+    val updated: Long,
+    val size: Long,
+)
+
 data class UiRequest(
     val id: String,
     val method: String,
@@ -39,4 +49,6 @@ data class AppUiState(
     val uiPack: UiPack = UiPack(),
     val uiPackError: String? = null,
     val contextPercent: Double? = null,
+    val sessions: List<SessionInfo> = emptyList(),
+    val sessionsLoading: Boolean = false,
 )

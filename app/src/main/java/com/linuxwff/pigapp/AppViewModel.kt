@@ -89,6 +89,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun abort() = client.send(JSONObject().put("type", "abort"))
 
+    fun requestSessions() {
+        ui = ui.copy(sessionsLoading = true)
+        client.send(JSONObject().put("id", "sessions-${nextId++}").put("type", "relay_sessions"))
+    }
+
+    fun switchSession(path: String) {
+        ui = ui.copy(status = "switching", messages = emptyList())
+        client.send(
+            JSONObject()
+                .put("id", "switch-${nextId++}")
+                .put("type", "switch_session")
+                .put("sessionPath", path),
+        )
+    }
+
     fun newSession() {
         currentAssistant = null
         client.send(JSONObject().put("type", "new_session"))
@@ -136,6 +151,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 ui = ui.copy(error = null)
                 client.send(JSONObject().put("id", "state-1").put("type", "get_state"))
                 client.send(JSONObject().put("id", "stats-1").put("type", "get_session_stats"))
+                requestSessions()
             }
             "relay_client_error" -> ui = ui.copy(error = event.optString("message"))
             "relay_exit" -> ui = ui.copy(
@@ -144,6 +160,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 error = "pig 已退出（code ${event.optInt("code")}）",
             )
             "relay_ui_pack" -> handleUiPack(event)
+            "relay_sessions" -> handleSessions(event)
             "response" -> handleResponse(event)
             "agent_start" -> ui = ui.copy(busy = true, status = "thinking")
             "turn_start" -> ui = ui.copy(status = "working")
@@ -204,7 +221,94 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     ui = ui.copy(contextPercent = usage.optDouble("percent", 0.0))
                 }
             }
+            "get_messages" -> data.optJSONArray("messages")?.let { renderHistory(it) }
+            "switch_session", "new_session" -> {
+                ui = ui.copy(messages = emptyList(), status = "")
+                client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
+                client.send(JSONObject().put("id", "msgs-${nextId++}").put("type", "get_messages"))
+                requestSessions()
+            }
         }
+    }
+
+    private fun handleSessions(event: JSONObject) {
+        val array = event.optJSONArray("sessions")
+        val sessions = buildList {
+            if (array != null) {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    add(
+                        SessionInfo(
+                            path = item.optString("path"),
+                            id = item.optString("id"),
+                            cwd = item.optString("cwd"),
+                            name = item.optString("name"),
+                            preview = item.optString("preview"),
+                            updated = item.optLong("updated"),
+                            size = item.optLong("size"),
+                        ),
+                    )
+                }
+            }
+        }
+        ui = ui.copy(sessions = sessions, sessionsLoading = false)
+    }
+
+    private fun renderHistory(messages: org.json.JSONArray) {
+        val out = mutableListOf<ChatMsg>()
+        val toolIds = mutableMapOf<String, String>()
+        var counter = 1
+        for (index in 0 until messages.length()) {
+            val message = messages.optJSONObject(index) ?: continue
+            when (message.optString("role")) {
+                "user" -> {
+                    val text = contentText(message)
+                    if (text.isNotBlank()) out.add(ChatMsg("h${counter++}", Role.USER, text = text))
+                }
+                "assistant" -> {
+                    val text = contentText(message)
+                    if (text.isNotBlank()) out.add(ChatMsg("h${counter++}", Role.ASSISTANT, text = text))
+                    val blocks = message.optJSONArray("content") ?: continue
+                    for (blockIndex in 0 until blocks.length()) {
+                        val block = blocks.optJSONObject(blockIndex) ?: continue
+                        if (block.optString("type") != "toolCall") continue
+                        val callId = block.optString("id")
+                        val id = "h${counter++}"
+                        if (callId.isNotBlank()) toolIds[callId] = id
+                        out.add(
+                            ChatMsg(
+                                id = id,
+                                role = Role.TOOL,
+                                toolName = block.optString("name", "tool"),
+                                toolArgs = block.optJSONObject("arguments")?.toString(2) ?: "",
+                            ),
+                        )
+                    }
+                }
+                "toolResult" -> {
+                    val text = contentText(message)
+                    val id = toolIds[message.optString("toolCallId")]
+                    val position = out.indexOfFirst { it.id == id }
+                    if (position >= 0) {
+                        out[position] = out[position].copy(
+                            toolResult = text,
+                            isError = message.optBoolean("isError", false),
+                        )
+                    } else {
+                        out.add(
+                            ChatMsg(
+                                id = "h${counter++}",
+                                role = Role.TOOL,
+                                toolName = message.optString("toolName", "tool"),
+                                toolResult = text,
+                                isError = message.optBoolean("isError", false),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        ui = ui.copy(messages = out)
     }
 
     private fun handleUiPack(event: JSONObject) {

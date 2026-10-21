@@ -1,5 +1,6 @@
 package com.linuxwff.pigapp.ui
 
+import android.text.format.DateUtils
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,6 +67,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -76,6 +78,7 @@ import com.linuxwff.pigapp.AppUiState
 import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.ChatMsg
 import com.linuxwff.pigapp.Role
+import com.linuxwff.pigapp.SessionInfo
 import com.linuxwff.pigapp.UiLayout
 import com.linuxwff.pigapp.UiRequest
 import kotlinx.coroutines.launch
@@ -249,7 +252,50 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
             Text("清空本地记录")
         }
 
-        Spacer(Modifier.weight(1f))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "最近会话",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = { vm.requestSessions() }) {
+                Text("刷新", style = MaterialTheme.typography.labelSmall)
+            }
+        }
+        if (ui.sessionsLoading) {
+            LinearProgressIndicator(
+                Modifier
+                    .fillMaxWidth()
+                    .height(2.dp),
+            )
+        }
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            contentPadding = PaddingValues(vertical = 4.dp),
+        ) {
+            items(ui.sessions, key = { it.path }) { session ->
+                SessionRow(session, session.id == ui.sessionId) {
+                    vm.switchSession(session.path)
+                    onClose()
+                }
+            }
+            if (ui.sessions.isEmpty()) {
+                item {
+                    Text(
+                        "没有可切换的会话",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
         Text(
             "UI pack: ${ui.uiPack.name} v${ui.uiPack.version}",
             style = MaterialTheme.typography.labelSmall,
@@ -273,6 +319,36 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun SessionRow(session: SessionInfo, current: Boolean, onClick: () -> Unit) {
+    val title = session.name.ifBlank { session.preview.ifBlank { "未命名会话" } }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 7.dp),
+    ) {
+        Text(
+            title,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (current) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+        )
+        Text(
+            "${session.id.take(8)} · ${DateUtils.getRelativeTimeSpanString(session.updated)}",
+            maxLines = 1,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

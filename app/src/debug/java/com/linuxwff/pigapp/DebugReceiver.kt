@@ -12,6 +12,7 @@ import android.util.Log
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_PROMPT --es text "hello"
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_CONNECT
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_ABORT
+ *   am broadcast -a com.linuxwff.pigapp.DEBUG_SWITCH --es path /path/to/session.jsonl
  *
  * Exported without a permission on purpose; this class is only compiled into
  * debug builds (app/src/debug).
@@ -34,6 +35,11 @@ class DebugReceiver : BroadcastReceiver() {
                 vm.sendPrompt(text)
             }
             "com.linuxwff.pigapp.DEBUG_ABORT" -> vm.abort()
+            "com.linuxwff.pigapp.DEBUG_SWITCH" -> {
+                val path = intent.getStringExtra("path") ?: ""
+                Log.i(TAG, "switch session: $path")
+                vm.switchSession(path)
+            }
             "com.linuxwff.pigapp.DEBUG_ANSWER" -> {
                 vm.answer(
                     value = intent.getStringExtra("value"),
