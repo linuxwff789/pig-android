@@ -95,7 +95,15 @@ Acceptance:
 - Invalid/disabled actions show no crash and log a warning.
 - Windows can be closed while a form is being edited.
 
-## M3.4 — placements + TUI parity
+## M3.4 — placements + TUI parity — DONE
+
+Verified: pack windows with `placement: aboveComposer`, `belowComposer` and
+`sheet` appeared in the state with the right placement; the sheet closed via
+`DEBUG_CLOSE_WINDOW`; `setWidget` set/cleared a panel
+(`widgets=[AppWidget(key=demo, lines=…, placement=aboveEditor)]` → `[]`);
+`setTitle` set/cleared `titleOverride`. Sending a normal prompt still returned
+`OK` after moving the composer insets into the bottom column.
+`prompt:` actions remain unimplemented on purpose.
 
 Scope:
 

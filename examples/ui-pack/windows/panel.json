@@ -1,0 +1,30 @@
+{
+  "appUI": 1,
+  "id": "panel",
+  "title": "Status panel",
+  "placement": "aboveComposer",
+  "width": 320,
+  "height": 0,
+  "body": {
+    "type": "column",
+    "spacing": 6,
+    "children": [
+      {
+        "type": "text",
+        "text": "Above composer panel",
+        "style": "heading"
+      },
+      {
+        "type": "text",
+        "text": "No modal, no drag; just an inline region.",
+        "style": "muted"
+      },
+      {
+        "type": "button",
+        "label": "Dismiss",
+        "action": "builtin:close",
+        "buttonStyle": "text"
+      }
+    ]
+  }
+}

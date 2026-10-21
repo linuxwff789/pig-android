@@ -1,8 +1,9 @@
 # `app-ui/1` — declarative windows for the Pig app
 
-Status: **M3.3 implemented** — parser, `overlay`, the v1 components plus forms
-and tables, `builtin:` and `ext:` actions, debug injection, and the file channel
-with hot reload / add-update-remove reconciliation / dismissal.
+Status: **M3.4 implemented** — all four placements, the component set plus forms
+and tables, `builtin:` / `ext:` actions, `setWidget` panels, `setTitle`, debug
+injection, and the file channel with hot reload / add-update-remove /
+dismissal.
 
 The goal is TUI-like extensibility without shipping executable UI code:
 extensions (or a UI pack) write JSON, the app renders it with Compose.
@@ -50,7 +51,7 @@ for testing.
 | `appUI` | `1` | schema version; unknown higher versions are rejected |
 | `id` | required | `[a-z0-9._-]{1,40}` |
 | `title` | `id` | shown in the title bar |
-| `placement` | `overlay` | `overlay` (M3.1), `sheet` / `aboveComposer` (M3.4) |
+| `placement` | `overlay` | `overlay`, `sheet`, `aboveComposer`, `belowComposer` |
 | `width` / `height` | 320 / wrap | dp, clamped to the screen |
 | `dismissible` | `true` | shows the close button and enables back-to-close |
 | `body` | required | one node |
@@ -132,6 +133,18 @@ command-name rules (the `/skill:` namespace shows that colons are special).
    drawer.
 6. **Session switch** — windows stay; their data may be stale until the
    extension rewrites the file.
+
+## Extension widgets and title
+
+RPC `extension_ui_request` now maps as follows:
+
+- `setWidget` → a monospace panel above or below the composer, one per
+  `widgetKey`; a request without `widgetLines` removes it.
+- `setTitle` → the top-bar title (`Pig` is shown again when the title is empty).
+- `setStatus` / `notify` already behaved as before.
+
+These panels are independent of pack windows: they are session UI state set by
+extensions, not files, and they survive UI pack pushes.
 
 ## Why not just `ctx.ui.custom()`?
 
