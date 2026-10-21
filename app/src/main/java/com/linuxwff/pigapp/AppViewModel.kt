@@ -426,8 +426,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
             return
         }
+        val command = event.optString("command")
+        // These commands carry no data but still change UI state.
+        if (command == "set_thinking_level") {
+            client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
+            return
+        }
+        if (command == "switch_session" || command == "new_session") {
+            ui = ui.copy(messages = emptyList(), status = "")
+            client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
+            client.send(JSONObject().put("id", "msgs-${nextId++}").put("type", "get_messages"))
+            requestSessions()
+            return
+        }
         val data = event.optJSONObject("data") ?: return
-        when (event.optString("command")) {
+        when (command) {
             "get_state" -> {
                 val model = data.optJSONObject("model")
                 val label = listOfNotNull(
@@ -492,17 +505,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         .put("type", "get_available_thinking_levels"),
                 )
                 client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
-            }
-            "set_thinking_level" -> {
-                val level = data.optString("level", "").ifBlank { ui.thinkingLevel }
-                ui = ui.copy(thinkingLevel = level)
-                client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
-            }
-            "switch_session", "new_session" -> {
-                ui = ui.copy(messages = emptyList(), status = "")
-                client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
-                client.send(JSONObject().put("id", "msgs-${nextId++}").put("type", "get_messages"))
-                requestSessions()
             }
         }
     }
