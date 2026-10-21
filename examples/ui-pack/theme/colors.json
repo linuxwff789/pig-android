@@ -1,0 +1,11 @@
+{
+  "background": "#0E1014",
+  "surface": "#161A22",
+  "surfaceVariant": "#1E2430",
+  "primary": "#8B7CFF",
+  "secondary": "#4CD7F6",
+  "text": "#E6E8EF",
+  "textMuted": "#A8B0C0",
+  "danger": "#FF6B6B",
+  "cornerRadius": 16
+}

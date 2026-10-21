@@ -1,0 +1,7 @@
+{
+  "name": "Pig default",
+  "version": 1,
+  "minAppVersion": 1,
+  "theme": "theme/colors.json",
+  "layout": "layout/chat.json"
+}

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "sidebar": {
+    "sections": ["sessions", "projects"],
+    "widthDp": 300
+  },
+  "chat": {
+    "showUsage": true,
+    "toolCards": "collapsible",
+    "assistantLabel": "PIG"
+  },
+  "composer": {
+    "placeholder": "给 Pig 发消息…",
+    "maxLines": 6,
+    "sendOnEnter": true
+  }
+}
