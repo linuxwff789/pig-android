@@ -16,6 +16,19 @@ data class UiTheme(
     val cornerRadius: Int = 16,
 )
 
+data class TypeScale(
+    val body: Int = 15,
+    val label: Int = 11,
+    val h1: Int = 21,
+    val h2: Int = 19,
+    val h3: Int = 17,
+    val h4: Int = 15,
+    val h5: Int = 14,
+    val h6: Int = 13,
+    val code: Int = 12,
+    val lineHeight: Float = 1.5f,
+)
+
 data class UiLayout(
     val sidebarWidthDp: Int = 300,
     val assistantLabel: String = "PIG",
@@ -31,6 +44,7 @@ data class UiPack(
     val version: Int = 1,
     val theme: UiTheme = UiTheme(),
     val layout: UiLayout = UiLayout(),
+    val types: TypeScale = TypeScale(),
     val files: Int = 0,
     val loadedAt: Long = 0L,
 )
@@ -51,6 +65,7 @@ object UiPackParser {
         val name = manifest.optString("name", "UI pack").ifBlank { "UI pack" }
         val themePath = manifest.optString("theme", "theme/colors.json")
         val layoutPath = manifest.optString("layout", "layout/chat.json")
+        val typographyPath = manifest.optString("typography", "theme/typography.json")
 
         var theme = UiTheme()
         files[themePath]?.let { theme = parseTheme(it, warnings) }
@@ -60,12 +75,16 @@ object UiPackParser {
         files[layoutPath]?.let { layout = parseLayout(it, warnings) }
             ?: warnings.add("$layoutPath 缺失，使用默认布局")
 
+        var types = TypeScale()
+        files[typographyPath]?.let { types = parseTypes(it, warnings) }
+
         return Result(
             UiPack(
                 name = name,
                 version = manifest.optInt("version", 1),
                 theme = theme,
                 layout = layout,
+                types = types,
                 files = files.size,
                 loadedAt = System.currentTimeMillis(),
             ),
@@ -91,6 +110,37 @@ object UiPackParser {
             textMuted = json.color("textMuted", d.textMuted, warnings),
             danger = json.color("danger", d.danger, warnings),
             cornerRadius = json.optInt("cornerRadius", d.cornerRadius).coerceIn(0, 40),
+        )
+    }
+
+    private fun parseTypes(text: String, warnings: MutableList<String>): TypeScale {
+        val json = try {
+            JSONObject(text)
+        } catch (e: Exception) {
+            warnings.add("typography JSON 解析失败: ${e.message}")
+            return TypeScale()
+        }
+        val d = TypeScale()
+        fun size(key: String, fallback: Int): Int {
+            val value = json.optInt(key, fallback)
+            if (value !in 8..40) {
+                warnings.add("typography.$key=$value 超出 8..40")
+                return fallback
+            }
+            return value
+        }
+        return TypeScale(
+            body = size("body", d.body),
+            label = size("label", d.label),
+            h1 = size("h1", d.h1),
+            h2 = size("h2", d.h2),
+            h3 = size("h3", d.h3),
+            h4 = size("h4", d.h4),
+            h5 = size("h5", d.h5),
+            h6 = size("h6", d.h6),
+            code = size("code", d.code),
+            lineHeight = json.optDouble("lineHeight", d.lineHeight.toDouble())
+                .toFloat().coerceIn(1.0f, 2.5f),
         )
     }
 

@@ -303,6 +303,7 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
             PigMarkdown(
                 text = node.text,
                 modifier = pad.fillMaxWidth(),
+                types = vm.ui.uiPack.types,
             )
         } else {
             Text(

@@ -51,6 +51,23 @@ missing file falls back to the built-in defaults and reports a warning.
 Colors accept `#RRGGBB` and `#AARRGGBB`. An invalid color is reported and that
 one field falls back to its default; the rest of the pack still applies.
 
+## theme/typography.json
+
+Optional; `manifest.json` points at it with `"typography": "theme/typography.json"`.
+Without the file the defaults below apply.
+
+| Key | Default | Used for |
+| --- | --- | --- |
+| `body` | 15 | assistant/user body text, markdown paragraphs |
+| `label` | 11 | status, session metadata, table headers |
+| `h1`…`h6` | 21/19/17/15/14/13 | markdown headings and app titles |
+| `code` | 12 | fenced code blocks and inline code |
+| `lineHeight` | 1.5 | multiplier for body text |
+
+Sizes are in sp and clamped to 8–40; `lineHeight` is clamped to 1.0–2.5.
+These values feed `PigTheme`'s `Typography` and the markdown renderer, so they
+hot-reload with the rest of the pack.
+
 ## layout/chat.json
 
 ```json

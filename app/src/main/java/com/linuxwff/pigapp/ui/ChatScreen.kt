@@ -466,6 +466,7 @@ private fun MessageRow(message: ChatMsg, assistantLabel: String, toolMode: Strin
                 PigMarkdown(
                     text = message.text.ifBlank { "…" },
                     modifier = Modifier.fillMaxWidth(),
+                    types = ui.uiPack.types,
                 )
             }
         }

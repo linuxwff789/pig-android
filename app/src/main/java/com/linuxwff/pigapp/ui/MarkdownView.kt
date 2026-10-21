@@ -16,13 +16,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.mikepenz.markdown.compose.components.MarkdownComponentModel
 import com.mikepenz.markdown.compose.components.markdownComponents
+import com.linuxwff.pigapp.TypeScale
 import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownColor
+import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.utils.buildMarkdownAnnotatedString
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.findChildOfType
@@ -32,7 +37,7 @@ import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 
 /** Markdown with a GFM table renderer (the m3 renderer has no table component). */
 @Composable
-fun PigMarkdown(text: String, modifier: Modifier = Modifier) {
+fun PigMarkdown(text: String, modifier: Modifier = Modifier, types: TypeScale = TypeScale()) {
     val components = remember {
         markdownComponents(
             custom = { type, model ->
@@ -48,9 +53,34 @@ fun PigMarkdown(text: String, modifier: Modifier = Modifier) {
             },
         )
     }
+    val typography = markdownTypography(
+        h1 = MaterialTheme.typography.headlineLarge,
+        h2 = MaterialTheme.typography.headlineMedium,
+        h3 = MaterialTheme.typography.headlineSmall,
+        h4 = MaterialTheme.typography.titleLarge,
+        h5 = MaterialTheme.typography.titleMedium,
+        h6 = MaterialTheme.typography.titleSmall,
+        text = MaterialTheme.typography.bodyLarge,
+        paragraph = MaterialTheme.typography.bodyLarge,
+        ordered = MaterialTheme.typography.bodyLarge,
+        bullet = MaterialTheme.typography.bodyLarge,
+        list = MaterialTheme.typography.bodyLarge,
+        code = MaterialTheme.typography.bodyMedium.copy(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            fontSize = types.code.sp,
+        ),
+        quote = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
+    )
+    val colors = markdownColor(
+        codeBackground = MaterialTheme.colorScheme.surfaceVariant,
+        inlineCodeBackground = MaterialTheme.colorScheme.surfaceVariant,
+        linkText = MaterialTheme.colorScheme.secondary,
+    )
     Markdown(
         content = text,
         modifier = modifier,
+        typography = typography,
+        colors = colors,
         components = components,
     )
 }
