@@ -54,6 +54,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var nextId = 1
     private var lastStateRequestId = ""
     private var lastMessagesRequestId = ""
+    private var lastCommandsAt = 0L
     private var currentAssistant: String? = null
     private val toolMsgIds = mutableMapOf<String, String>()
 
@@ -375,6 +376,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         .put("type", "prompt")
                         .put("message", text),
                 )
+                viewModelScope.launch {
+                    delay(1_500)
+                    refreshCommands(true)
+                }
             }
         }
     }
@@ -477,7 +482,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         client.send(JSONObject().put("id", "stats-${nextId++}").put("type", "get_session_stats"))
     }
 
-    private fun requestCommands() {
+    /** Refresh built-ins + extension commands; throttled unless forced. */
+    fun refreshCommands(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastCommandsAt < 2_000) return
+        lastCommandsAt = now
         client.send(JSONObject().put("id", "commands-${nextId++}").put("type", "get_commands"))
     }
 
@@ -848,7 +857,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 requestMessages()
                 requestStats()
                 requestSessions()
-                requestCommands()
+                refreshCommands(true)
                 client.send(JSONObject().put("type", "relay_ui"))
             }
             "relay_pong" -> lastPongAt = System.currentTimeMillis()
@@ -906,6 +915,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 clearLive()
                 pendingToolPartials.clear()
                 requestStats()
+                refreshCommands()
             }
             "message_start" -> handleMessageStart(event.optJSONObject("message"))
             "message_update" -> handleMessageUpdate(event)

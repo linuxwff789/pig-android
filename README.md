@@ -166,6 +166,10 @@ The composer recognises `/name args`:
 - Typing `/` opens a command palette with the built-in and extension commands;
   tapping a row fills `/name `. Unknown commands are rejected with a toast
   instead of being sent to the model.
+- The command list is refreshed on connect, when entering `/` mode, after every
+  turn and 1.5 s after running an extension command. Installing an extension in
+  Termux still requires the running pig to load it: run `/reload-runtime` (or
+  restart the agent), then reopen the palette.
 
 `compact` is also available from **设置 → 数据 → 压缩上下文**.
 

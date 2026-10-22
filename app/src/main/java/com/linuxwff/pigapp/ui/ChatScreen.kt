@@ -161,6 +161,9 @@ fun PigApp(vm: AppViewModel) {
         val rest = trimmed.removePrefix("/")
         if (rest.contains(' ')) null else rest
     }
+    LaunchedEffect(commandQuery != null) {
+        if (commandQuery != null) vm.refreshCommands()
+    }
     val commandMatches = remember(commandQuery, ui.commands) {
         if (commandQuery == null) {
             emptyList()
