@@ -105,4 +105,6 @@ data class AppUiState(
     val readOnly: Boolean = false,
     /** Message currently being streamed (rendered as plain text for speed). */
     val streamingId: String? = null,
+    /** Steering/follow-up messages still queued in pig. */
+    val pendingMessages: Int = 0,
 )

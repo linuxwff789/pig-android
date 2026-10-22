@@ -301,19 +301,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    fun sendPrompt(raw: String) {
+    /**
+     * steer=true injects the message into the running turn (PiG `steer`);
+     * steer=false queues it after the turn (`followUp`).
+     */
+    fun sendPrompt(raw: String, steer: Boolean = true) {
         val text = raw.trim()
         if (text.isEmpty()) return
+        val wasBusy = ui.busy
         append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = text))
         currentAssistant = null
         markVisited(ui.sessionFile)
-        ui = ui.copy(readOnly = false)
+        ui = ui.copy(
+            readOnly = false,
+            pendingMessages = if (wasBusy) ui.pendingMessages + 1 else 0,
+        )
         val command = JSONObject()
             .put("id", "p${nextId++}")
             .put("type", "prompt")
             .put("message", text)
-        if (ui.busy) command.put("streamingBehavior", "followUp")
+        if (wasBusy) {
+            command.put("streamingBehavior", if (steer) "steer" else "followUp")
+        }
         client.send(command)
+        if (wasBusy) requestState()
     }
 
     fun abort() = client.send(JSONObject().put("type", "abort"))
@@ -730,7 +741,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 restorePending = false
                 desiredSessionPath = null
                 clearLive()
-                ui = ui.copy(streamingId = null)
+                ui = ui.copy(streamingId = null, pendingMessages = 0)
                 pendingToolPartials.clear()
                 // The relay may have kept the previous pig alive (mid-turn
                 // reconnect). Ask it what it is doing before switching sessions.
@@ -757,6 +768,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     status = "",
                     error = "pig 已退出（code ${event.optInt("code")}），正在重连…",
                     streamingId = null,
+                    pendingMessages = 0,
                 )
                 lastPongAt = 0
                 clearLive()
@@ -790,7 +802,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "agent_start" -> ui = ui.copy(busy = true, status = "thinking")
             "turn_start" -> ui = ui.copy(status = "working")
             "agent_end", "agent_settled" -> {
-                ui = ui.copy(busy = false, status = "", streamingId = null)
+                ui = ui.copy(busy = false, status = "", streamingId = null, pendingMessages = 0)
                 clearLive()
                 pendingToolPartials.clear()
                 requestStats()
@@ -886,7 +898,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 desiredSessionPath = null
                 restorePending = false
             }
-            ui = ui.copy(messages = emptyList(), status = "", streamingId = null)
+            ui = ui.copy(messages = emptyList(), status = "", streamingId = null, pendingMessages = 0)
             clearLive()
             pendingToolPartials.clear()
             requestState()
@@ -970,6 +982,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     contextPercent = if (live) ui.contextPercent else null,
                     contextTokens = if (live) ui.contextTokens else 0,
                     thinkingLevel = data.optString("thinkingLevel", ui.thinkingLevel),
+                    pendingMessages = data.optInt("pendingMessageCount", ui.pendingMessages),
                     status = status,
                     toast = toast,
                 )

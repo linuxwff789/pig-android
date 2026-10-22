@@ -157,12 +157,13 @@ fun PigApp(vm: AppViewModel) {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
 
-    val submit: () -> Unit = {
-        if (draft.isNotBlank() && !ui.busy) {
-            vm.sendPrompt(draft)
+    val sendDraft: (Boolean) -> Unit = { steer ->
+        if (draft.isNotBlank()) {
+            vm.sendPrompt(draft, steer = steer)
             draft = ""
         }
     }
+    val submit: () -> Unit = { sendDraft(ui.busy) }
 
     BackHandler(enabled = ui.windows.isNotEmpty()) { vm.closeTopWindow() }
 
@@ -230,6 +231,9 @@ fun PigApp(vm: AppViewModel) {
                     ) {
                         InlineWindows(ui.windows, "aboveComposer", vm)
                         WidgetPane(ui.widgets, "aboveEditor", vm)
+                        if (ui.pendingMessages > 0) {
+                            PendingBanner(ui.pendingMessages)
+                        }
                         Composer(
                             value = draft,
                             onValueChange = { draft = it },
@@ -238,6 +242,8 @@ fun PigApp(vm: AppViewModel) {
                             layout = ui.uiPack.layout,
                             cornerRadius = ui.uiPack.theme.cornerRadius,
                             onSubmit = submit,
+                            onSteer = { sendDraft(true) },
+                            onFollowUp = { sendDraft(false) },
                             onStop = vm::abort,
                         )
                         WidgetPane(ui.widgets, "belowEditor", vm)
@@ -1837,6 +1843,33 @@ private fun DiffBlock(diff: String, cornerRadius: Int) {
 }
 
 @Composable
+private fun PendingBanner(count: Int) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 3.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(scheme.secondary.copy(alpha = 0.12f))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Default.Send,
+            contentDescription = null,
+            modifier = Modifier.size(13.dp),
+            tint = scheme.secondary,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            "已插队，等待当前步骤 · $count",
+            style = MaterialTheme.typography.labelSmall,
+            color = scheme.secondary,
+        )
+    }
+}
+
+@Composable
 private fun Composer(
     value: String,
     onValueChange: (String) -> Unit,
@@ -1845,10 +1878,12 @@ private fun Composer(
     layout: UiLayout,
     cornerRadius: Int,
     onSubmit: () -> Unit,
+    onSteer: () -> Unit,
+    onFollowUp: () -> Unit,
     onStop: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val active = busy || (connected && value.isNotBlank())
+    val canSend = connected && value.isNotBlank()
     val shape = RoundedCornerShape(
         topStart = (cornerRadius + 8).dp,
         topEnd = (cornerRadius + 8).dp,
@@ -1872,7 +1907,7 @@ private fun Composer(
                     modifier = Modifier.weight(1f),
                     placeholder = {
                         Text(
-                            layout.composerPlaceholder,
+                            if (busy) "插队指令…" else layout.composerPlaceholder,
                             color = scheme.onSurfaceVariant.copy(alpha = 0.75f),
                         )
                     },
@@ -1893,30 +1928,78 @@ private fun Composer(
                     ),
                 )
                 Spacer(Modifier.width(8.dp))
-                Box(
-                    Modifier
-                        .size(46.dp)
-                        .then(
-                            if (active) {
-                                Modifier.shadow(8.dp, CircleShape, ambientColor = scheme.primary, spotColor = scheme.primary)
-                            } else {
-                                Modifier
-                            },
+                if (busy) {
+                    Box(
+                        Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(scheme.error.copy(alpha = 0.16f))
+                            .clickable { onStop() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Default.Stop,
+                            contentDescription = "停止",
+                            modifier = Modifier.size(21.dp),
+                            tint = scheme.error,
                         )
-                        .clip(CircleShape)
-                        .background(if (active) brandBrush() else SolidColor(scheme.surfaceVariant))
-                        .clickable(enabled = active) {
-                            if (busy) onStop() else onSubmit()
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        if (busy) Icons.Default.Stop else Icons.Default.Send,
-                        contentDescription = if (busy) "停止" else "发送",
-                        modifier = Modifier.size(21.dp),
-                        tint = if (active) BrandInk else scheme.onSurfaceVariant,
-                    )
+                    }
+                    if (canSend) {
+                        Spacer(Modifier.width(6.dp))
+                        Box(
+                            Modifier
+                                .size(46.dp)
+                                .shadow(8.dp, CircleShape, ambientColor = scheme.primary, spotColor = scheme.primary)
+                                .clip(CircleShape)
+                                .background(brandBrush())
+                                .pointerInput(onSteer, onFollowUp) {
+                                    detectTapGestures(
+                                        onTap = { onSteer() },
+                                        onLongPress = { onFollowUp() },
+                                    )
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Default.Send,
+                                contentDescription = "插队",
+                                modifier = Modifier.size(21.dp),
+                                tint = BrandInk,
+                            )
+                        }
+                    }
+                } else {
+                    Box(
+                        Modifier
+                            .size(46.dp)
+                            .then(
+                                if (canSend) {
+                                    Modifier.shadow(8.dp, CircleShape, ambientColor = scheme.primary, spotColor = scheme.primary)
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .clip(CircleShape)
+                            .background(if (canSend) brandBrush() else SolidColor(scheme.surfaceVariant))
+                            .clickable(enabled = canSend) { onSubmit() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Default.Send,
+                            contentDescription = "发送",
+                            modifier = Modifier.size(21.dp),
+                            tint = if (canSend) BrandInk else scheme.onSurfaceVariant,
+                        )
+                    }
                 }
+            }
+            if (busy && canSend) {
+                Text(
+                    "点发送=插队 · 长按=排队",
+                    modifier = Modifier.padding(start = 6.dp, top = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
             }
             if (!connected) {
                 Text(
