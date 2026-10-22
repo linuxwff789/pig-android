@@ -1493,6 +1493,67 @@ private fun ToolCard(
     }
     val scheme = MaterialTheme.colorScheme
 
+    if (viewMode == ToolMode.COLLAPSED) {
+        // Collapsed is deliberately minimal: tool name only, tap to see details.
+        Surface(
+            color = scheme.surface,
+            shape = RoundedCornerShape(cornerRadius.dp),
+            border = BorderStroke(1.dp, scheme.outline.copy(alpha = 0.6f)),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { viewMode = ToolMode.SUMMARY }
+                    .padding(horizontal = 11.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier
+                        .size(22.dp)
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(scheme.secondary.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Build,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = scheme.secondary,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    message.toolName ?: "tool",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                when {
+                    message.running -> CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    message.isError -> InfoPill(text = "失败", color = scheme.error)
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "展开",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.primary,
+                )
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = scheme.primary,
+                )
+            }
+        }
+        return
+    }
+
     Surface(
         color = scheme.surface,
         shape = RoundedCornerShape(cornerRadius.dp),
