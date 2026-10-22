@@ -755,10 +755,19 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
                 onDismissRequest = { deleteTarget = null },
                 title = { Text("删除会话？") },
                 text = {
-                    Text(
-                        "将删除「${target.name.ifBlank { target.preview.ifBlank { target.id.take(8) } }}" +
-                            "」的会话文件，不可恢复。",
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            "将删除「${target.name.ifBlank { target.preview.ifBlank { target.id.take(8) } }}" +
+                                "」的会话文件，不可恢复。",
+                        )
+                        if (System.currentTimeMillis() - target.updated < 60_000) {
+                            Text(
+                                "这个会话刚刚被修改过，可能还有其他 pig 进程在使用它。",
+                                color = scheme.error,
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    }
                 },
                 confirmButton = {
                     TextButton(
