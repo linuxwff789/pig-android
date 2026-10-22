@@ -283,6 +283,8 @@ fun PigApp(vm: AppViewModel) {
                         types = ui.uiPack.types,
                         cornerRadius = ui.uiPack.theme.cornerRadius,
                         avatarShadow = ui.avatarShadow,
+                        bubbleShadow = ui.bubbleShadow,
+                        toolGroups = ui.uiPack.layout.toolGroups,
                         modifier = Modifier.weight(1f),
                         onSuggestion = { if (!ui.busy) vm.sendPrompt(it) },
                         onCopy = vm::copyText,
