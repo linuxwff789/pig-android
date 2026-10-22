@@ -62,6 +62,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var restorePending = false
     private var restoreChecked = false
     private var liveText: String? = null
+    private var liveFlushScheduled = false
     private val pendingToolPartials = mutableMapOf<String, String>()
 
     init {
@@ -1258,12 +1259,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // liveText holds the text including the prefix replayed by relay_resume,
         // so replacing the bubble is safe after a mid-stream reconnect.
         liveText = (liveText ?: "") + delta
-        val id = currentAssistant ?: "a${nextId++}".also {
-            currentAssistant = it
-            append(ChatMsg(id = it, role = Role.ASSISTANT))
+        if (currentAssistant == null) {
+            currentAssistant = "a${nextId++}".also {
+                append(ChatMsg(id = it, role = Role.ASSISTANT))
+            }
         }
-        val text = liveText ?: delta
-        update(id) { it.copy(text = text) }
+        scheduleLiveFlush()
+    }
+
+    /**
+     * Deltas arrive at token speed; recomposing (and re-parsing Markdown) for
+     * each one is what made scrolling drop frames. Coalesce to ~20 fps.
+     */
+    private fun scheduleLiveFlush() {
+        if (liveFlushScheduled) return
+        liveFlushScheduled = true
+        viewModelScope.launch {
+            delay(50)
+            liveFlushScheduled = false
+            val text = liveText ?: return@launch
+            val id = currentAssistant ?: return@launch
+            update(id) { it.copy(text = text) }
+        }
     }
 
     /** Relay replayed the assistant text that was streamed before the reconnect. */

@@ -16,6 +16,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,12 +34,18 @@ import androidx.compose.ui.unit.sp
 val BrandInk = Color(0xFF0A0C12)
 
 @Composable
-fun brandBrush(alpha: Float = 1f): Brush = Brush.linearGradient(
-    listOf(
-        MaterialTheme.colorScheme.primary.copy(alpha = alpha),
-        MaterialTheme.colorScheme.tertiary.copy(alpha = alpha),
-    ),
-)
+fun brandBrush(alpha: Float = 1f): Brush {
+    val primary = MaterialTheme.colorScheme.primary
+    val tertiary = MaterialTheme.colorScheme.tertiary
+    return remember(primary, tertiary, alpha) {
+        Brush.linearGradient(
+            listOf(
+                primary.copy(alpha = alpha),
+                tertiary.copy(alpha = alpha),
+            ),
+        )
+    }
+}
 
 /** The pig badge: bright gradient disc with a soft glow. */
 @Composable

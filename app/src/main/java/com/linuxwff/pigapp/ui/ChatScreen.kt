@@ -107,10 +107,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -1182,7 +1185,7 @@ private fun MessageList(
             programmaticScroll = true
             try {
                 runCatching {
-                    listState.animateScrollToItem((listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
+                    listState.scrollToItem((listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
                 }
             } finally {
                 programmaticScroll = false
@@ -1202,7 +1205,7 @@ private fun MessageList(
             contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            items(ui.messages, key = { it.id }) { message ->
+            items(ui.messages, key = { it.id }, contentType = { it.role }) { message ->
                 MessageRow(
                     message = message,
                     assistantLabel = ui.uiPack.layout.assistantLabel,
@@ -1620,11 +1623,14 @@ private fun ToolModeChip(
 @Composable
 private fun CodeBlock(text: String, cornerRadius: Int) {
     if (text.isBlank()) return
-    val lines = text.lineSequence().take(200).toList()
-    val truncated = text.lineSequence().count() > 200
+    val body = remember(text) {
+        val shown = text.lineSequence().take(200).toList()
+        val truncated = text.lineSequence().count() > 200
+        shown.joinToString("\n").ifEmpty { " " } + if (truncated) "\n…" else ""
+    }
     val scheme = MaterialTheme.colorScheme
     val shape = RoundedCornerShape((cornerRadius / 2).coerceAtLeast(6).dp)
-    Column(
+    Box(
         Modifier
             .fillMaxWidth()
             .clip(shape)
@@ -1633,27 +1639,39 @@ private fun CodeBlock(text: String, cornerRadius: Int) {
             .padding(9.dp)
             .horizontalScroll(rememberScrollState()),
     ) {
-        lines.forEach { line ->
-            Text(
-                line.ifEmpty { " " },
-                fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
-                softWrap = false,
-            )
-        }
-        if (truncated) {
-            Text("…", fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-        }
+        Text(
+            body,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 11.sp,
+            softWrap = false,
+        )
     }
 }
 
 @Composable
 private fun DiffBlock(diff: String, cornerRadius: Int) {
     if (diff.isBlank()) return
-    val lines = diff.lineSequence().take(200).toList()
     val scheme = MaterialTheme.colorScheme
+    val annotated = remember(diff, scheme.error, scheme.onSurfaceVariant) {
+        val lines = diff.lineSequence().take(200).toList()
+        val truncated = diff.lineSequence().count() > 200
+        buildAnnotatedString {
+            lines.forEachIndexed { index, line ->
+                val color = when {
+                    line.startsWith("+") && !line.startsWith("+++") -> Color(0xFF4ADE80)
+                    line.startsWith("-") && !line.startsWith("---") -> scheme.error
+                    else -> scheme.onSurfaceVariant
+                }
+                withStyle(SpanStyle(color = color)) {
+                    append(line.ifEmpty { " " })
+                }
+                if (index != lines.lastIndex) append("\n")
+            }
+            if (truncated) append("\n…")
+        }
+    }
     val shape = RoundedCornerShape((cornerRadius / 2).coerceAtLeast(6).dp)
-    Column(
+    Box(
         Modifier
             .fillMaxWidth()
             .clip(shape)
@@ -1662,20 +1680,12 @@ private fun DiffBlock(diff: String, cornerRadius: Int) {
             .padding(9.dp)
             .horizontalScroll(rememberScrollState()),
     ) {
-        lines.forEach { line ->
-            val color = when {
-                line.startsWith("+") && !line.startsWith("+++") -> Color(0xFF4ADE80)
-                line.startsWith("-") && !line.startsWith("---") -> scheme.error
-                else -> scheme.onSurfaceVariant
-            }
-            Text(
-                line.ifEmpty { " " },
-                fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
-                softWrap = false,
-                color = color,
-            )
-        }
+        Text(
+            annotated,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 11.sp,
+            softWrap = false,
+        )
     }
 }
 

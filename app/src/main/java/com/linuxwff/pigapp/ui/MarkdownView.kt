@@ -43,7 +43,7 @@ fun PigMarkdown(
     types: TypeScale = TypeScale(),
     cornerRadius: Int = 16,
 ) {
-    val components = remember {
+    val components = remember(cornerRadius) {
         markdownComponents(
             custom = { type, model ->
                 if (type == GFMElementTypes.TABLE) {
@@ -58,29 +58,35 @@ fun PigMarkdown(
             },
         )
     }
-    val typography = markdownTypography(
-        h1 = MaterialTheme.typography.headlineLarge,
-        h2 = MaterialTheme.typography.headlineMedium,
-        h3 = MaterialTheme.typography.headlineSmall,
-        h4 = MaterialTheme.typography.titleLarge,
-        h5 = MaterialTheme.typography.titleMedium,
-        h6 = MaterialTheme.typography.titleSmall,
-        text = MaterialTheme.typography.bodyLarge,
-        paragraph = MaterialTheme.typography.bodyLarge,
-        ordered = MaterialTheme.typography.bodyLarge,
-        bullet = MaterialTheme.typography.bodyLarge,
-        list = MaterialTheme.typography.bodyLarge,
-        code = MaterialTheme.typography.bodyMedium.copy(
+    val themeTypography = MaterialTheme.typography
+    val typography = remember(types, themeTypography) {
+        markdownTypography(
+        h1 = themeTypography.headlineLarge,
+        h2 = themeTypography.headlineMedium,
+        h3 = themeTypography.headlineSmall,
+        h4 = themeTypography.titleLarge,
+        h5 = themeTypography.titleMedium,
+        h6 = themeTypography.titleSmall,
+        text = themeTypography.bodyLarge,
+        paragraph = themeTypography.bodyLarge,
+        ordered = themeTypography.bodyLarge,
+        bullet = themeTypography.bodyLarge,
+        list = themeTypography.bodyLarge,
+        code = themeTypography.bodyMedium.copy(
             fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
             fontSize = types.code.sp,
         ),
-        quote = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
-    )
-    val colors = markdownColor(
-        codeBackground = MaterialTheme.colorScheme.surfaceVariant,
-        inlineCodeBackground = MaterialTheme.colorScheme.surfaceVariant,
-        linkText = MaterialTheme.colorScheme.secondary,
-    )
+        quote = themeTypography.bodyMedium.copy(fontStyle = FontStyle.Italic),
+        )
+    }
+    val scheme = MaterialTheme.colorScheme
+    val colors = remember(scheme) {
+        markdownColor(
+            codeBackground = scheme.surfaceVariant,
+            inlineCodeBackground = scheme.surfaceVariant,
+            linkText = scheme.secondary,
+        )
+    }
     Markdown(
         content = text,
         modifier = modifier,
