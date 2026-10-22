@@ -93,16 +93,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    override fun onCleared() {
-        // The Activity (and this ViewModel) may be destroyed while the keep-alive
-        // service keeps the process alive. Close the socket so a later ViewModel
-        // cannot end up with a second relay connection; onResume reconnects and
-        // restores the session file.
-        client.close()
-        KeepAliveService.stop(getApplication())
-        super.onCleared()
-    }
-
     fun connect() {
         val ctx = getApplication<Application>()
         if (!RelayLauncher.hasPermission(ctx)) {
@@ -1216,6 +1206,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (current === this) current = null
         windowPositions.clear()
         formValues.clear()
+        // The Activity may be destroyed while the keep-alive service keeps the
+        // process alive. Close the socket so a later ViewModel cannot end up
+        // with a second relay connection; onResume reconnects and restores the
+        // session file.
+        client.close()
+        KeepAliveService.stop(getApplication())
         super.onCleared()
     }
 
