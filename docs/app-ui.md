@@ -62,7 +62,9 @@ Windows are global, not tied to a session. Switching sessions keeps them open.
 ## Nodes
 
 Every node supports `type`, `visible` (default true), `padding` (dp) and, inside
-a `row`/`column`, `weight` (0 = natural size).
+a `row`/`column`, `weight` (0 = natural size). Text and code nodes also accept
+`bind` + `format`: `bind` is a path into the current UI pack's RPC data (for
+example `stats.contextUsage`), and `format` is a `{key}` template.
 
 Containers:
 
@@ -104,6 +106,8 @@ warning; they never crash the window.
 ```
 
 - `builtin:close` — close the window that owns the control (M3.1).
+- `pack:<name>` — run a named safe action from `layout/chat.json` `actions`;
+  an action with `confirm` shows a dialog first. See `ui-pack.md`.
 - `builtin:copy:<text>` — copy text to the clipboard (M3.1).
 - `ext:<command>` — strip the prefix and send RPC `prompt` with `/<command>`.
   Dots, colons, underscores and dashes in command names were verified against a

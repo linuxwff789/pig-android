@@ -249,6 +249,7 @@ next model call provides a fresh usage value.
 | `skin.title`, `toast.skinChanged` | skin switcher heading / confirmation |
 | `pack.*` | pack manager dialog, built-in/local rows, import buttons |
 | `toast.packImported`, `toast.packImportFailed`, `toast.packMissing` | pack manager feedback |
+| `pack.actionTitle`, `pack.actionConfirm`, `pack.actionMissing`, `pack.actionDenied`, `pack.actionNeedsModel`, `pack.actionNeedsLevel` | pack RPC actions |
 | `toast.*` | short confirmations and validation errors |
 
 Every literal in these groups has a built-in Chinese fallback, so a pack can
@@ -256,6 +257,103 @@ ship only the keys it wants to change. The command palette combines
 `commands.*` with the extension commands returned by RPC `get_commands`; newly
 installed extensions appear after `/reload-runtime` (or an agent restart) and
 the next palette refresh.
+
+## RPC data sources, bindings and actions
+
+A pack can read PiG RPC data and run a small, safe set of RPC actions. The App
+owns the RPC process and validates everything; a pack only declares names and
+paths.
+
+### dataSources
+
+`layout/chat.json`:
+
+```json
+"dataSources": {
+  "state": { "rpc": "get_state", "refresh": ["connect", "agent_end", "session_switch"] },
+  "stats": { "rpc": "get_session_stats", "refresh": ["agent_end", "compaction_end"] },
+  "commands": { "rpc": "get_commands", "refresh": ["connect", "agent_end"] },
+  "models": { "rpc": "get_available_models", "params": {}, "refresh": ["pack_load"] },
+  "entries": { "rpc": "get_entries", "params": { "since": "a1b2c3d4" }, "refresh": [] }
+}
+```
+
+- `rpc` is a read-only command: `get_state`, `get_session_stats`,
+  `get_commands`, `get_available_models`, `get_available_thinking_levels`,
+  `get_messages`, `get_last_assistant_text`, `get_entries`, `get_tree`,
+  `get_extensions`, `get_fork_messages`.
+- `params` are copied into the RPC request.
+- `refresh` triggers:
+  - `connect` — relay hello
+  - `agent_end` — after a turn
+  - `compaction_end`
+  - `session_switch` — new/switch session
+  - `pack_load` — after a pack is applied
+  - `window_open` — when a pack window/nav entry is opened
+- Responses are stored under the source name and under the built-in aliases:
+  `state`, `stats`, `commands`, `models`, `thinkingLevels`,
+  `lastAssistantText`, `entries`, `tree`, `extensions`, `forkMessages`.
+  `stats` also gets a computed `cacheHitRate` number.
+
+### bindings
+
+`bindings` maps built-in UI slots to a JSON path. Currently supported slots are
+`header.title`, `header.subtitle`, `header.usage` and `header.cache`.
+
+```json
+"bindings": {
+  "header.title": { "path": "state.sessionName", "fallback": "Aurora" },
+  "header.subtitle": { "path": "state.model", "format": "{provider}/{id}" },
+  "header.usage": { "path": "stats.contextUsage", "format": "{percent}% · {tokens}/{contextWindow}" },
+  "header.cache": { "path": "stats", "format": "缓存 {cacheHitRate}%" }
+}
+```
+
+- `path` is `source.key.key...`; numeric segments index arrays.
+- `format` replaces `{value}` for a scalar or `{key}` / `{a.b}` for an object.
+  Numbers are printed as integers when possible, otherwise with one decimal.
+- `fallback` is used when the path is missing; if it is empty, the normal
+  app fallback is used.
+
+Window nodes can bind too:
+
+```json
+{ "type": "text", "bind": "stats.contextUsage", "format": "上下文 {percent}%" }
+{ "type": "code", "bind": "entries", "format": "{value}", "maxLines": 20 }
+```
+
+### actions
+
+`actions` defines named safe actions. A window button or nav entry calls
+`pack:<name>`:
+
+```json
+"actions": {
+  "compact": { "rpc": "compact", "confirm": "压缩上下文？" },
+  "new": { "rpc": "new_session" },
+  "rename": {
+    "rpc": "set_session_name",
+    "params": { "name": "{{form.name}}" }
+  }
+}
+```
+
+```json
+{ "type": "button", "label": "压缩", "action": "pack:compact" }
+{ "type": "button", "label": "新会话", "action": "pack:new" }
+```
+
+- Allowed action RPCs: `compact`, `new_session`, `abort`, `set_model`,
+  `set_thinking_level`, `cycle_model`, `cycle_thinking_level`, `clear_queue`,
+  `set_auto_compaction`, `set_auto_retry`, `abort_retry`, `set_session_name`.
+- `confirm` opens a confirmation dialog before the action.
+- `params` support `{{form.<field>}}` (form values from the same window) and
+  `{{state.<path>}}` (current RPC data).
+- `set_model` requires `provider` and `modelId`; `set_thinking_level` requires
+  `level`; `set_session_name` uses `name`.
+- Dangerous RPCs (`bash`, `switch_session`, `export_html`, `fork`, `clone`)
+  are **not** available to packs yet; a future manifest allow-list plus
+  confirmation can opt in.
 
 ## components.json
 
@@ -414,6 +512,24 @@ still the source of the built-in pack and of hot reloads.
   "packManager": {
     "show": true,
     "placement": "both"
+  },
+  "dataSources": {
+    "state": { "rpc": "get_state", "refresh": ["connect", "agent_end", "session_switch"] },
+    "stats": { "rpc": "get_session_stats", "refresh": ["agent_end", "compaction_end"] },
+    "last": { "rpc": "get_last_assistant_text", "refresh": ["agent_end"] }
+  },
+  "bindings": {
+    "header.title": { "path": "state.sessionName", "fallback": "Pig" },
+    "header.subtitle": { "path": "state.model", "format": "{provider}/{id}" },
+    "header.usage": {
+      "path": "stats.contextUsage",
+      "format": "{percent}% · {tokens}/{contextWindow}"
+    },
+    "header.cache": { "path": "stats", "format": "缓存 {cacheHitRate}%" }
+  },
+  "actions": {
+    "compact": { "rpc": "compact", "confirm": "压缩上下文？" },
+    "new": { "rpc": "new_session" }
   }
 }
 ```
