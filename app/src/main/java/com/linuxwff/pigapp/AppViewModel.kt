@@ -701,6 +701,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 restorePending = false
                 desiredSessionPath = null
                 liveText = null
+                ui = ui.copy(streamingId = null)
                 pendingToolPartials.clear()
                 // The relay may have kept the previous pig alive (mid-turn
                 // reconnect). Ask it what it is doing before switching sessions.
@@ -726,6 +727,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     busy = false,
                     status = "",
                     error = "pig 已退出（code ${event.optInt("code")}），正在重连…",
+                    streamingId = null,
                 )
                 lastPongAt = 0
                 liveText = null
@@ -759,7 +761,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "agent_start" -> ui = ui.copy(busy = true, status = "thinking")
             "turn_start" -> ui = ui.copy(status = "working")
             "agent_end", "agent_settled" -> {
-                ui = ui.copy(busy = false, status = "")
+                ui = ui.copy(busy = false, status = "", streamingId = null)
                 liveText = null
                 pendingToolPartials.clear()
                 requestStats()
@@ -842,7 +844,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 desiredSessionPath = null
                 restorePending = false
             }
-            ui = ui.copy(messages = emptyList(), status = "")
+            ui = ui.copy(messages = emptyList(), status = "", streamingId = null)
             liveText = null
             pendingToolPartials.clear()
             client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
@@ -1248,6 +1250,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             append(ChatMsg(id = it, role = Role.ASSISTANT, text = text))
         }
         if (text.isNotEmpty()) update(id) { it.copy(text = text) }
+        ui = ui.copy(streamingId = id)
     }
 
     private fun handleMessageUpdate(event: JSONObject?) {
@@ -1264,6 +1267,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 append(ChatMsg(id = it, role = Role.ASSISTANT))
             }
         }
+        currentAssistant?.let { ui = ui.copy(streamingId = it) }
         scheduleLiveFlush()
     }
 
@@ -1292,6 +1296,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             append(ChatMsg(id = it, role = Role.ASSISTANT))
         }
         update(id) { it.copy(text = text) }
+        ui = ui.copy(streamingId = id)
     }
 
     /** Relay replayed a tool that is still running (arrives before get_messages). */
@@ -1317,7 +1322,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun bindResumedAssistant() {
         if (!ui.busy || currentAssistant != null) return
         val last = ui.messages.lastOrNull() ?: return
-        if (last.role == Role.ASSISTANT) currentAssistant = last.id
+        if (last.role == Role.ASSISTANT) {
+            currentAssistant = last.id
+            ui = ui.copy(streamingId = last.id)
+        }
     }
 
     private fun handleMessageEnd(message: JSONObject?) {
@@ -1334,6 +1342,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (ui.messages.firstOrNull { it.id == id }?.text.isNullOrBlank()) remove(id)
         currentAssistant = null
         liveText = null
+        ui = ui.copy(streamingId = null)
     }
 
     private fun handleToolStart(event: JSONObject) {

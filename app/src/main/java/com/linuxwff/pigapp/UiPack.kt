@@ -34,7 +34,7 @@ data class TypeScale(
 data class UiLayout(
     val sidebarWidthDp: Int = 300,
     val assistantLabel: String = "PIG",
-    val toolCards: String = "collapsible",
+    val toolCards: String = "collapsed",
     val showUsage: Boolean = true,
     val composerPlaceholder: String = "给 Pig 发消息…",
     val composerMaxLines: Int = 6,

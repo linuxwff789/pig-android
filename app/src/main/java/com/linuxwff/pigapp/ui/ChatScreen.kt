@@ -1159,6 +1159,7 @@ private fun MessageList(
             (last.role == Role.ASSISTANT && last.text.isBlank())
         )
     val toolMode = ui.toolMode.ifBlank { ui.uiPack.layout.toolCards }
+    val streamingId = ui.streamingId
 
     // Follow new output only while the user is parked at the bottom. A manual
     // upward drag disables it; reaching the bottom again re-enables it.
@@ -1212,6 +1213,7 @@ private fun MessageList(
                     toolMode = toolMode,
                     types = ui.uiPack.types,
                     cornerRadius = cornerRadius,
+                    streaming = message.id == streamingId,
                     onCopy = onCopy,
                     onToolModeAll = onToolModeAll,
                 )
@@ -1351,6 +1353,7 @@ private fun MessageRow(
     toolMode: String,
     types: TypeScale,
     cornerRadius: Int,
+    streaming: Boolean,
     onCopy: (String) -> Unit,
     onToolModeAll: (String) -> Unit,
 ) {
@@ -1409,13 +1412,24 @@ private fun MessageRow(
                     }
                 }
                 Spacer(Modifier.height(4.dp))
-                SelectionContainer {
-                    PigMarkdown(
-                        text = message.text.ifBlank { "…" },
+                if (streaming) {
+                    // Parsing a growing Markdown document on every delta is
+                    // O(n²); show the raw text while it streams and render
+                    // Markdown once the message is complete.
+                    Text(
+                        message.text.ifBlank { "…" },
                         modifier = Modifier.fillMaxWidth(),
-                        types = types,
-                        cornerRadius = cornerRadius,
+                        style = MaterialTheme.typography.bodyLarge,
                     )
+                } else {
+                    SelectionContainer {
+                        PigMarkdown(
+                            text = message.text.ifBlank { "…" },
+                            modifier = Modifier.fillMaxWidth(),
+                            types = types,
+                            cornerRadius = cornerRadius,
+                        )
+                    }
                 }
             }
         }

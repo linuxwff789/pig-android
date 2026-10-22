@@ -101,4 +101,6 @@ data class AppUiState(
     val toolMode: String = "",
     /** True for a history session served from disk (no pig process running). */
     val readOnly: Boolean = false,
+    /** Message currently being streamed (rendered as plain text for speed). */
+    val streamingId: String? = null,
 )
