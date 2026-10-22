@@ -624,7 +624,30 @@ object UiPackParser {
             showSessionTime = json.optBoolean("showSessionTime", d.showSessionTime),
             searchRadius = json.optInt("searchRadius", d.searchRadius)
                 .let { if (it < 0) -1 else it.coerceIn(0, 40) },
+            modules = parseDrawerModules(json.opt("modules"), warnings) ?: d.modules,
         )
+    }
+
+    private fun parseDrawerModules(
+        raw: Any?,
+        warnings: MutableList<String>,
+    ): List<String>? {
+        val allowed = setOf("brand", "newSession", "skinSwitcher", "packManager", "panels")
+        val names = when (raw) {
+            is String -> listOf(raw)
+            is org.json.JSONArray -> (0 until raw.length()).map { raw.optString(it) }
+            else -> return null
+        }
+        val out = mutableListOf<String>()
+        names.forEach { name ->
+            val clean = name.trim()
+            if (clean in allowed) {
+                if (clean !in out) out.add(clean)
+            } else {
+                warnings.add("drawer.modules 忽略: $clean（sessions/settings 固定保留）")
+            }
+        }
+        return out
     }
 
     private fun parseHeader(json: JSONObject, warnings: MutableList<String>): UiHeader {

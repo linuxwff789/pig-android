@@ -257,6 +257,13 @@
     "sessionSelectedAlpha": 0.18,
     "showSessionId": true,
     "showSessionTime": true,
-    "searchRadius": 14
+    "searchRadius": 14,
+    "modules": [
+      "brand",
+      "newSession",
+      "skinSwitcher",
+      "packManager",
+      "panels"
+    ]
   }
 }

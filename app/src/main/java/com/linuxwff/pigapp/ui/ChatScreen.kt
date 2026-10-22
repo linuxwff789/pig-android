@@ -1082,6 +1082,7 @@ private fun DrawerContent(
     val scheme = MaterialTheme.colorScheme
     val corner = ui.uiPack.theme.cornerRadius
     val appearance = ui.uiPack.layout.drawer
+    val modules = appearance.modules
     val buttonCorner = if (appearance.buttonRadius >= 0) appearance.buttonRadius else corner
     val buttonHeight = if (appearance.buttonHeight > 0) {
         Modifier.heightIn(min = appearance.buttonHeight.dp)
@@ -1113,7 +1114,7 @@ private fun DrawerContent(
             .padding(top = appearance.paddingV.dp),
         verticalArrangement = Arrangement.spacedBy(appearance.spacing.dp),
     ) {
-        if (components.showDrawerBrand) Box(
+        if (components.showDrawerBrand && "brand" in modules) Box(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(corner.dp))
@@ -1169,7 +1170,7 @@ private fun DrawerContent(
             }
         }
 
-        GradientButton(
+        if ("newSession" in modules) GradientButton(
             text = packText("drawer.newSession", "新会话"),
             icon = packIcon("add", "add"),
             cornerRadius = buttonCorner,
@@ -1196,7 +1197,8 @@ private fun DrawerContent(
             Text(packText("drawer.settings", "设置"))
         }
 
-        if (ui.uiPack.layout.showSkinSwitcher &&
+        if ("skinSwitcher" in modules &&
+            ui.uiPack.layout.showSkinSwitcher &&
             ui.uiPack.layout.skinSwitcherPlacement in setOf("drawer", "both") &&
             ui.uiPack.skins.isNotEmpty()
         ) {
@@ -1223,7 +1225,8 @@ private fun DrawerContent(
             )
         }
 
-        if (ui.uiPack.layout.showPackManager &&
+        if ("packManager" in modules &&
+            ui.uiPack.layout.showPackManager &&
             ui.uiPack.layout.packManagerPlacement in setOf("drawer", "both")
         ) {
             OutlinedButton(
@@ -1261,7 +1264,7 @@ private fun DrawerContent(
         }
 
         val drawerNav = ui.uiPack.nav.filter { it.placement != "settings" }
-        if (components.showPanels && drawerNav.isNotEmpty()) {
+        if ("panels" in modules && components.showPanels && drawerNav.isNotEmpty()) {
             SectionLabel(
                 packText("drawer.panels", "面板"),
                 size = appearance.sectionLabelSize,
@@ -1287,7 +1290,7 @@ private fun DrawerContent(
             }
         }
 
-        if (components.showSessions) {
+        run {
         Row(
             Modifier
                 .fillMaxWidth()

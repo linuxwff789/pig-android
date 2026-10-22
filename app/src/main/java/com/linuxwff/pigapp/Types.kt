@@ -129,6 +129,10 @@ data class UiDrawerAppearance(
     val showSessionId: Boolean = true,
     val showSessionTime: Boolean = true,
     val searchRadius: Int = -1,
+    /** Optional drawer modules; sessions/settings are always rendered. */
+    val modules: List<String> = listOf(
+        "brand", "newSession", "skinSwitcher", "packManager", "panels",
+    ),
 )
 
 data class UiHeader(

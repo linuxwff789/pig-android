@@ -480,6 +480,13 @@ visibility. They do not reorder menu actions or change messaging behavior.
 | `showSessionId` | true | show the 8-char session id |
 | `showSessionTime` | true | show the relative time |
 | `searchRadius` | -1 | search field radius; `-1` = theme/2 |
+| `modules` | `["brand","newSession","skinSwitcher","packManager","panels"]` | optional drawer modules; **sessions and settings are always rendered** |
+
+Fixed anchors in the drawer: **会话列表** and **设置** are always rendered, regardless
+of `drawer.modules` or `components.showSessions`. Their visuals follow the
+`drawer.session*` and `drawer.button*` keys. Everything else (brand card, new
+session, skin switcher, pack manager, panels/nav entries) can be added or
+removed through `drawer.modules`.
 
 `layout/chat.json` → `chat` appearance keys:
 
@@ -647,7 +654,7 @@ clamped; the values below are the defaults.
 | `showHeaderOnline` | bool | true | online dot + label |
 | `showDrawerBrand` | bool | true | drawer header card |
 | `showPanels` | bool | true | nav panel section |
-| `showSessions` | bool | true | recent sessions section |
+| `showSessions` | bool | true | ignored: the recent-sessions section is always rendered |
 | `showSessionBadges` | bool | true | 运行中/已打开/开过/历史 badges |
 | `showSessionSize` | bool | true | `· 123K` in session rows |
 | `showCopy` | bool | true | per-message copy button |
