@@ -82,6 +82,12 @@ data class AppUiState(
     val uiPackError: String? = null,
     val contextPercent: Double? = null,
     val contextTokens: Int = 0,
+    /** Right after /compact PiG reports null usage until the next model call. */
+    val contextCompacted: Boolean = false,
+    /** Cumulative prompt-cache hit rate (cacheRead / (input + cacheRead + cacheWrite)). */
+    val cacheHitRate: Double? = null,
+    val cacheReadTokens: Long = 0,
+    val cacheInputTokens: Long = 0,
     val sessions: List<SessionInfo> = emptyList(),
     val sessionsLoading: Boolean = false,
     val sessionFile: String = "",
