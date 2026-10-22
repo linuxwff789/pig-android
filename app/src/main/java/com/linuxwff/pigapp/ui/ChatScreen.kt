@@ -236,6 +236,8 @@ fun PigApp(vm: AppViewModel) {
                         model = ui.model,
                         showUsage = ui.uiPack.layout.showUsage,
                         contextPercent = ui.contextPercent,
+                        contextCompacted = ui.contextCompacted,
+                        cacheHitRate = ui.cacheHitRate,
                         contextWindow = ui.contextWindow,
                         contextTokens = ui.contextTokens,
                         busy = ui.busy,
@@ -364,6 +366,8 @@ private fun PigHeader(
     model: String,
     showUsage: Boolean,
     contextPercent: Double?,
+    contextCompacted: Boolean,
+    cacheHitRate: Double?,
     contextWindow: Int,
     contextTokens: Int,
     busy: Boolean,
@@ -447,23 +451,39 @@ private fun PigHeader(
                             overflow = TextOverflow.Ellipsis,
                         )
                         if (showUsage) {
-                            contextPercent?.let { percent ->
-                                val usage = if (contextWindow > 0) {
-                                    packText(
-                                        "header.usage",
-                                        "  ·  {percent}% · {used}/{window}",
-                                    )
-                                        .replace("{percent}", "%.0f".format(percent))
-                                        .replace("{used}", formatTokens(contextTokens))
-                                        .replace("{window}", formatTokens(contextWindow))
-                                } else {
-                                    packText("header.usagePercent", "  ·  {percent}%")
-                                        .replace("{percent}", "%.0f".format(percent))
-                                }
+                            if (contextCompacted) {
                                 Text(
-                                    usage,
+                                    packText("header.compacted", "  ·  已压缩"),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (percent >= 80) scheme.error else scheme.onSurfaceVariant,
+                                    color = scheme.secondary,
+                                )
+                            } else {
+                                contextPercent?.let { percent ->
+                                    val usage = if (contextWindow > 0) {
+                                        packText(
+                                            "header.usage",
+                                            "  ·  {percent}% · {used}/{window}",
+                                        )
+                                            .replace("{percent}", "%.0f".format(percent))
+                                            .replace("{used}", formatTokens(contextTokens))
+                                            .replace("{window}", formatTokens(contextWindow))
+                                    } else {
+                                        packText("header.usagePercent", "  ·  {percent}%")
+                                            .replace("{percent}", "%.0f".format(percent))
+                                    }
+                                    Text(
+                                        usage,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (percent >= 80) scheme.error else scheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            cacheHitRate?.let { rate ->
+                                Text(
+                                    packText("header.cache", "  ·  缓存 {rate}%")
+                                        .replace("{rate}", "%.0f".format(rate)),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = scheme.onSurfaceVariant,
                                 )
                             }
                         }

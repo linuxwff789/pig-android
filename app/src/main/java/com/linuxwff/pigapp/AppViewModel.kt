@@ -926,7 +926,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "extension_ui_request" -> handleUiRequest(event)
             "compaction_start" -> ui = ui.copy(status = "compacting")
             "compaction_end" -> {
-                ui = ui.copy(status = "")
+                ui = ui.copy(status = "", contextCompacted = true)
                 requestStats()
             }
             "error" -> {
@@ -992,6 +992,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         val command = event.optString("command")
         // These commands carry no data but still change UI state.
+        if (command == "compact" && !event.optBoolean("success", true)) {
+            ui = ui.copy(status = "", toast = str("toast.compactFailed", "压缩失败"))
+            return
+        }
         if (command == "set_thinking_level") {
             requestState()
             return
@@ -1008,7 +1012,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 desiredSessionPath = null
                 restorePending = false
             }
-            ui = ui.copy(messages = emptyList(), status = "", streamingId = null, pendingMessages = 0)
+            ui = ui.copy(
+                messages = emptyList(),
+                status = "",
+                streamingId = null,
+                pendingMessages = 0,
+                contextPercent = null,
+                contextTokens = 0,
+                contextCompacted = false,
+                cacheHitRate = null,
+                cacheReadTokens = 0,
+                cacheInputTokens = 0,
+            )
             clearLive()
             pendingToolPartials.clear()
             requestState()
@@ -1101,11 +1116,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "get_session_stats" -> {
                 if (ui.readOnly) return
                 val usage = data.optJSONObject("contextUsage")
-                if (usage != null) {
-                    ui = ui.copy(
-                        contextPercent = usage.optDouble("percent", 0.0),
-                        contextTokens = usage.optInt("tokens", ui.contextTokens),
+                val rawPercent = usage?.opt("percent")
+                val hasContext = usage != null &&
+                    rawPercent != null && rawPercent != JSONObject.NULL &&
+                    usage.opt("tokens") != null && usage.opt("tokens") != JSONObject.NULL
+                ui = if (hasContext) {
+                    ui.copy(
+                        contextPercent = usage!!.optDouble("percent"),
+                        contextTokens = usage.optInt("tokens"),
                         contextWindow = usage.optInt("contextWindow", ui.contextWindow),
+                        contextCompacted = false,
+                    )
+                } else {
+                    // PiG returns null contextUsage right after compaction; don't
+                    // render that as 0% or keep the stale pre-compaction token count.
+                    ui.copy(
+                        contextPercent = null,
+                        contextTokens = 0,
+                        contextCompacted = ui.contextCompacted,
+                    )
+                }
+                val totals = data.optJSONObject("tokens")
+                if (totals != null) {
+                    val input = totals.optLong("input")
+                    val cacheRead = totals.optLong("cacheRead")
+                    val cacheWrite = totals.optLong("cacheWrite")
+                    val denominator = input + cacheRead + cacheWrite
+                    ui = ui.copy(
+                        cacheReadTokens = cacheRead,
+                        cacheInputTokens = input + cacheWrite,
+                        cacheHitRate = if (denominator > 0) {
+                            cacheRead * 100.0 / denominator
+                        } else {
+                            null
+                        },
                     )
                 }
             }

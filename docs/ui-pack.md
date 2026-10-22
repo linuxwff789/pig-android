@@ -171,7 +171,11 @@ built-in Chinese defaults, so a pack can override only a few strings.
 
 ```json
 {
-  "header": { "title": "Pig", "online": "在线", "offline": "离线", "usage": "  ·  {percent}% · {used}/{window}" },
+  "header": {
+    "title": "Pig", "online": "在线", "offline": "离线",
+    "usage": "  ·  {percent}% · {used}/{window}",
+    "compacted": "  ·  已压缩", "cache": "  ·  缓存 {rate}%"
+  },
   "drawer": { "newSession": "新会话", "settings": "设置", "recent": "最近会话" },
   "status": { "thinking": "思考中", "working": "工作中", "compacting": "压缩上下文" },
   "tool": { "running": "运行中…", "failed": "失败", "collapse": "收起", "summary": "摘要", "expand": "展开" },
@@ -185,6 +189,7 @@ Placeholders use `{name}` and are replaced by the app:
 | Placeholder | Used by |
 | --- | --- |
 | `{percent}`, `{used}`, `{window}` | header usage |
+| `{rate}` | header prompt-cache hit rate |
 | `{count}` | pending banner, tool groups, line counts |
 | `{tool}` | tool group header |
 | `{name}` | session delete dialog |
@@ -192,6 +197,11 @@ Placeholders use `{name}` and are replaced by the app:
 
 `empty.suggestions` is a `|`-separated list. Status text is keyed:
 `thinking`, `working`, `compacting`, `retrying`, `switching`, `restoring`.
+
+`header.cache` is the cumulative session cache hit rate
+(`cacheRead / (input + cacheRead + cacheWrite)`). Right after `/compact` PiG
+reports a null `contextUsage`; the header shows `header.compacted` until the
+next model call provides a fresh usage value.
 
 ## components.json
 

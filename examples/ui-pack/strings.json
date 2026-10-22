@@ -6,7 +6,9 @@
     "modelEmpty": "点击选择模型",
     "noModel": "无模型",
     "usage": "  ·  {percent}% · {used}/{window}",
-    "usagePercent": "  ·  {percent}%"
+    "usagePercent": "  ·  {percent}%",
+    "compacted": "  ·  已压缩",
+    "cache": "  ·  缓存 {rate}%"
   },
   "drawer": {
     "tagline": "Termux 里的本地 coding agent",
@@ -140,6 +142,7 @@
     "wakeOn": "唤醒锁已开启（锁屏后 CPU 不休眠）",
     "wakeOff": "唤醒锁已关闭",
     "sameSession": "已经是当前会话",
-    "toolModeAll": "已应用到全部工具：{mode}"
+    "toolModeAll": "已应用到全部工具：{mode}",
+    "compactFailed": "压缩失败"
   }
 }

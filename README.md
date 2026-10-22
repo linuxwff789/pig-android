@@ -155,6 +155,13 @@ The app is designed to survive screen locks, Doze and process death:
   deltas. If `get_state` says the pig is streaming on the saved session, the app
   skips `switch_session` and binds the partial assistant bubble instead.
 
+## Context and cache
+
+The header shows the current context percentage/tokens and the cumulative
+prompt-cache hit rate (`缓存 78%`). After `/compact`, PiG returns a null context
+usage until the next model call, so the header shows `已压缩` instead of a
+misleading `0%`; the real number reappears after the next turn.
+
 ## Slash commands
 
 The composer recognises `/name args`:
