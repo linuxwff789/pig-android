@@ -1,5 +1,7 @@
 package com.linuxwff.pigapp
 
+import org.json.JSONObject
+
 enum class Role { USER, ASSISTANT, TOOL, NOTICE }
 
 data class ChatMsg(
@@ -42,9 +44,39 @@ data class NavItem(
     val icon: String = "",
     /** "drawer" (default) or "settings". */
     val placement: String = "drawer",
+    /** Optional `pack:<action>` run when the entry is tapped. */
+    val action: String = "",
 )
 
 data class UiCommand(val name: String, val description: String = "")
+
+/** One `dataSources` entry in `layout/chat.json`. */
+data class UiDataSource(
+    val rpc: String,
+    val params: JSONObject? = null,
+    val refresh: Set<String> = emptySet(),
+)
+
+/** One `bindings.<slot>` entry: a JSON path plus an optional `{key}` template. */
+data class UiBinding(
+    val path: String,
+    val format: String = "",
+    val fallback: String = "",
+)
+
+/** One named `actions.<name>` entry in `layout/chat.json`. */
+data class UiAction(
+    val rpc: String,
+    val params: JSONObject? = null,
+    val confirm: String = "",
+)
+
+/** A pack action waiting for user confirmation. */
+data class PackActionRequest(
+    val name: String,
+    val message: String,
+    val windowId: String? = null,
+)
 
 /** A pack imported into the app's private `ui-packs/` directory. */
 data class LocalPackInfo(
@@ -97,6 +129,10 @@ data class AppUiState(
     val activePackId: String = "",
     /** Name of the pack the relay is currently pushing (the built-in entry). */
     val relayPackName: String = "",
+    /** Raw RPC response data for pack bindings, keyed by alias/source name. */
+    val rpcData: Map<String, JSONObject> = emptyMap(),
+    /** Set when a pack action declares a `confirm` message. */
+    val pendingPackAction: PackActionRequest? = null,
     val contextPercent: Double? = null,
     val contextTokens: Int = 0,
     /** Right after /compact PiG reports null usage until the next model call. */

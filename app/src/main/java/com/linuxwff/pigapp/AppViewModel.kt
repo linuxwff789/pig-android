@@ -64,6 +64,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var lastStateRequestId = ""
     private var lastMessagesRequestId = ""
     private var lastCommandsAt = 0L
+    private val pendingRpcSources = mutableMapOf<String, String>()
     private var currentAssistant: String? = null
     private val toolMsgIds = mutableMapOf<String, String>()
 
@@ -782,6 +783,201 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         client.send(JSONObject().put("id", "stats-${nextId++}").put("type", "get_session_stats"))
     }
 
+    private val readRpcs = setOf(
+        "get_state",
+        "get_session_stats",
+        "get_commands",
+        "get_available_models",
+        "get_available_thinking_levels",
+        "get_messages",
+        "get_last_assistant_text",
+        "get_entries",
+        "get_tree",
+        "get_extensions",
+        "get_fork_messages",
+    )
+
+    private val safeActionRpcs = setOf(
+        "compact",
+        "new_session",
+        "abort",
+        "set_model",
+        "set_thinking_level",
+        "cycle_model",
+        "cycle_thinking_level",
+        "clear_queue",
+        "set_auto_compaction",
+        "set_auto_retry",
+        "abort_retry",
+        "set_session_name",
+    )
+
+    /** Ask the sources declared in `layout.dataSources` that subscribe to [trigger]. */
+    private fun refreshDataSources(trigger: String) {
+        if (!client.connected.value) return
+        ui.uiPack.layout.dataSources.forEach { (name, source) ->
+            if (trigger in source.refresh && source.rpc in readRpcs) {
+                val id = "src-${nextId++}"
+                pendingRpcSources[id] = name
+                val request = JSONObject().put("id", id).put("type", source.rpc)
+                source.params?.let { params ->
+                    val keys = params.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        request.put(key, params.opt(key))
+                    }
+                }
+                client.send(request)
+            }
+        }
+    }
+
+    /** Run a named `layout.actions` entry, asking for confirmation when declared. */
+    fun runPackAction(name: String, windowId: String? = null) {
+        val action = ui.uiPack.layout.actions[name] ?: run {
+            ui = ui.copy(toast = str("pack.actionMissing", "没有这个 pack 动作：{name}").replace("{name}", name))
+            return
+        }
+        if (action.rpc !in safeActionRpcs) {
+            ui = ui.copy(
+                toast = str("pack.actionDenied", "pack 不允许调用 {rpc}")
+                    .replace("{rpc}", action.rpc),
+            )
+            return
+        }
+        if (action.confirm.isNotBlank()) {
+            ui = ui.copy(
+                pendingPackAction = PackActionRequest(
+                    name = name,
+                    message = action.confirm,
+                    windowId = windowId,
+                ),
+            )
+        } else {
+            executePackAction(name, action, windowId)
+        }
+    }
+
+    fun confirmPackAction() {
+        val pending = ui.pendingPackAction ?: return
+        val action = ui.uiPack.layout.actions[pending.name] ?: return
+        ui = ui.copy(pendingPackAction = null)
+        executePackAction(pending.name, action, pending.windowId)
+    }
+
+    fun cancelPackAction() {
+        ui = ui.copy(pendingPackAction = null)
+    }
+
+    private fun executePackAction(name: String, action: UiAction, windowId: String?) {
+        val params = resolveActionParams(action.params, windowId)
+        when (action.rpc) {
+            "compact" -> compact()
+            "new_session" -> newSession()
+            "abort" -> abort()
+            "set_model" -> {
+                val provider = params.optString("provider")
+                val modelId = params.optString("modelId")
+                if (provider.isBlank() || modelId.isBlank()) {
+                    ui = ui.copy(toast = str("pack.actionNeedsModel", "set_model 需要 provider 和 modelId"))
+                } else {
+                    selectModelById(provider, modelId)
+                }
+            }
+            "set_thinking_level" -> {
+                val level = params.optString("level")
+                if (level.isBlank()) {
+                    ui = ui.copy(toast = str("pack.actionNeedsLevel", "set_thinking_level 需要 level"))
+                } else {
+                    setThinkingLevel(level)
+                }
+            }
+            "set_session_name" -> {
+                val value = params.optString("name").take(80)
+                client.send(
+                    JSONObject()
+                        .put("id", "pack-name-${nextId++}")
+                        .put("type", "set_session_name")
+                        .put("name", value),
+                )
+            }
+            else -> {
+                val request = JSONObject()
+                    .put("id", "pack-${nextId++}")
+                    .put("type", action.rpc)
+                val keys = params.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    request.put(key, params.opt(key))
+                }
+                client.send(request)
+                requestState()
+                requestStats()
+            }
+        }
+    }
+
+    /** Substitute `{{form.id}}` and `{{state.path}}` in action params. */
+    private fun resolveActionParams(params: JSONObject?, windowId: String?): JSONObject {
+        val out = JSONObject()
+        if (params == null) return out
+        val keys = params.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            var value = params.optString(key)
+            Regex("\\{\\{form\\.([a-zA-Z0-9_-]+)}}").findAll(value).forEach { match ->
+                val field = match.groupValues[1]
+                val form = if (windowId != null) {
+                    formValues["$windowId/$field"].orEmpty()
+                } else {
+                    ""
+                }
+                value = value.replace(match.value, form)
+            }
+            Regex("\\{\\{state\\.([a-zA-Z0-9_.]+)}}").findAll(value).forEach { match ->
+                val path = "state.${match.groupValues[1]}"
+                val resolved = resolveRpcPath(ui.rpcData, path)?.toString().orEmpty()
+                value = value.replace(match.value, resolved)
+            }
+            out.put(key, value)
+        }
+        return out
+    }
+
+    private fun storeRpcData(command: String, sourceName: String?, data: JSONObject) {
+        var stored = data
+        if (command == "get_session_stats") {
+            stored = JSONObject(data.toString())
+            val totals = stored.optJSONObject("tokens")
+            if (totals != null) {
+                val denominator = totals.optLong("input") +
+                    totals.optLong("cacheRead") + totals.optLong("cacheWrite")
+                if (denominator > 0) {
+                    stored.put("cacheHitRate", totals.optLong("cacheRead") * 100.0 / denominator)
+                }
+            }
+        }
+        val alias = rpcAlias(command)
+        var next = ui.rpcData
+        if (alias != null) next = next + (alias to stored)
+        if (sourceName != null) next = next + (sourceName to stored)
+        if (alias != null || sourceName != null) ui = ui.copy(rpcData = next)
+    }
+
+    private fun rpcAlias(command: String): String? = when (command) {
+        "get_state" -> "state"
+        "get_session_stats" -> "stats"
+        "get_commands" -> "commands"
+        "get_available_models" -> "models"
+        "get_available_thinking_levels" -> "thinkingLevels"
+        "get_last_assistant_text" -> "lastAssistantText"
+        "get_entries" -> "entries"
+        "get_tree" -> "tree"
+        "get_extensions" -> "extensions"
+        "get_fork_messages" -> "forkMessages"
+        else -> null
+    }
+
     /** Refresh built-ins + extension commands; throttled unless forced. */
     fun refreshCommands(force: Boolean = false) {
         val now = System.currentTimeMillis()
@@ -936,6 +1132,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun handleWindowAction(windowId: String, action: String) {
+        if (action.startsWith("pack:")) {
+            runPackAction(action.removePrefix("pack:"), windowId)
+            return
+        }
         when {
             action == "builtin:close" -> closeWindow(windowId)
             action.startsWith("builtin:copy:") -> {
@@ -980,6 +1180,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Opens a cached pack window by id, regardless of autoOpen/nav. */
     fun openWindowById(id: String) {
         if (id.isBlank()) return
+        refreshDataSources("window_open")
         dismissedWindows.entries.removeAll { it.value == id }
         val existing = ui.windows.firstOrNull { it.id == id }
         if (existing != null) {
@@ -997,7 +1198,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun openNavItem(item: NavItem) {
+        if (item.action.startsWith("pack:")) {
+            runPackAction(item.action.removePrefix("pack:"), null)
+            refreshDataSources("window_open")
+            return
+        }
         dismissedWindows.entries.removeAll { it.value == item.window }
+        refreshDataSources("window_open")
         if (ui.windows.none { it.id == item.window }) {
             knownWindows[item.window]?.let { cached ->
                 windowPositions.remove(item.window)
@@ -1179,6 +1386,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 requestStats()
                 requestSessions()
                 refreshCommands(true)
+                refreshDataSources("connect")
                 client.send(JSONObject().put("type", "relay_ui"))
             }
             "relay_pong" -> lastPongAt = System.currentTimeMillis()
@@ -1238,6 +1446,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 pendingToolPartials.clear()
                 requestStats()
                 refreshCommands()
+                refreshDataSources("agent_end")
             }
             "message_start" -> handleMessageStart(event.optJSONObject("message"))
             "message_update" -> handleMessageUpdate(event)
@@ -1250,6 +1459,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "compaction_end" -> {
                 ui = ui.copy(status = "", contextCompacted = true)
                 requestStats()
+                refreshDataSources("compaction_end")
             }
             "error" -> {
                 val message = event.optString("message", event.optString("error", "unknown error"))
@@ -1263,10 +1473,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun handleResponse(event: JSONObject) {
         val responseCommand = event.optString("command")
         val responseId = event.optString("id")
-        if (responseCommand == "get_state" && responseId.isNotBlank() && responseId != lastStateRequestId) {
+        val isSourceRequest = pendingRpcSources.containsKey(responseId)
+        if (!isSourceRequest && responseCommand == "get_state" &&
+            responseId.isNotBlank() && responseId != lastStateRequestId
+        ) {
             return
         }
-        if (responseCommand == "get_messages" && responseId.isNotBlank() && responseId != lastMessagesRequestId) {
+        if (!isSourceRequest && responseCommand == "get_messages" &&
+            responseId.isNotBlank() && responseId != lastMessagesRequestId
+        ) {
             return
         }
         val taggedPath = event.optString("sessionPath")
@@ -1352,9 +1567,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             requestMessages()
             requestStats()
             requestSessions()
+            refreshDataSources("session_switch")
             return
         }
         val data = event.optJSONObject("data") ?: return
+        storeRpcData(command, pendingRpcSources.remove(responseId), data)
         when (command) {
             "get_state" -> {
                 val model = data.optJSONObject("model")
@@ -1838,6 +2055,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 else -> ui.toast
             },
         )
+        refreshDataSources("pack_load")
     }
 
     private fun handleMessageStart(message: JSONObject?) {

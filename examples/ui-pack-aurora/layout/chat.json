@@ -26,5 +26,59 @@
   "packManager": {
     "show": true,
     "placement": "both"
+  },
+  "dataSources": {
+    "state": {
+      "rpc": "get_state",
+      "refresh": [
+        "connect",
+        "agent_end",
+        "session_switch"
+      ]
+    },
+    "stats": {
+      "rpc": "get_session_stats",
+      "refresh": [
+        "agent_end",
+        "compaction_end"
+      ]
+    },
+    "lastAssistantText": {
+      "rpc": "get_last_assistant_text",
+      "refresh": [
+        "agent_end"
+      ]
+    }
+  },
+  "bindings": {
+    "header.title": {
+      "path": "state.sessionName",
+      "fallback": "Aurora"
+    },
+    "header.subtitle": {
+      "path": "state.model",
+      "format": "{provider}/{id}"
+    },
+    "header.usage": {
+      "path": "stats.contextUsage",
+      "format": "{percent}% · {tokens}/{contextWindow}"
+    },
+    "header.cache": {
+      "path": "stats",
+      "format": "缓存 {cacheHitRate}%"
+    }
+  },
+  "actions": {
+    "compact": {
+      "rpc": "compact",
+      "confirm": "用 Aurora pack 压缩当前上下文？"
+    },
+    "new": {
+      "rpc": "new_session",
+      "confirm": "开一个新对话？"
+    },
+    "abort": {
+      "rpc": "abort"
+    }
   }
 }

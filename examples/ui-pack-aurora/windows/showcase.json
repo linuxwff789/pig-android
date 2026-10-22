@@ -24,6 +24,12 @@
       },
       {
         "type": "text",
+        "bind": "stats.contextUsage",
+        "format": "上下文 {percent}% · {tokens}/{contextWindow}",
+        "style": "label"
+      },
+      {
+        "type": "text",
         "text": "Muted · 次要说明文字",
         "style": "muted"
       },
@@ -190,6 +196,26 @@
         "action": "builtin:close",
         "buttonStyle": "text",
         "enabled": false
+      },
+      {
+        "type": "row",
+        "spacing": 8,
+        "children": [
+          {
+            "type": "button",
+            "label": "压缩上下文",
+            "action": "pack:compact",
+            "buttonStyle": "primary",
+            "weight": 1.0
+          },
+          {
+            "type": "button",
+            "label": "开新对话",
+            "action": "pack:new",
+            "buttonStyle": "outline",
+            "weight": 1.0
+          }
+        ]
       }
     ]
   }

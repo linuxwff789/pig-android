@@ -113,6 +113,10 @@ data class UiLayout(
     /** UI pack manager (built-in relay pack + imported local packs). */
     val showPackManager: Boolean = true,
     val packManagerPlacement: String = "both",
+    /** RPC data sources, slot bindings and named safe actions. */
+    val dataSources: Map<String, UiDataSource> = emptyMap(),
+    val bindings: Map<String, UiBinding> = emptyMap(),
+    val actions: Map<String, UiAction> = emptyMap(),
 )
 
 data class UiPack(
@@ -243,6 +247,7 @@ object UiPackParser {
                     command = command,
                     icon = item.optString("icon").take(20),
                     placement = placement,
+                    action = item.optString("action").trim().take(120),
                 ),
             )
         }
@@ -343,6 +348,9 @@ object UiPackParser {
         val composer = json.optJSONObject("composer")
         val skinSwitcher = json.optJSONObject("skinSwitcher")
         val packManager = json.optJSONObject("packManager")
+        val dataSources = parseDataSources(json.optJSONObject("dataSources"), warnings)
+        val bindings = parseBindings(json.optJSONObject("bindings"), warnings)
+        val actions = parseActions(json.optJSONObject("actions"), warnings)
         val modes = setOf("collapsible", "expanded", "collapsed")
         val mode = chat?.optString("toolCards", d.toolCards) ?: d.toolCards
         if (mode !in modes) warnings.add("chat.toolCards=$mode 无效")
@@ -379,6 +387,9 @@ object UiPackParser {
                 ?: d.showPackManager,
             packManagerPlacement = packPlacement.takeIf { it in placements }
                 ?: d.packManagerPlacement,
+            dataSources = dataSources,
+            bindings = bindings,
+            actions = actions,
         )
     }
 
@@ -425,6 +436,100 @@ object UiPackParser {
             warnings.add("skins.default=$requested 不存在，使用 $default")
         }
         return default to out
+    }
+
+    private fun parseDataSources(
+        json: JSONObject?,
+        warnings: MutableList<String>,
+    ): Map<String, UiDataSource> {
+        if (json == null) return emptyMap()
+        val triggers = setOf("connect", "agent_end", "compaction_end", "session_switch", "pack_load", "window_open")
+        val out = mutableMapOf<String, UiDataSource>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val name = keys.next()
+            val item = json.optJSONObject(name) ?: continue
+            val rpc = item.optString("rpc").trim()
+            if (rpc.isBlank()) {
+                warnings.add("dataSources.$name 缺少 rpc")
+                continue
+            }
+            val refresh = mutableSetOf<String>()
+            when (val raw = item.opt("refresh")) {
+                is String -> if (raw.isNotBlank()) refresh.add(raw.trim())
+                is org.json.JSONArray -> for (i in 0 until raw.length()) {
+                    raw.optString(i).trim().takeIf { it.isNotBlank() }?.let(refresh::add)
+                }
+            }
+            val invalid = refresh - triggers
+            if (invalid.isNotEmpty()) warnings.add("dataSources.$name.refresh 无效: $invalid")
+            out[name] = UiDataSource(
+                rpc = rpc,
+                params = item.optJSONObject("params"),
+                refresh = refresh - invalid,
+            )
+        }
+        return out
+    }
+
+    private fun parseBindings(
+        json: JSONObject?,
+        warnings: MutableList<String>,
+    ): Map<String, UiBinding> {
+        if (json == null) return emptyMap()
+        val out = mutableMapOf<String, UiBinding>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val slot = keys.next()
+            when (val raw = json.opt(slot)) {
+                is String -> if (raw.isNotBlank()) {
+                    out[slot] = UiBinding(path = raw.trim())
+                }
+                is JSONObject -> {
+                    val path = raw.optString("path").trim()
+                    if (path.isBlank()) {
+                        warnings.add("bindings.$slot 缺少 path")
+                    } else {
+                        out[slot] = UiBinding(
+                            path = path,
+                            format = raw.optString("format"),
+                            fallback = raw.optString("fallback"),
+                        )
+                    }
+                }
+            }
+        }
+        return out
+    }
+
+    private fun parseActions(
+        json: JSONObject?,
+        warnings: MutableList<String>,
+    ): Map<String, UiAction> {
+        if (json == null) return emptyMap()
+        val out = mutableMapOf<String, UiAction>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val name = keys.next()
+            when (val raw = json.opt(name)) {
+                is String -> if (raw.isNotBlank()) {
+                    out[name] = UiAction(rpc = raw.trim())
+                }
+                is JSONObject -> {
+                    val rpc = raw.optString("rpc").trim()
+                    if (rpc.isBlank()) {
+                        warnings.add("actions.$name 缺少 rpc")
+                    } else {
+                        out[name] = UiAction(
+                            rpc = rpc,
+                            params = raw.optJSONObject("params"),
+                            confirm = raw.optString("confirm"),
+                        )
+                    }
+                }
+            }
+        }
+        return out
     }
 
     private fun parseStrings(text: String, warnings: MutableList<String>): UiStrings {

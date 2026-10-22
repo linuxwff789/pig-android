@@ -69,7 +69,13 @@
     "importZip": "导入 ZIP",
     "importDir": "导入目录",
     "hint": "内置 pack 由 Termux 推送；导入的 pack 存在 App 私有目录。",
-    "done": "好了"
+    "done": "好了",
+    "actionTitle": "执行 pack 动作？",
+    "actionConfirm": "执行",
+    "actionMissing": "没有这个 pack 动作：{name}",
+    "actionDenied": "pack 不允许调用 {rpc}",
+    "actionNeedsModel": "set_model 需要 provider 和 modelId",
+    "actionNeedsLevel": "set_thinking_level 需要 level"
   },
   "toast": {
     "skinChanged": "配色已切换：{name}",

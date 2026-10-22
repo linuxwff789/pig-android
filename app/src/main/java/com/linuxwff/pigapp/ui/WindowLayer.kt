@@ -64,6 +64,8 @@ import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.AppWidget
 import com.linuxwff.pigapp.AppWindow
 import com.linuxwff.pigapp.UiNode
+import com.linuxwff.pigapp.formatRpcValue
+import com.linuxwff.pigapp.resolveRpcPath
 
 @Composable
 fun WindowLayer(windows: List<AppWindow>, vm: AppViewModel) {
@@ -303,6 +305,9 @@ private fun AppWindowView(window: AppWindow, vm: AppViewModel, screenWidth: Floa
 private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
     if (!node.visible) return
     val pad = Modifier.padding(node.padding.dp)
+    val boundText = node.bind.takeIf { it.isNotBlank() }?.let { path ->
+        formatRpcValue(resolveRpcPath(vm.ui.rpcData, path), node.format, node.text)
+    }
 
     when (node.type) {
         "column" -> BoxWithConstraints(pad) {
@@ -357,14 +362,14 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
 
         "text" -> if (node.style == "markdown") {
             PigMarkdown(
-                text = node.text,
+                text = boundText ?: node.text,
                 modifier = pad.fillMaxWidth(),
                 types = vm.ui.uiPack.types,
                 cornerRadius = vm.ui.uiPack.theme.cornerRadius,
             )
         } else {
             Text(
-                node.text,
+                boundText ?: node.text,
                 modifier = pad,
                 style = textStyle(node.style),
                 color = textColor(node.style),
@@ -429,7 +434,7 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
                 .padding(8.dp),
         ) {
             Text(
-                node.text,
+                boundText ?: node.text,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
                 maxLines = node.maxLines,

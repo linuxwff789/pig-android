@@ -38,6 +38,10 @@ data class UiNode(
     val imageWidth: Int = 0,
     val imageHeight: Int = 0,
     val imageCorner: Int = 0,
+    /** JSON path into the pack's RPC data, e.g. `stats.contextUsage`. */
+    val bind: String = "",
+    /** Optional `{key}` template used with `bind`. */
+    val format: String = "",
 )
 
 data class AppWindow(
@@ -220,6 +224,8 @@ object AppUiParser {
             imageWidth = json.optInt("width", 0).coerceIn(0, 2000),
             imageHeight = json.optInt("height", 0).coerceIn(0, 2000),
             imageCorner = json.optInt("corner", 0).coerceIn(0, 40),
+            bind = json.optString("bind").trim().take(120),
+            format = json.optString("format").take(512),
         )
     }
 }

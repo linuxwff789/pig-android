@@ -137,6 +137,7 @@ import com.linuxwff.pigapp.TypeScale
 import com.linuxwff.pigapp.UiLayout
 import com.linuxwff.pigapp.UiRequest
 import com.linuxwff.pigapp.UiSkin
+import com.linuxwff.pigapp.resolve
 import com.linuxwff.pigapp.toolPresentation
 import kotlinx.coroutines.launch
 
@@ -159,6 +160,11 @@ fun PigApp(vm: AppViewModel) {
     var showSettings by remember { mutableStateOf(false) }
     var showPackManager by remember { mutableStateOf(false) }
     val components = packComponents()
+    val bindings = ui.uiPack.layout.bindings
+    val boundTitle = bindings["header.title"]?.resolve(ui.rpcData)
+    val boundSubtitle = bindings["header.subtitle"]?.resolve(ui.rpcData)
+    val boundUsage = bindings["header.usage"]?.resolve(ui.rpcData)
+    val boundCache = bindings["header.cache"]?.resolve(ui.rpcData)
     val commandQuery = remember(draft) {
         val trimmed = draft.trimStart()
         if (!trimmed.startsWith("/")) return@remember null
@@ -239,9 +245,12 @@ fun PigApp(vm: AppViewModel) {
                 snackbarHost = { SnackbarHost(snackbar) },
                 topBar = {
                     PigHeader(
-                        title = ui.titleOverride ?: packText("header.title", "Pig"),
+                        title = boundTitle ?: ui.titleOverride ?: packText("header.title", "Pig"),
                         connected = ui.connected,
                         model = ui.model,
+                        boundSubtitle = boundSubtitle,
+                        boundUsage = boundUsage,
+                        boundCache = boundCache,
                         showUsage = ui.uiPack.layout.showUsage,
                         contextPercent = ui.contextPercent,
                         contextCompacted = ui.contextCompacted,
@@ -375,6 +384,25 @@ fun PigApp(vm: AppViewModel) {
         )
     }
 
+    ui.pendingPackAction?.let { request ->
+        AlertDialog(
+            onDismissRequest = vm::cancelPackAction,
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = { Text(packText("pack.actionTitle", "执行 pack 动作？")) },
+            text = { Text(request.message) },
+            confirmButton = {
+                TextButton(onClick = vm::confirmPackAction) {
+                    Text(packText("pack.actionConfirm", "执行"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = vm::cancelPackAction) {
+                    Text(packText("dialog.cancel", "取消"))
+                }
+            },
+        )
+    }
     ui.pending?.let { PendingDialog(it, vm) }
     ModelPickerDialog(vm)
     if (ui.setup) SetupDialog(ui, vm)
@@ -385,6 +413,9 @@ private fun PigHeader(
     title: String,
     connected: Boolean,
     model: String,
+    boundSubtitle: String?,
+    boundUsage: String?,
+    boundCache: String?,
     showUsage: Boolean,
     contextPercent: Double?,
     contextCompacted: Boolean,
@@ -465,7 +496,9 @@ private fun PigHeader(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            model.ifBlank { packText("header.modelEmpty", "点击选择模型") },
+                            boundSubtitle ?: model.ifBlank {
+                                packText("header.modelEmpty", "点击选择模型")
+                            },
                             modifier = Modifier.weight(1f, fill = false),
                             style = MaterialTheme.typography.labelSmall,
                             color = if (connected) scheme.secondary else scheme.onSurfaceVariant,
@@ -473,7 +506,13 @@ private fun PigHeader(
                             overflow = TextOverflow.Ellipsis,
                         )
                         if (showUsage) {
-                            if (contextCompacted) {
+                            if (boundUsage != null) {
+                                Text(
+                                    "  ·  $boundUsage",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = scheme.onSurfaceVariant,
+                                )
+                            } else if (contextCompacted) {
                                 Text(
                                     packText("header.compacted", "  ·  已压缩"),
                                     style = MaterialTheme.typography.labelSmall,
@@ -500,13 +539,21 @@ private fun PigHeader(
                                     )
                                 }
                             }
-                            cacheHitRate?.let { rate ->
+                            if (boundCache != null) {
                                 Text(
-                                    packText("header.cache", "  ·  缓存 {rate}%")
-                                        .replace("{rate}", "%.0f".format(rate)),
+                                    "  ·  $boundCache",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = scheme.onSurfaceVariant,
                                 )
+                            } else {
+                                cacheHitRate?.let { rate ->
+                                    Text(
+                                        packText("header.cache", "  ·  缓存 {rate}%")
+                                            .replace("{rate}", "%.0f".format(rate)),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = scheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                         Spacer(Modifier.width(2.dp))
