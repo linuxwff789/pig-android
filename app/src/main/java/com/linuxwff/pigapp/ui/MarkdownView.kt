@@ -90,7 +90,7 @@ fun PigMarkdown(
         bullet = themeTypography.bodyLarge,
         list = themeTypography.bodyLarge,
         code = themeTypography.bodyMedium.copy(
-            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            fontFamily = packCodeFont(),
             fontSize = types.code.sp,
         ),
         quote = themeTypography.bodyMedium.copy(fontStyle = FontStyle.Italic),
@@ -353,7 +353,7 @@ private fun CollapsibleCode(
             ) {
                 Text(
                     shown,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = packCodeFont(),
                     fontSize = 11.sp,
                     softWrap = false,
                 )

@@ -189,7 +189,7 @@ fun WidgetPane(widgets: List<AppWidget>, placement: String, vm: AppViewModel) {
             ) {
                 Text(
                     widget.lines.joinToString("\n"),
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = packCodeFont(),
                     fontSize = 11.sp,
                     modifier = Modifier
                         .padding(8.dp)
@@ -495,7 +495,7 @@ internal fun UiNodeView(
         ) {
             Text(
                 boundText ?: node.text,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = packCodeFont(),
                 fontSize = 11.sp,
                 maxLines = node.maxLines,
                 softWrap = false,
@@ -662,7 +662,7 @@ internal fun UiNodeView(
 private fun textStyle(style: String): TextStyle = when (style) {
     "heading" -> MaterialTheme.typography.titleMedium
     "label" -> MaterialTheme.typography.labelSmall
-    "mono" -> MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
+    "mono" -> MaterialTheme.typography.bodyMedium.copy(fontFamily = packCodeFont())
     else -> MaterialTheme.typography.bodyLarge
 }
 

@@ -117,15 +117,47 @@ Without the file the defaults below apply.
 | `h1`…`h6` | 21/19/17/15/14/13 | markdown headings and app titles |
 | `code` | 12 | fenced code blocks and inline code |
 | `lineHeight` | 1.5 | multiplier for body text |
+| `fontFamily` | `sans` | body/UI font: `sans`, `serif`, `mono`, `cursive`, or `assets/fonts/x.ttf` |
+| `headingFontFamily` | empty | headings; empty falls back to `fontFamily` |
+| `labelFontFamily` | `mono` | labels, metadata, section headers |
+| `codeFontFamily` | `mono` | code blocks, inline code, monospace nodes |
+| `bodyWeight` | 400 | body font weight (100–900 or `normal`/`medium`/`bold`) |
+| `headingWeight` | 600 | heading font weight |
+| `labelWeight` | 500 | label font weight |
+| `letterSpacing` | 0 | extra letter spacing in sp, clamped to -2–4 |
 
 Sizes are in sp and clamped to 8–40; `lineHeight` is clamped to 1.0–2.5.
 These values feed `PigTheme`'s `Typography` and the markdown renderer, so they
 hot-reload with the rest of the pack.
 
+### Custom font files
+
+Put fonts under `assets/fonts/` and reference the asset path:
+
+```json
+{
+  "fontFamily": "assets/fonts/Inter-Regular.ttf",
+  "headingFontFamily": "assets/fonts/NotoSerif-Regular.ttf",
+  "labelFontFamily": "assets/fonts/CutiveMono.ttf",
+  "codeFontFamily": "assets/fonts/CutiveMono.ttf",
+  "bodyWeight": 400,
+  "headingWeight": 700,
+  "letterSpacing": 0.2
+}
+```
+
+- Supported: `.ttf`, `.otf`, `.ttc`; each file ≤512 KiB (the relay asset limit).
+- The app decodes the bytes from `relay_ui_pack.assets` into its cache and loads
+  them with Compose `Font(file)`; changing a font file changes the pack hash and
+  hot-reloads it.
+- A missing/invalid file falls back to the built-in family name.
+- Built-in names: `sans`/`sans-serif`, `serif`, `mono`/`monospace`/`code`,
+  `cursive`.
+
 ## assets/
 
 Binary files under `assets/` are sent as base64 in the pack (512 KiB per file)
-for `image` nodes:
+for `image` nodes and `fonts/` files:
 
 ```json
 {"type":"image","src":"assets/logo.png","width":120,"height":120,"alt":"Pig logo"}

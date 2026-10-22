@@ -94,6 +94,15 @@ data class TypeScale(
     val h6: Int = 13,
     val code: Int = 12,
     val lineHeight: Float = 1.5f,
+    /** Built-in name (`sans`/`serif`/`mono`/`cursive`) or `assets/fonts/x.ttf`. */
+    val fontFamily: String = "sans",
+    val headingFontFamily: String = "",
+    val labelFontFamily: String = "mono",
+    val codeFontFamily: String = "mono",
+    val bodyWeight: Int = 400,
+    val headingWeight: Int = 600,
+    val labelWeight: Int = 500,
+    val letterSpacing: Float = 0f,
 )
 
 data class UiLayout(
@@ -146,6 +155,8 @@ data class UiPack(
     val nav: List<NavItem> = emptyList(),
     val skins: List<UiSkin> = emptyList(),
     val defaultSkin: String = "",
+    /** Materialized pack fonts: asset path -> cache file path. */
+    val fontFiles: Map<String, String> = emptyMap(),
     val files: Int = 0,
     val loadedAt: Long = 0L,
 )
@@ -347,6 +358,19 @@ object UiPackParser {
             code = size("code", d.code),
             lineHeight = json.optDouble("lineHeight", d.lineHeight.toDouble())
                 .toFloat().coerceIn(1.0f, 2.5f),
+            fontFamily = json.optString("fontFamily", d.fontFamily)
+                .trim().ifBlank { d.fontFamily },
+            headingFontFamily = json.optString("headingFontFamily", "")
+                .trim(),
+            labelFontFamily = json.optString("labelFontFamily", d.labelFontFamily)
+                .trim().ifBlank { d.labelFontFamily },
+            codeFontFamily = json.optString("codeFontFamily", d.codeFontFamily)
+                .trim().ifBlank { d.codeFontFamily },
+            bodyWeight = weight("bodyWeight", d.bodyWeight),
+            headingWeight = weight("headingWeight", d.headingWeight),
+            labelWeight = weight("labelWeight", d.labelWeight),
+            letterSpacing = json.optDouble("letterSpacing", d.letterSpacing.toDouble())
+                .toFloat().coerceIn(-2f, 4f),
         )
     }
 

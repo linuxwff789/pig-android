@@ -13,41 +13,79 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import com.linuxwff.pigapp.TypeScale
 import com.linuxwff.pigapp.UiPack
 
 /** The effective pack, so any component can read strings/components/extra tokens. */
 val LocalUiPack = staticCompositionLocalOf { UiPack() }
 
-private fun pigTypography(types: TypeScale): Typography {
-    fun style(size: Int, weight: FontWeight? = null, lineHeight: Float = types.lineHeight): TextStyle =
-        TextStyle(
-            fontFamily = FontFamily.SansSerif,
-            fontSize = size.sp,
-            lineHeight = (size * lineHeight).sp,
-            fontWeight = weight,
-        )
+/** Resolve a built-in family name or a materialized `assets/...` font file. */
+fun packFontFamily(pack: UiPack, name: String): FontFamily {
+    val key = name.trim()
+    if (key.isNotBlank()) {
+        val path = pack.fontFiles[key]
+            ?: pack.fontFiles["assets/$key"]
+            ?: pack.fontFiles[key.removePrefix("assets/")]
+        if (path != null) {
+            val file = File(path)
+            if (file.isFile) {
+                runCatching { FontFamily(Font(file)) }.getOrNull()?.let { return it }
+            }
+        }
+    }
+    return when (key.lowercase()) {
+        "serif" -> FontFamily.Serif
+        "mono", "monospace", "code" -> FontFamily.Monospace
+        "cursive" -> FontFamily.Cursive
+        else -> FontFamily.SansSerif
+    }
+}
+
+private fun fontWeight(value: Int): FontWeight = FontWeight(value.coerceIn(100, 900))
+
+private fun pigTypography(pack: UiPack): Typography {
+    val types = pack.types
+    val bodyFamily = packFontFamily(pack, types.fontFamily)
+    val headingFamily = packFontFamily(
+        pack,
+        types.headingFontFamily.ifBlank { types.fontFamily },
+    )
+    val labelFamily = packFontFamily(pack, types.labelFontFamily)
+    fun style(
+        size: Int,
+        weight: FontWeight? = null,
+        lineHeight: Float = types.lineHeight,
+        family: FontFamily = bodyFamily,
+        spacing: Float = types.letterSpacing,
+    ): TextStyle = TextStyle(
+        fontFamily = family,
+        fontSize = size.sp,
+        lineHeight = (size * lineHeight).sp,
+        fontWeight = weight,
+        letterSpacing = spacing.sp,
+    )
 
     return Typography(
-        headlineLarge = style(types.h1, FontWeight.Bold, 1.25f),
-        headlineMedium = style(types.h2, FontWeight.SemiBold, 1.25f),
-        headlineSmall = style(types.h3, FontWeight.SemiBold, 1.3f),
-        titleLarge = style(types.h4, FontWeight.SemiBold, 1.3f),
-        titleMedium = style(types.h5, FontWeight.SemiBold, 1.3f),
-        titleSmall = style(types.h6, FontWeight.SemiBold, 1.3f),
-        bodyLarge = style(types.body),
-        bodyMedium = style((types.body - 1).coerceAtLeast(8)),
-        bodySmall = style((types.body - 3).coerceAtLeast(8)),
-        labelLarge = style((types.body - 1).coerceAtLeast(8), FontWeight.Medium),
-        labelMedium = TextStyle(
-            fontFamily = FontFamily.Monospace,
-            fontSize = (types.label + 1).coerceAtLeast(8).sp,
-            lineHeight = ((types.label + 1) * 1.35f).sp,
+        headlineLarge = style(types.h1, fontWeight(types.headingWeight), 1.25f, headingFamily),
+        headlineMedium = style(types.h2, fontWeight(types.headingWeight), 1.25f, headingFamily),
+        headlineSmall = style(types.h3, fontWeight(types.headingWeight), 1.3f, headingFamily),
+        titleLarge = style(types.h4, fontWeight(types.headingWeight), 1.3f, headingFamily),
+        titleMedium = style(types.h5, fontWeight(types.headingWeight), 1.3f, headingFamily),
+        titleSmall = style(types.h6, fontWeight(types.headingWeight), 1.3f, headingFamily),
+        bodyLarge = style(types.body, fontWeight(types.bodyWeight)),
+        bodyMedium = style((types.body - 1).coerceAtLeast(8), fontWeight(types.bodyWeight)),
+        bodySmall = style((types.body - 3).coerceAtLeast(8), fontWeight(types.bodyWeight)),
+        labelLarge = style((types.body - 1).coerceAtLeast(8), fontWeight(types.labelWeight), family = labelFamily),
+        labelMedium = style(
+            (types.label + 1).coerceAtLeast(8),
+            fontWeight(types.labelWeight),
+            1.35f,
+            labelFamily,
         ),
-        labelSmall = TextStyle(
-            fontFamily = FontFamily.Monospace,
-            fontSize = types.label.sp,
-            lineHeight = (types.label * 1.4f).sp,
+        labelSmall = style(
+            types.label,
+            fontWeight(types.labelWeight),
+            1.4f,
+            labelFamily,
         ),
     )
 }
@@ -95,7 +133,7 @@ fun PigTheme(pack: UiPack, content: @Composable () -> Unit) {
             onErrorContainer = t.text,
             scrim = t.scrim,
         ),
-        typography = pigTypography(pack.types),
+        typography = pigTypography(pack),
         content = content,
     )
     }

@@ -720,7 +720,7 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
                     SelectionContainer {
                         Text(
                             command,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = packCodeFont(),
                             fontSize = 11.sp,
                             modifier = Modifier.padding(10.dp),
                         )
@@ -2943,7 +2943,7 @@ private fun CodeBlock(text: String, cornerRadius: Int, maxLines: Int = 200) {
     ) {
         Text(
             body,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = packCodeFont(),
             fontSize = 11.sp,
             softWrap = false,
         )
@@ -2985,7 +2985,7 @@ private fun DiffBlock(diff: String, cornerRadius: Int, maxLines: Int = 200) {
     ) {
         Text(
             annotated,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = packCodeFont(),
             fontSize = 11.sp,
             softWrap = false,
         )
@@ -3023,7 +3023,7 @@ private fun CommandPalette(
                         "/${command.name}",
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.primary,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = packCodeFont(),
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(

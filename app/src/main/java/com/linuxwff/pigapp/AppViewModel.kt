@@ -1988,6 +1988,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         applyPack(files, assets, hashes, hash, announce = true)
     }
 
+    /** Decode pack fonts under `assets/` into the app cache and map asset -> file. */
+    private fun materializeFonts(assets: Map<String, String>): Map<String, String> {
+        if (assets.isEmpty()) return emptyMap()
+        val ctx = getApplication<Application>()
+        val dir = File(ctx.cacheDir, "ui-fonts").apply { mkdirs() }
+        val out = mutableMapOf<String, String>()
+        assets.forEach { (path, encoded) ->
+            val lower = path.lowercase()
+            if (!lower.endsWith(".ttf") && !lower.endsWith(".otf") && !lower.endsWith(".ttc")) {
+                return@forEach
+            }
+            val bytes = runCatching {
+                Base64.decode(encoded, Base64.NO_WRAP)
+            }.getOrNull() ?: return@forEach
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(bytes)
+                .joinToString("") { "%02x".format(it) }
+                .take(16)
+            val name = path.substringAfterLast('/').replace(Regex("[^a-zA-Z0-9._-]"), "_")
+            val file = File(dir, "$digest-$name")
+            if (!file.exists()) runCatching { file.writeBytes(bytes) }
+            out[path] = file.absolutePath
+        }
+        return out
+    }
+
     /** Parse and apply a pack (relay push or an imported local pack). */
     private fun applyPack(
         files: Map<String, String>,
@@ -2005,8 +2031,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         reconcileWindows(files, UiPackParser.navWindowIds(files))
 
         val result = UiPackParser.parse(files)
-        val pack = result.pack
-        if (pack == null) {
+        val parsed = result.pack
+        if (parsed == null) {
             val message = result.warnings.firstOrNull() ?: "unknown error"
             ui = ui.copy(
                 uiPackError = message,
@@ -2015,6 +2041,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
             return
         }
+        val pack = parsed.copy(fontFiles = materializeFonts(assets))
         basePack = pack
         val preferredSkin = prefs.getString("skinId", "").orEmpty()
         val skinId = pack.skins.firstOrNull { it.id == preferredSkin }?.id

@@ -8,5 +8,13 @@
   "h5": 16,
   "h6": 14,
   "code": 13,
-  "lineHeight": 1.65
+  "lineHeight": 1.65,
+  "fontFamily": "sans",
+  "headingFontFamily": "assets/fonts/NotoSerif-Regular.ttf",
+  "labelFontFamily": "assets/fonts/CutiveMono.ttf",
+  "codeFontFamily": "assets/fonts/CutiveMono.ttf",
+  "bodyWeight": 400,
+  "headingWeight": 700,
+  "labelWeight": 400,
+  "letterSpacing": 0.2
 }

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
 import com.linuxwff.pigapp.UiComponents
 import com.linuxwff.pigapp.UiTheme
 
@@ -69,3 +70,11 @@ fun packComponents(): UiComponents = LocalUiPack.current.components
 
 @Composable
 fun packTheme(): UiTheme = LocalUiPack.current.theme
+
+@Composable
+fun packCodeFont(): FontFamily =
+    packFontFamily(LocalUiPack.current, LocalUiPack.current.types.codeFontFamily)
+
+@Composable
+fun packLabelFont(): FontFamily =
+    packFontFamily(LocalUiPack.current, LocalUiPack.current.types.labelFontFamily)

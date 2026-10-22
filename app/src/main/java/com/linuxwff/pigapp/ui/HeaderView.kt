@@ -431,7 +431,7 @@ private fun headerColor(name: String, scheme: androidx.compose.material3.ColorSc
 private fun headerTextStyle(style: String) = when (style) {
     "body" -> MaterialTheme.typography.bodySmall
     "heading" -> MaterialTheme.typography.titleSmall
-    "mono" -> MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace)
+    "mono" -> MaterialTheme.typography.labelMedium.copy(fontFamily = packCodeFont())
     "muted" -> MaterialTheme.typography.labelSmall
     "danger" -> MaterialTheme.typography.labelSmall
     else -> MaterialTheme.typography.labelSmall
