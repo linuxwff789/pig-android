@@ -113,6 +113,8 @@ data class UiLayout(
     /** UI pack manager (built-in relay pack + imported local packs). */
     val showPackManager: Boolean = true,
     val packManagerPlacement: String = "both",
+    /** Optional fully custom header; null keeps the built-in header. */
+    val header: UiHeader? = null,
     /** RPC data sources, slot bindings and named safe actions. */
     val dataSources: Map<String, UiDataSource> = emptyMap(),
     val bindings: Map<String, UiBinding> = emptyMap(),
@@ -348,6 +350,7 @@ object UiPackParser {
         val composer = json.optJSONObject("composer")
         val skinSwitcher = json.optJSONObject("skinSwitcher")
         val packManager = json.optJSONObject("packManager")
+        val header = json.optJSONObject("header")?.let { parseHeader(it, warnings) }
         val dataSources = parseDataSources(json.optJSONObject("dataSources"), warnings)
         val bindings = parseBindings(json.optJSONObject("bindings"), warnings)
         val actions = parseActions(json.optJSONObject("actions"), warnings)
@@ -387,6 +390,7 @@ object UiPackParser {
                 ?: d.showPackManager,
             packManagerPlacement = packPlacement.takeIf { it in placements }
                 ?: d.packManagerPlacement,
+            header = header,
             dataSources = dataSources,
             bindings = bindings,
             actions = actions,
@@ -436,6 +440,82 @@ object UiPackParser {
             warnings.add("skins.default=$requested 不存在，使用 $default")
         }
         return default to out
+    }
+
+    private fun parseHeader(json: JSONObject, warnings: MutableList<String>): UiHeader {
+        val d = UiHeader()
+        val backgrounds = setOf("gradient", "surface", "transparent")
+        val background = json.optString("background", d.background)
+        if (background !in backgrounds) warnings.add("header.background=$background 无效")
+        val rows = mutableListOf<UiHeaderRow>()
+        json.optJSONArray("rows")?.let { array ->
+            for (index in 0 until array.length()) {
+                val row = array.optJSONObject(index) ?: continue
+                val align = row.optString("align", "start")
+                if (align !in setOf("start", "center", "end")) {
+                    warnings.add("header.rows[$index].align=$align 无效")
+                }
+                val elements = mutableListOf<UiHeaderElement>()
+                row.optJSONArray("elements")?.let { items ->
+                    for (e in 0 until items.length()) {
+                        val item = items.optJSONObject(e) ?: continue
+                        val type = item.optString("type").trim()
+                        if (type.isBlank()) {
+                            warnings.add("header.rows[$index].elements[$e] 缺少 type")
+                            continue
+                        }
+                        val condition = item.optString("when", "always")
+                        if (condition !in setOf("always", "busy", "idle", "connected", "offline", "streaming", "compacting")) {
+                            warnings.add("header element $type when=$condition 无效")
+                        }
+                        val color = item.optString("color", "onSurfaceVariant")
+                        if (color !in setOf("primary", "secondary", "tertiary", "onSurface", "onSurfaceVariant", "error", "success", "warning")) {
+                            warnings.add("header element $type color=$color 无效")
+                        }
+                        elements.add(
+                            UiHeaderElement(
+                                type = type,
+                                visible = item.optBoolean("visible", true),
+                                condition = condition,
+                                size = item.optInt("size", 0).coerceIn(0, 96),
+                                weight = item.optDouble("weight", 0.0).toFloat().coerceIn(0f, 10f),
+                                padding = item.optInt("padding", 0).coerceIn(0, 32),
+                                icon = item.optString("icon").take(32),
+                                label = item.optString("label").take(128),
+                                text = item.optString("text").take(256),
+                                style = item.optString("style", "label"),
+                                color = color,
+                                bind = item.optString("bind").trim().take(120),
+                                format = item.optString("format").take(256),
+                                action = item.optString("action").trim().take(120),
+                                avatar = item.optBoolean("avatar", true),
+                                avatarSize = item.optInt("avatarSize", 0).coerceIn(0, 96),
+                                online = item.optBoolean("online", true),
+                            ),
+                        )
+                    }
+                }
+                rows.add(
+                    UiHeaderRow(
+                        spacingDp = row.optInt("spacing", 6).coerceIn(0, 32),
+                        align = align.takeIf { it in setOf("start", "center", "end") } ?: "start",
+                        heightDp = row.optInt("height", 0).coerceIn(0, 120),
+                        elements = elements,
+                    ),
+                )
+            }
+        }
+        return UiHeader(
+            show = json.optBoolean("show", d.show),
+            heightDp = json.optInt("height", d.heightDp).coerceIn(0, 200),
+            paddingH = json.optInt("paddingH", d.paddingH).coerceIn(0, 48),
+            paddingV = json.optInt("paddingV", d.paddingV).coerceIn(0, 32),
+            background = background.takeIf { it in backgrounds } ?: d.background,
+            gradientAlpha = json.optDouble("gradientAlpha", d.gradientAlpha.toDouble())
+                .toFloat().coerceIn(0f, 1f),
+            divider = json.optBoolean("divider", d.divider),
+            rows = rows,
+        )
     }
 
     private fun parseDataSources(

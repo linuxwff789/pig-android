@@ -258,6 +258,102 @@ ship only the keys it wants to change. The command palette combines
 installed extensions appear after `/reload-runtime` (or an agent restart) and
 the next palette refresh.
 
+## header
+
+`header` is optional. Omit it to keep the built-in header. When present, it
+replaces the whole top bar and every element is explicit.
+
+```json
+"header": {
+  "show": true,
+  "height": 74,
+  "paddingH": 12,
+  "paddingV": 3,
+  "background": "gradient",
+  "gradientAlpha": 0.24,
+  "divider": true,
+  "rows": [
+    {
+      "spacing": 8,
+      "align": "start",
+      "elements": [
+        { "type": "menu", "size": 22 },
+        { "type": "brand", "avatarSize": 36, "online": true },
+        { "type": "spacer" },
+        { "type": "usage", "bind": "stats.contextUsage", "format": "{percent}%" },
+        { "type": "cache", "bind": "stats", "format": "缓存 {cacheHitRate}%" },
+        { "type": "stop", "when": "busy" },
+        { "type": "reconnect", "when": "offline" }
+      ]
+    },
+    {
+      "spacing": 8,
+      "align": "start",
+      "height": 28,
+      "elements": [
+        { "type": "model" },
+        { "type": "spacer" },
+        { "type": "icon", "icon": "settings", "action": "settings", "size": 18 }
+      ]
+    }
+  ]
+}
+```
+
+Container keys:
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `show` | true | `false` removes the header entirely |
+| `height` | 0 | minimum height in dp (0 = wrap rows) |
+| `paddingH` / `paddingV` | 12 / 2 | inner padding, clamped |
+| `background` | `gradient` | `gradient`, `surface`, `transparent` |
+| `gradientAlpha` | 0.13 | only for `gradient` |
+| `divider` | false | bottom divider |
+| `rows` | [] | list of rows, each with `spacing`, `align`, `height`, `elements` |
+
+Elements:
+
+| `type` | What it renders |
+| --- | --- |
+| `menu` | drawer menu icon |
+| `brand` | avatar + title + optional online dot |
+| `title` | title text only |
+| `model` | model label + chevron; tap opens the picker |
+| `usage` | context usage; default app string or `bind`/`format` |
+| `cache` | cache hit rate; default app string or `bind`/`format` |
+| `connection` | dot + 在线/离线 |
+| `status` | current status text (`thinking`, `working`, …) |
+| `stop` | stop icon |
+| `reconnect` | reconnect icon |
+| `settings` | settings icon |
+| `newSession` | new session icon |
+| `icon` | arbitrary built-in icon from `icons.json` |
+| `text` | text, with `bind`/`format` |
+| `pill` | translucent `InfoPill` |
+| `divider` | vertical divider |
+| `spacer` | flexible space; `weight` (default 1) |
+
+Element keys:
+
+| Key | Notes |
+| --- | --- |
+| `visible` | default true |
+| `when` | `always` (default), `busy`, `idle`, `connected`, `offline`, `streaming`, `compacting` |
+| `size` | icon/divider size in dp |
+| `weight` | row weight (0 = natural size) |
+| `padding` | outer padding |
+| `icon` | icon name override |
+| `label` / `text` | static fallback text |
+| `style` | `label` (default), `body`, `heading`, `mono`, `muted`, `danger` |
+| `color` | `onSurfaceVariant` (default), `primary`, `secondary`, `tertiary`, `onSurface`, `error`, `success`, `warning` |
+| `bind` + `format` | read RPC data |
+| `action` | `menu`, `model`, `reconnect`, `stop`/`abort`, `settings`, `new`/`new_session`, `pack:<name>` |
+| `avatar` / `avatarSize` / `online` | brand element only |
+
+The header is rendered inside `statusBarsPadding()`, so `paddingV` is added
+below the system status bar.
+
 ## RPC data sources, bindings and actions
 
 A pack can read PiG RPC data and run a small, safe set of RPC actions. The App

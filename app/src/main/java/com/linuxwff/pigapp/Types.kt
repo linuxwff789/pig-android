@@ -71,6 +71,48 @@ data class UiAction(
     val confirm: String = "",
 )
 
+data class UiHeader(
+    val show: Boolean = true,
+    val heightDp: Int = 0,
+    val paddingH: Int = 12,
+    val paddingV: Int = 2,
+    /** gradient | surface | transparent */
+    val background: String = "gradient",
+    val gradientAlpha: Float = 0.13f,
+    val divider: Boolean = false,
+    val rows: List<UiHeaderRow> = emptyList(),
+)
+
+data class UiHeaderRow(
+    val spacingDp: Int = 6,
+    /** start | center | end */
+    val align: String = "start",
+    val heightDp: Int = 0,
+    val elements: List<UiHeaderElement> = emptyList(),
+)
+
+data class UiHeaderElement(
+    val type: String,
+    val visible: Boolean = true,
+    /** always | busy | idle | connected | offline | streaming | compacting */
+    val condition: String = "always",
+    val size: Int = 0,
+    val weight: Float = 0f,
+    val padding: Int = 0,
+    val icon: String = "",
+    val label: String = "",
+    val text: String = "",
+    val style: String = "label",
+    /** primary | secondary | tertiary | onSurface | onSurfaceVariant | error | success | warning */
+    val color: String = "onSurfaceVariant",
+    val bind: String = "",
+    val format: String = "",
+    val action: String = "",
+    val avatar: Boolean = true,
+    val avatarSize: Int = 0,
+    val online: Boolean = true,
+)
+
 /** A pack action waiting for user confirmation. */
 data class PackActionRequest(
     val name: String,

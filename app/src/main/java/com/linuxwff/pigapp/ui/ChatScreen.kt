@@ -244,25 +244,42 @@ fun PigApp(vm: AppViewModel) {
                 containerColor = MaterialTheme.colorScheme.background,
                 snackbarHost = { SnackbarHost(snackbar) },
                 topBar = {
-                    PigHeader(
-                        title = boundTitle ?: ui.titleOverride ?: packText("header.title", "Pig"),
-                        connected = ui.connected,
-                        model = ui.model,
-                        boundSubtitle = boundSubtitle,
-                        boundUsage = boundUsage,
-                        boundCache = boundCache,
-                        showUsage = ui.uiPack.layout.showUsage,
-                        contextPercent = ui.contextPercent,
-                        contextCompacted = ui.contextCompacted,
-                        cacheHitRate = ui.cacheHitRate,
-                        contextWindow = ui.contextWindow,
-                        contextTokens = ui.contextTokens,
-                        busy = ui.busy,
-                        onMenu = { scope.launch { drawerState.open() } },
-                        onModel = vm::openModelPicker,
-                        onReconnect = vm::reconnect,
-                        onStop = vm::abort,
-                    )
+                    val customHeader = ui.uiPack.layout.header
+                    if (customHeader == null) {
+                        PigHeader(
+                            title = boundTitle ?: ui.titleOverride ?: packText("header.title", "Pig"),
+                            connected = ui.connected,
+                            model = ui.model,
+                            boundSubtitle = boundSubtitle,
+                            boundUsage = boundUsage,
+                            boundCache = boundCache,
+                            showUsage = ui.uiPack.layout.showUsage,
+                            contextPercent = ui.contextPercent,
+                            contextCompacted = ui.contextCompacted,
+                            cacheHitRate = ui.cacheHitRate,
+                            contextWindow = ui.contextWindow,
+                            contextTokens = ui.contextTokens,
+                            busy = ui.busy,
+                            onMenu = { scope.launch { drawerState.open() } },
+                            onModel = vm::openModelPicker,
+                            onReconnect = vm::reconnect,
+                            onStop = vm::abort,
+                        )
+                    } else if (customHeader.show) {
+                        CustomPigHeader(
+                            header = customHeader,
+                            ui = ui,
+                            onMenu = { scope.launch { drawerState.open() } },
+                            onModel = vm::openModelPicker,
+                            onReconnect = vm::reconnect,
+                            onStop = vm::abort,
+                            onSettings = { showSettings = true },
+                            onNewSession = vm::newSession,
+                            onPackAction = { vm.runPackAction(it) },
+                        )
+                    } else {
+                        Spacer(Modifier.statusBarsPadding())
+                    }
                 },
                 bottomBar = {
                     Column(
