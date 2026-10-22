@@ -5,15 +5,17 @@ import androidx.compose.ui.graphics.Color
 import org.json.JSONObject
 
 data class UiTheme(
-    val background: Color = Color(0xFF0E1014),
-    val surface: Color = Color(0xFF161A22),
-    val surfaceVariant: Color = Color(0xFF1E2430),
-    val primary: Color = Color(0xFF8B7CFF),
-    val secondary: Color = Color(0xFF4CD7F6),
-    val text: Color = Color(0xFFE6E8EF),
-    val textMuted: Color = Color(0xFFA8B0C0),
-    val danger: Color = Color(0xFFFF6B6B),
-    val cornerRadius: Int = 16,
+    val background: Color = Color(0xFF0A0C12),
+    val surface: Color = Color(0xFF12151E),
+    val surfaceVariant: Color = Color(0xFF1A1F2B),
+    val primary: Color = Color(0xFFA78BFA),
+    val secondary: Color = Color(0xFF7DD3FC),
+    val text: Color = Color(0xFFECEEF5),
+    val textMuted: Color = Color(0xFF98A2B8),
+    val danger: Color = Color(0xFFFB7185),
+    val cornerRadius: Int = 18,
+    /** End of the brand gradient (avatar, send button, accents). */
+    val accent: Color = Color(0xFF22D3EE),
 )
 
 data class TypeScale(
@@ -158,6 +160,7 @@ object UiPackParser {
             textMuted = json.color("textMuted", d.textMuted, warnings),
             danger = json.color("danger", d.danger, warnings),
             cornerRadius = json.optInt("cornerRadius", d.cornerRadius).coerceIn(0, 40),
+            accent = json.color("accent", d.secondary, warnings),
         )
     }
 

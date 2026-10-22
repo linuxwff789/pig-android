@@ -1,11 +1,12 @@
 {
-  "background": "#0E1014",
-  "surface": "#161A22",
-  "surfaceVariant": "#1E2430",
-  "primary": "#8B7CFF",
-  "secondary": "#4CD7F6",
-  "text": "#E6E8EF",
-  "textMuted": "#A8B0C0",
-  "danger": "#FF6B6B",
-  "cornerRadius": 16
+  "background": "#0A0C12",
+  "surface": "#12151E",
+  "surfaceVariant": "#1A1F2B",
+  "primary": "#A78BFA",
+  "secondary": "#7DD3FC",
+  "accent": "#22D3EE",
+  "text": "#ECEEF5",
+  "textMuted": "#98A2B8",
+  "danger": "#FB7185",
+  "cornerRadius": 18
 }

@@ -1,6 +1,7 @@
 package com.linuxwff.pigapp.ui
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -47,6 +48,8 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -96,8 +99,12 @@ fun SheetWindows(windows: List<AppWindow>, vm: AppViewModel) {
                 .fillMaxWidth()
                 .padding(start = 16.dp, end = 16.dp, bottom = 28.dp),
         ) {
-            Text(sheet.title, style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ConnectionDot(true)
+                Spacer(Modifier.width(8.dp))
+                Text(sheet.title, style = MaterialTheme.typography.titleMedium)
+            }
+            Spacer(Modifier.height(10.dp))
             Column(
                 Modifier
                     .fillMaxWidth()
@@ -114,8 +121,12 @@ fun SheetWindows(windows: List<AppWindow>, vm: AppViewModel) {
 fun InlineWindows(windows: List<AppWindow>, placement: String, vm: AppViewModel) {
     windows.filter { it.placement == placement }.forEach { window ->
         Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant,
+            color = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(vm.ui.uiPack.theme.cornerRadius.dp),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.55f),
+            ),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp, vertical = 3.dp),
@@ -163,8 +174,12 @@ fun WidgetPane(widgets: List<AppWidget>, placement: String, vm: AppViewModel) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         items.forEach { widget ->
             Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape((vm.ui.uiPack.theme.cornerRadius / 2).coerceAtLeast(4).dp),
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape((vm.ui.uiPack.theme.cornerRadius / 2).coerceAtLeast(6).dp),
+                border = BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.28f),
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 2.dp),
@@ -197,6 +212,10 @@ private fun AppWindowView(window: AppWindow, vm: AppViewModel, screenWidth: Floa
             .then(if (window.heightDp > 0) Modifier.height(window.heightDp.dp) else Modifier),
         shape = RoundedCornerShape(vm.ui.uiPack.theme.cornerRadius.dp),
         color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+        ),
         tonalElevation = 6.dp,
         shadowElevation = 12.dp,
     ) {
@@ -240,7 +259,20 @@ private fun AppWindowView(window: AppWindow, vm: AppViewModel, screenWidth: Floa
                     }
                 }
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
+                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+            )
 
             if (window.heightDp > 0) {
                 Column(
@@ -450,6 +482,7 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
             placeholder = { if (node.placeholder.isNotBlank()) Text(node.placeholder) },
             maxLines = node.maxLines,
             singleLine = node.maxLines == 1,
+            shape = RoundedCornerShape(12.dp),
         )
 
         "select" -> Column(

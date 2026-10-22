@@ -32,6 +32,13 @@ private fun pigTypography(types: TypeScale): Typography {
         titleSmall = style(types.h6, FontWeight.SemiBold, 1.3f),
         bodyLarge = style(types.body),
         bodyMedium = style((types.body - 1).coerceAtLeast(8)),
+        bodySmall = style((types.body - 3).coerceAtLeast(8)),
+        labelLarge = style((types.body - 1).coerceAtLeast(8), FontWeight.Medium),
+        labelMedium = TextStyle(
+            fontFamily = FontFamily.Monospace,
+            fontSize = (types.label + 1).coerceAtLeast(8).sp,
+            lineHeight = ((types.label + 1) * 1.35f).sp,
+        ),
         labelSmall = TextStyle(
             fontFamily = FontFamily.Monospace,
             fontSize = types.label.sp,
@@ -46,6 +53,7 @@ fun PigTheme(pack: UiPack, content: @Composable () -> Unit) {
     val t = pack.theme
     val onPrimary = if (t.primary.luminance() > 0.55f) Color(0xFF0B0A12) else Color.White
     val onSecondary = if (t.secondary.luminance() > 0.55f) Color(0xFF00202A) else Color.White
+    val onAccent = if (t.accent.luminance() > 0.55f) Color(0xFF04131A) else Color.White
     MaterialTheme(
         colorScheme = darkColorScheme(
             primary = t.primary,
@@ -54,16 +62,29 @@ fun PigTheme(pack: UiPack, content: @Composable () -> Unit) {
             onPrimaryContainer = t.text,
             secondary = t.secondary,
             onSecondary = onSecondary,
+            secondaryContainer = t.secondary.copy(alpha = 0.18f).compositeOver(t.background),
+            onSecondaryContainer = t.text,
+            tertiary = t.accent,
+            onTertiary = onAccent,
+            tertiaryContainer = t.accent.copy(alpha = 0.18f).compositeOver(t.background),
+            onTertiaryContainer = t.text,
             background = t.background,
             onBackground = t.text,
             surface = t.surface,
             onSurface = t.text,
             surfaceVariant = t.surfaceVariant,
             onSurfaceVariant = t.textMuted,
+            surfaceContainer = t.surface,
+            surfaceContainerHigh = t.surfaceVariant,
+            surfaceContainerHighest = t.surfaceVariant,
+            surfaceBright = t.surfaceVariant,
+            surfaceDim = t.background,
             outline = t.textMuted.copy(alpha = 0.4f),
+            outlineVariant = t.textMuted.copy(alpha = 0.18f),
             error = t.danger,
-            errorContainer = t.danger.copy(alpha = 0.18f).compositeOver(t.background),
+            errorContainer = t.danger.copy(alpha = 0.16f).compositeOver(t.background),
             onErrorContainer = t.text,
+            scrim = Color.Black.copy(alpha = 0.62f),
         ),
         typography = pigTypography(pack.types),
         content = content,
