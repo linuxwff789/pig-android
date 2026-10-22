@@ -37,12 +37,17 @@ import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 
 /** Markdown with a GFM table renderer (the m3 renderer has no table component). */
 @Composable
-fun PigMarkdown(text: String, modifier: Modifier = Modifier, types: TypeScale = TypeScale()) {
+fun PigMarkdown(
+    text: String,
+    modifier: Modifier = Modifier,
+    types: TypeScale = TypeScale(),
+    cornerRadius: Int = 16,
+) {
     val components = remember {
         markdownComponents(
             custom = { type, model ->
                 if (type == GFMElementTypes.TABLE) {
-                    MarkdownTable(model)
+                    MarkdownTable(model, cornerRadius)
                 } else {
                     // Unknown block: show its raw source instead of dropping it.
                     Text(
@@ -86,7 +91,7 @@ fun PigMarkdown(text: String, modifier: Modifier = Modifier, types: TypeScale = 
 }
 
 @Composable
-private fun MarkdownTable(model: MarkdownComponentModel) {
+private fun MarkdownTable(model: MarkdownComponentModel, cornerRadius: Int) {
     val content = model.content
     val headerNode = model.node.findChildOfType(GFMElementTypes.HEADER)
     val separator = model.node.findChildOfType(GFMTokenTypes.TABLE_SEPARATOR)
@@ -108,7 +113,7 @@ private fun MarkdownTable(model: MarkdownComponentModel) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape((cornerRadius / 2).coerceAtLeast(4).dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .padding(horizontal = 6.dp, vertical = 5.dp),
             ) {

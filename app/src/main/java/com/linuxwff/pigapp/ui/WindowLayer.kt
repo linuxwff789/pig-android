@@ -83,6 +83,10 @@ fun SheetWindows(windows: List<AppWindow>, vm: AppViewModel) {
     ModalBottomSheet(
         onDismissRequest = { vm.closeWindow(sheet.id) },
         sheetState = sheetState,
+        shape = RoundedCornerShape(
+            topStart = vm.ui.uiPack.theme.cornerRadius.dp,
+            topEnd = vm.ui.uiPack.theme.cornerRadius.dp,
+        ),
     ) {
         Column(
             Modifier
@@ -108,7 +112,7 @@ fun InlineWindows(windows: List<AppWindow>, placement: String, vm: AppViewModel)
     windows.filter { it.placement == placement }.forEach { window ->
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant,
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(vm.ui.uiPack.theme.cornerRadius.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp, vertical = 3.dp),
@@ -157,7 +161,7 @@ fun WidgetPane(widgets: List<AppWidget>, placement: String, vm: AppViewModel) {
         items.forEach { widget ->
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape((vm.ui.uiPack.theme.cornerRadius / 2).coerceAtLeast(4).dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 2.dp),
@@ -188,7 +192,7 @@ private fun AppWindowView(window: AppWindow, vm: AppViewModel, screenWidth: Floa
             .offset(x = position.x.dp, y = position.y.dp)
             .width(window.widthDp.dp)
             .then(if (window.heightDp > 0) Modifier.height(window.heightDp.dp) else Modifier),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(vm.ui.uiPack.theme.cornerRadius.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 6.dp,
         shadowElevation = 12.dp,
@@ -319,6 +323,7 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
                 text = node.text,
                 modifier = pad.fillMaxWidth(),
                 types = vm.ui.uiPack.types,
+                cornerRadius = vm.ui.uiPack.theme.cornerRadius,
             )
         } else {
             Text(
@@ -337,7 +342,7 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
         "code" -> Box(
             pad
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape((vm.ui.uiPack.theme.cornerRadius / 2).coerceAtLeast(4).dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .padding(8.dp),
         ) {

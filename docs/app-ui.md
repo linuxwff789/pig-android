@@ -54,6 +54,7 @@ for testing.
 | `placement` | `overlay` | `overlay`, `sheet`, `aboveComposer`, `belowComposer` |
 | `width` / `height` | 320 / wrap | dp, clamped to the screen |
 | `dismissible` | `true` | shows the close button and enables back-to-close |
+| `autoOpen` | `true` | `false` keeps the window cached but closed until a nav entry or command opens it |
 | `body` | required | one node |
 
 Windows are global, not tied to a session. Switching sessions keeps them open.

@@ -107,6 +107,7 @@ fun ModelPickerDialog(vm: AppViewModel) {
                         ModelRow(
                             model = model,
                             selected = "${model.provider}/${model.id}" == vm.ui.model,
+                            cornerRadius = vm.ui.uiPack.theme.cornerRadius,
                             onClick = { vm.selectModel(model) },
                         )
                     }
@@ -123,11 +124,11 @@ fun ModelPickerDialog(vm: AppViewModel) {
 }
 
 @Composable
-private fun ModelRow(model: ModelInfo, selected: Boolean, onClick: () -> Unit) {
+private fun ModelRow(model: ModelInfo, selected: Boolean, cornerRadius: Int, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape((cornerRadius / 2).coerceAtLeast(4).dp))
             .clickable(onClick = onClick)
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,

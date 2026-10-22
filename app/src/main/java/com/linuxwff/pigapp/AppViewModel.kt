@@ -276,6 +276,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * window the user closed can be reopened without waiting for a pack push;
      * the command is still sent to refresh its contents from the extension.
      */
+    /** Opens a cached pack window by id, regardless of autoOpen/nav. */
+    fun openWindowById(id: String) {
+        if (id.isBlank()) return
+        dismissedWindows.entries.removeAll { it.value == id }
+        val existing = ui.windows.firstOrNull { it.id == id }
+        if (existing != null) {
+            focusWindow(id)
+            return
+        }
+        val cached = knownWindows[id] ?: run {
+            ui = ui.copy(toast = "还没有窗口 $id")
+            return
+        }
+        ui = ui.copy(windows = ui.windows + cached)
+    }
+
     fun openNavItem(item: NavItem) {
         dismissedWindows.entries.removeAll { it.value == item.window }
         if (ui.windows.none { it.id == item.window }) {
@@ -597,6 +613,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         parsed.forEach { window ->
             if (window.id in placed) return@forEach
+            if (!window.autoOpen) return@forEach
             if (window.id in onDemand) return@forEach
             if (dismissedWindows[window.source] == window.id) return@forEach
             dismissedWindows.remove(window.source)

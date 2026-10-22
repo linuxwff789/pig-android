@@ -68,6 +68,11 @@ class DebugReceiver : BroadcastReceiver() {
                 Log.i(TAG, "window action: $windowId $action")
                 vm.handleWindowAction(windowId, action)
             }
+            "com.linuxwff.pigapp.DEBUG_OPEN_WINDOW" -> {
+                val id = intent.getStringExtra("id") ?: ""
+                Log.i(TAG, "open window: $id")
+                vm.openWindowById(id)
+            }
             "com.linuxwff.pigapp.DEBUG_NAV" -> {
                 val id = intent.getStringExtra("id") ?: ""
                 Log.i(TAG, "nav: $id")

@@ -188,6 +188,7 @@ fun PigApp(vm: AppViewModel) {
                         busy = ui.busy,
                         connected = ui.connected,
                         layout = ui.uiPack.layout,
+                        cornerRadius = ui.uiPack.theme.cornerRadius,
                         onSend = vm::sendPrompt,
                         onStop = vm::abort,
                     )
@@ -203,7 +204,7 @@ fun PigApp(vm: AppViewModel) {
             ) {
                 ui.error?.let { ErrorBanner(it, vm::dismissError) }
                 if (ui.status.isNotBlank()) StatusBar(ui.status)
-                MessageList(ui, Modifier.weight(1f))
+                MessageList(ui, ui.uiPack.theme.cornerRadius, Modifier.weight(1f))
             }
         }
     }
@@ -357,7 +358,11 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
             contentPadding = PaddingValues(vertical = 4.dp),
         ) {
             items(ui.sessions, key = { it.path }) { session ->
-                SessionRow(session, session.id == ui.sessionId) {
+                SessionRow(
+                    session = session,
+                    current = session.id == ui.sessionId,
+                    cornerRadius = ui.uiPack.theme.cornerRadius,
+                ) {
                     vm.switchSession(session.path)
                     onClose()
                 }
@@ -407,12 +412,12 @@ private fun navIcon(name: String) = when (name.lowercase()) {
 }
 
 @Composable
-private fun SessionRow(session: SessionInfo, current: Boolean, onClick: () -> Unit) {
+private fun SessionRow(session: SessionInfo, current: Boolean, cornerRadius: Int, onClick: () -> Unit) {
     val title = session.name.ifBlank { session.preview.ifBlank { "未命名会话" } }
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(cornerRadius.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 7.dp),
     ) {
@@ -437,7 +442,7 @@ private fun SessionRow(session: SessionInfo, current: Boolean, onClick: () -> Un
 }
 
 @Composable
-private fun MessageList(ui: AppUiState, modifier: Modifier = Modifier) {
+private fun MessageList(ui: AppUiState, cornerRadius: Int, modifier: Modifier = Modifier) {
     val listState = rememberLazyListState()
 
     LaunchedEffect(
@@ -473,10 +478,11 @@ private fun MessageList(ui: AppUiState, modifier: Modifier = Modifier) {
     ) {
         items(ui.messages, key = { it.id }) { message ->
             MessageRow(
-                message,
-                ui.uiPack.layout.assistantLabel,
-                ui.uiPack.layout.toolCards,
-                ui.uiPack.types,
+                message = message,
+                assistantLabel = ui.uiPack.layout.assistantLabel,
+                toolMode = ui.uiPack.layout.toolCards,
+                types = ui.uiPack.types,
+                cornerRadius = cornerRadius,
             )
         }
     }
@@ -488,12 +494,18 @@ private fun MessageRow(
     assistantLabel: String,
     toolMode: String,
     types: TypeScale,
+    cornerRadius: Int,
 ) {
     when (message.role) {
         Role.USER -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer,
-                shape = RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp),
+                shape = RoundedCornerShape(
+                    topStart = cornerRadius.dp,
+                    topEnd = cornerRadius.dp,
+                    bottomEnd = if (cornerRadius == 0) 0.dp else 4.dp,
+                    bottomStart = cornerRadius.dp,
+                ),
                 modifier = Modifier.widthIn(max = 520.dp),
             ) {
                 SelectionContainer {
@@ -519,11 +531,12 @@ private fun MessageRow(
                     text = message.text.ifBlank { "…" },
                     modifier = Modifier.fillMaxWidth(),
                     types = types,
+                    cornerRadius = cornerRadius,
                 )
             }
         }
 
-        Role.TOOL -> ToolCard(message, toolMode)
+        Role.TOOL -> ToolCard(message, toolMode, cornerRadius)
 
         Role.NOTICE -> Text(
             message.text,
@@ -540,7 +553,7 @@ private fun MessageRow(
 private enum class ToolMode { COLLAPSED, SUMMARY, EXPANDED }
 
 @Composable
-private fun ToolCard(message: ChatMsg, mode: String) {
+private fun ToolCard(message: ChatMsg, mode: String, cornerRadius: Int) {
     var viewMode by remember(message.id, mode) {
         mutableStateOf(
             when (mode) {
@@ -570,7 +583,7 @@ private fun ToolCard(message: ChatMsg, mode: String) {
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(cornerRadius.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(10.dp)) {
@@ -616,9 +629,9 @@ private fun ToolCard(message: ChatMsg, mode: String) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
-                ToolModeChip("收起", viewMode == ToolMode.COLLAPSED) { viewMode = ToolMode.COLLAPSED }
-                ToolModeChip("摘要", viewMode == ToolMode.SUMMARY) { viewMode = ToolMode.SUMMARY }
-                ToolModeChip("展开", viewMode == ToolMode.EXPANDED) { viewMode = ToolMode.EXPANDED }
+                ToolModeChip("收起", viewMode == ToolMode.COLLAPSED, cornerRadius) { viewMode = ToolMode.COLLAPSED }
+                ToolModeChip("摘要", viewMode == ToolMode.SUMMARY, cornerRadius) { viewMode = ToolMode.SUMMARY }
+                ToolModeChip("展开", viewMode == ToolMode.EXPANDED, cornerRadius) { viewMode = ToolMode.EXPANDED }
             }
 
             when (viewMode) {
@@ -633,19 +646,21 @@ private fun ToolCard(message: ChatMsg, mode: String) {
                         )
                         view.diff.isNotBlank() -> DiffBlock(
                             view.diff.lineSequence().take(6).joinToString("\n"),
+                            cornerRadius,
                         )
-                        view.summary.isNotBlank() -> CodeBlock(view.summary)
+                        view.summary.isNotBlank() -> CodeBlock(view.summary, cornerRadius)
                         view.expanded.isNotBlank() -> CodeBlock(
                             view.expanded.lineSequence().take(4).joinToString("\n"),
+                            cornerRadius,
                         )
                     }
                 }
                 ToolMode.EXPANDED -> {
                     Spacer(Modifier.height(4.dp))
                     when {
-                        view.diff.isNotBlank() -> DiffBlock(view.diff)
-                        view.expanded.isNotBlank() -> CodeBlock(view.expanded)
-                        view.summary.isNotBlank() -> CodeBlock(view.summary)
+                        view.diff.isNotBlank() -> DiffBlock(view.diff, cornerRadius)
+                        view.expanded.isNotBlank() -> CodeBlock(view.expanded, cornerRadius)
+                        view.summary.isNotBlank() -> CodeBlock(view.summary, cornerRadius)
                     }
                 }
             }
@@ -654,7 +669,7 @@ private fun ToolCard(message: ChatMsg, mode: String) {
 }
 
 @Composable
-private fun ToolModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun ToolModeChip(label: String, selected: Boolean, cornerRadius: Int, onClick: () -> Unit) {
     Text(
         label,
         style = MaterialTheme.typography.labelSmall,
@@ -665,14 +680,14 @@ private fun ToolModeChip(label: String, selected: Boolean, onClick: () -> Unit) 
         },
         fontWeight = if (selected) FontWeight.SemiBold else null,
         modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape((cornerRadius / 3).coerceAtLeast(2).dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 2.dp),
     )
 }
 
 @Composable
-private fun CodeBlock(text: String) {
+private fun CodeBlock(text: String, cornerRadius: Int) {
     if (text.isBlank()) return
     val lines = text.lineSequence().take(200).toList()
     val truncated = text.lineSequence().count() > 200
@@ -680,7 +695,7 @@ private fun CodeBlock(text: String) {
         Modifier
             .fillMaxWidth()
             .padding(top = 4.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape((cornerRadius / 2).coerceAtLeast(4).dp))
             .background(MaterialTheme.colorScheme.background.copy(alpha = 0.4f))
             .padding(8.dp)
             .horizontalScroll(rememberScrollState()),
@@ -700,14 +715,14 @@ private fun CodeBlock(text: String) {
 }
 
 @Composable
-private fun DiffBlock(diff: String) {
+private fun DiffBlock(diff: String, cornerRadius: Int) {
     if (diff.isBlank()) return
     val lines = diff.lineSequence().take(200).toList()
     Column(
         Modifier
             .fillMaxWidth()
             .padding(top = 4.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape((cornerRadius / 2).coerceAtLeast(4).dp))
             .background(MaterialTheme.colorScheme.background.copy(alpha = 0.4f))
             .padding(8.dp)
             .horizontalScroll(rememberScrollState()),
@@ -734,6 +749,7 @@ private fun Composer(
     busy: Boolean,
     connected: Boolean,
     layout: UiLayout,
+    cornerRadius: Int,
     onSend: (String) -> Unit,
     onStop: () -> Unit,
 ) {
@@ -752,7 +768,7 @@ private fun Composer(
                 modifier = Modifier.weight(1f),
                 placeholder = { Text(layout.composerPlaceholder) },
                 maxLines = layout.composerMaxLines,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(cornerRadius.dp),
                 keyboardOptions = KeyboardOptions(
                     imeAction = if (layout.sendOnEnter) ImeAction.Send else ImeAction.Default,
                 ),
