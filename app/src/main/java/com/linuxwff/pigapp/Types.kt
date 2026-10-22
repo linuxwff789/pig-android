@@ -91,4 +91,6 @@ data class AppUiState(
     val setupHint: String? = null,
     val wakeLock: Boolean = true,
     val keepAlive: Boolean = true,
+    /** Empty = use the UI pack's chat.toolCards; otherwise collapsed/summary/expanded. */
+    val toolMode: String = "",
 )

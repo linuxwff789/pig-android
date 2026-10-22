@@ -219,6 +219,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         RelayLauncher.openAppSettings(getApplication())
     }
 
+    /** Long-press on a tool chip: apply that mode to every tool card. */
+    fun setToolMode(mode: String) {
+        if (mode !in setOf("collapsed", "summary", "expanded")) return
+        val label = when (mode) {
+            "collapsed" -> "收起"
+            "expanded" -> "展开"
+            else -> "摘要"
+        }
+        ui = ui.copy(toolMode = mode, toast = "已应用到全部工具：$label")
+    }
+
+    fun copyText(text: String) {
+        if (text.isBlank()) return
+        val manager = getApplication<Application>()
+            .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        manager.setPrimaryClip(ClipData.newPlainText("Pig", text))
+        ui = ui.copy(toast = "已复制")
+    }
+
     fun setKeepAlive(enabled: Boolean) {
         prefs.edit().putBoolean("keepalive", enabled).apply()
         if (enabled) {

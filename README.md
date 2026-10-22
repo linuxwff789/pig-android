@@ -34,6 +34,9 @@ an API key. All agent work happens in the original `pig` binary.
   its window and runs a slash command to refresh it. `placement` is `drawer`
   (default) or `settings`; the latter appears in the settings dialog, so moving
   extension entries is a data-only edit (no app rebuild).
+- Messages have a copy button (assistant header / user bubble). The transcript
+  stops auto-scrolling when you scroll up and shows a 回到底部 pill; long-press a
+  tool card's 收起/摘要/展开 chip to apply that mode to every tool card.
 - Model picker: tap the model name in the top bar to search the available
   models (context size, thinking, image support) and switch with `set_model`.
   The same dialog exposes the thinking-level chips when the model supports

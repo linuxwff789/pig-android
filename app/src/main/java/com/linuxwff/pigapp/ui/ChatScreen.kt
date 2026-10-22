@@ -115,6 +115,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.input.pointer.pointerInput
 import com.linuxwff.pigapp.AppUiState
 import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.ChatMsg
@@ -234,6 +238,8 @@ fun PigApp(vm: AppViewModel) {
                         cornerRadius = ui.uiPack.theme.cornerRadius,
                         modifier = Modifier.weight(1f),
                         onSuggestion = { if (!ui.busy) vm.sendPrompt(it) },
+                        onCopy = vm::copyText,
+                        onToolModeAll = vm::setToolMode,
                     )
                 }
             }
@@ -1070,14 +1076,35 @@ private fun MessageList(
     cornerRadius: Int,
     modifier: Modifier = Modifier,
     onSuggestion: (String) -> Unit,
+    onCopy: (String) -> Unit,
+    onToolModeAll: (String) -> Unit,
 ) {
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var autoScroll by remember { mutableStateOf(true) }
+    var programmaticScroll by remember { mutableStateOf(false) }
     val last = ui.messages.lastOrNull()
     val showTyping = ui.busy && (
         last == null ||
             last.role == Role.USER ||
             (last.role == Role.ASSISTANT && last.text.isBlank())
         )
+    val toolMode = ui.toolMode.ifBlank { ui.uiPack.layout.toolCards }
+
+    // Follow new output only while the user is parked at the bottom. A manual
+    // upward drag disables it; reaching the bottom again re-enables it.
+    LaunchedEffect(listState) {
+        launch {
+            snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
+                if (scrolling && !programmaticScroll) autoScroll = false
+            }
+        }
+        launch {
+            snapshotFlow { listState.canScrollForward }.collect { canForward ->
+                if (!canForward) autoScroll = true
+            }
+        }
+    }
 
     LaunchedEffect(
         ui.messages.size,
@@ -1085,8 +1112,15 @@ private fun MessageList(
         last?.toolResult?.length,
         showTyping,
     ) {
-        if (ui.messages.isNotEmpty()) {
-            runCatching { listState.scrollToItem(listState.layoutInfo.totalItemsCount) }
+        if (ui.messages.isNotEmpty() && autoScroll) {
+            programmaticScroll = true
+            try {
+                runCatching {
+                    listState.animateScrollToItem((listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
+                }
+            } finally {
+                programmaticScroll = false
+            }
         }
     }
 
@@ -1095,24 +1129,73 @@ private fun MessageList(
         return
     }
 
-    LazyColumn(
-        state = listState,
-        modifier = modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        items(ui.messages, key = { it.id }) { message ->
-            MessageRow(
-                message = message,
-                assistantLabel = ui.uiPack.layout.assistantLabel,
-                toolMode = ui.uiPack.layout.toolCards,
-                types = ui.uiPack.types,
-                cornerRadius = cornerRadius,
-            )
+    Box(modifier.fillMaxWidth()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            items(ui.messages, key = { it.id }) { message ->
+                MessageRow(
+                    message = message,
+                    assistantLabel = ui.uiPack.layout.assistantLabel,
+                    toolMode = toolMode,
+                    types = ui.uiPack.types,
+                    cornerRadius = cornerRadius,
+                    onCopy = onCopy,
+                    onToolModeAll = onToolModeAll,
+                )
+            }
+            if (showTyping) {
+                item(key = "typing") {
+                    TypingRow(ui.uiPack.layout.assistantLabel)
+                }
+            }
         }
-        if (showTyping) {
-            item(key = "typing") {
-                TypingRow(ui.uiPack.layout.assistantLabel)
+        AnimatedVisibility(
+            visible = !autoScroll,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 14.dp, bottom = 10.dp),
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.primary,
+                shape = CircleShape,
+                shadowElevation = 6.dp,
+                modifier = Modifier.clickable {
+                    scope.launch {
+                        programmaticScroll = true
+                        autoScroll = true
+                        try {
+                            listState.animateScrollToItem(
+                                (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0),
+                            )
+                        } finally {
+                            programmaticScroll = false
+                        }
+                    }
+                },
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.KeyboardArrowDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "回到底部",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
             }
         }
     }
@@ -1181,12 +1264,26 @@ private fun EmptyState(onSuggestion: (String) -> Unit) {
 }
 
 @Composable
+private fun CopyButton(onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = Modifier.size(26.dp)) {
+        Icon(
+            Icons.Default.ContentCopy,
+            contentDescription = "复制",
+            modifier = Modifier.size(14.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun MessageRow(
     message: ChatMsg,
     assistantLabel: String,
     toolMode: String,
     types: TypeScale,
     cornerRadius: Int,
+    onCopy: (String) -> Unit,
+    onToolModeAll: (String) -> Unit,
 ) {
     when (message.role) {
         Role.USER -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -1222,17 +1319,26 @@ private fun MessageRow(
                     )
                 }
             }
+            if (message.text.isNotBlank()) {
+                CopyButton { onCopy(message.text) }
+            }
         }
 
         Role.ASSISTANT -> Row(Modifier.fillMaxWidth()) {
             BrandAvatar(24.dp)
             Spacer(Modifier.width(9.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    assistantLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        assistantLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (message.text.isNotBlank()) {
+                        CopyButton { onCopy(message.text) }
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
                 SelectionContainer {
                     PigMarkdown(
@@ -1246,7 +1352,7 @@ private fun MessageRow(
         }
 
         Role.TOOL -> Column(Modifier.fillMaxWidth().padding(start = 33.dp)) {
-            ToolCard(message, toolMode, cornerRadius)
+            ToolCard(message, toolMode, cornerRadius, onToolModeAll)
         }
 
         Role.NOTICE -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -1270,7 +1376,12 @@ private fun MessageRow(
 private enum class ToolMode { COLLAPSED, SUMMARY, EXPANDED }
 
 @Composable
-private fun ToolCard(message: ChatMsg, mode: String, cornerRadius: Int) {
+private fun ToolCard(
+    message: ChatMsg,
+    mode: String,
+    cornerRadius: Int,
+    onToolModeAll: (String) -> Unit,
+) {
     var viewMode by remember(message.id, mode) {
         mutableStateOf(
             when (mode) {
@@ -1354,9 +1465,27 @@ private fun ToolCard(message: ChatMsg, mode: String, cornerRadius: Int) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                ToolModeChip("收起", viewMode == ToolMode.COLLAPSED, cornerRadius) { viewMode = ToolMode.COLLAPSED }
-                ToolModeChip("摘要", viewMode == ToolMode.SUMMARY, cornerRadius) { viewMode = ToolMode.SUMMARY }
-                ToolModeChip("展开", viewMode == ToolMode.EXPANDED, cornerRadius) { viewMode = ToolMode.EXPANDED }
+                ToolModeChip(
+                    "收起",
+                    viewMode == ToolMode.COLLAPSED,
+                    cornerRadius,
+                    onClick = { viewMode = ToolMode.COLLAPSED },
+                    onLongClick = { onToolModeAll("collapsed") },
+                )
+                ToolModeChip(
+                    "摘要",
+                    viewMode == ToolMode.SUMMARY,
+                    cornerRadius,
+                    onClick = { viewMode = ToolMode.SUMMARY },
+                    onLongClick = { onToolModeAll("summary") },
+                )
+                ToolModeChip(
+                    "展开",
+                    viewMode == ToolMode.EXPANDED,
+                    cornerRadius,
+                    onClick = { viewMode = ToolMode.EXPANDED },
+                    onLongClick = { onToolModeAll("expanded") },
+                )
             }
 
             when (viewMode) {
@@ -1394,7 +1523,13 @@ private fun ToolCard(message: ChatMsg, mode: String, cornerRadius: Int) {
 }
 
 @Composable
-private fun ToolModeChip(label: String, selected: Boolean, cornerRadius: Int, onClick: () -> Unit) {
+private fun ToolModeChip(
+    label: String,
+    selected: Boolean,
+    cornerRadius: Int,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     val scheme = MaterialTheme.colorScheme
     val shape = RoundedCornerShape((cornerRadius / 3).coerceAtLeast(6).dp)
     Text(
@@ -1406,7 +1541,12 @@ private fun ToolModeChip(label: String, selected: Boolean, cornerRadius: Int, on
             .padding(start = 3.dp)
             .clip(shape)
             .background(if (selected) scheme.primary.copy(alpha = 0.15f) else Color.Transparent)
-            .clickable(onClick = onClick)
+            .pointerInput(onClick, onLongClick) {
+                detectTapGestures(
+                    onTap = { onClick() },
+                    onLongPress = { onLongClick() },
+                )
+            }
             .padding(horizontal = 7.dp, vertical = 3.dp),
     )
 }
