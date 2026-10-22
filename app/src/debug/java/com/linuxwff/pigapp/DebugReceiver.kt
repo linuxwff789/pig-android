@@ -109,13 +109,24 @@ class DebugReceiver : BroadcastReceiver() {
                 )
             }
             "com.linuxwff.pigapp.DEBUG_STATE" -> {
-                val text = vm.ui.toString()
-                Log.i(TAG, text)
-                setResultData(text)
-                runCatching {
-                    val dir = context.getExternalFilesDir(null) ?: context.filesDir
-                    File(dir, "state.txt").writeText(text)
-                }.onFailure { Log.w(TAG, "state file: ${it.message}") }
+                // Never dump the whole transcript through logcat: on a long
+                // session the multi-hundred-KB string blocks the main thread
+                // and triggers an ANR. Log a summary and write the full state
+                // file off the main thread.
+                val state = vm.ui
+                val summary = "connected=${state.connected} busy=${state.busy} " +
+                    "model=${state.model} sessionId=${state.sessionId} " +
+                    "messages=${state.messages.size} context=${state.contextPercent}% " +
+                    "used=${state.contextTokens}/${state.contextWindow} " +
+                    "error=${state.error} toast=${state.toast}"
+                Log.i(TAG, summary)
+                setResultData(summary)
+                Thread {
+                    runCatching {
+                        val dir = context.getExternalFilesDir(null) ?: context.filesDir
+                        File(dir, "state.txt").writeText(state.toString())
+                    }.onFailure { Log.w(TAG, "state file: ${it.message}") }
+                }.start()
             }
             else -> Log.w(TAG, "unknown action ${intent.action}")
         }
