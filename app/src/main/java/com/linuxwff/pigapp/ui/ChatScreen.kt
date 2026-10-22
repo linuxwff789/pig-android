@@ -93,6 +93,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.DisposableEffect
@@ -140,6 +141,17 @@ import kotlinx.coroutines.launch
 fun PigApp(vm: AppViewModel) {
     val ui = vm.ui
     var draft by rememberSaveable { mutableStateOf("") }
+    // Each session keeps its own composer draft; switching must not carry the
+    // text into another conversation.
+    val drafts = remember { mutableStateMapOf<String, String>() }
+    var draftPath by remember { mutableStateOf(ui.sessionFile) }
+    LaunchedEffect(ui.sessionFile) {
+        if (draftPath != ui.sessionFile) {
+            drafts[draftPath] = draft
+            draft = drafts[ui.sessionFile].orEmpty()
+            draftPath = ui.sessionFile
+        }
+    }
     var showSettings by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
