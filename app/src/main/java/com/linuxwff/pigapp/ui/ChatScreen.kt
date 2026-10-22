@@ -310,7 +310,7 @@ private fun PigHeader(
                         modifier = Modifier
                             .clip(CircleShape)
                             .clickable(onClick = onModel)
-                            .padding(vertical = 1.dp, end = 4.dp),
+                            .padding(top = 1.dp, bottom = 1.dp, end = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
