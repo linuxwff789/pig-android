@@ -23,6 +23,17 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+
+      - name: Build relay (android/arm64)
+        run: |
+          cd relay
+          CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build \
+            -trimpath -ldflags="-s -w" \
+            -o "$GITHUB_WORKSPACE/pig-relay-android-arm64" .
+
       - name: Decode keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
@@ -53,9 +64,18 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pig-relay-android-arm64
+          path: pig-relay-android-arm64
+          if-no-files-found: error
+
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/*.apk
+          files: |
+            app/build/outputs/apk/release/*.apk
+            pig-relay-android-arm64
+            scripts/install-termux.sh
           generate_release_notes: true

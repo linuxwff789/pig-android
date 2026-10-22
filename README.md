@@ -43,14 +43,27 @@ into arbitrary windows; the overlay/sheet/inline placements, the `windows/` file
 `setWidget` panels are in. Contract and plan:
 [docs/app-ui.md](docs/app-ui.md), [docs/app-ui-plan.md](docs/app-ui-plan.md).
 
-## Prerequisites
+## Fresh Termux install
 
-- Termux with `pig` working (`pig --mode rpc` must start).
-- `allow-external-apps = true` in `~/.termux/termux.properties`
-  (already set on this device; run `termux-reload-settings` after changing it).
-- `pig-relay` installed at
-  `/data/data/com.termux/files/usr/bin/pig-relay`.
-- The app must be granted `com.termux.permission.RUN_COMMAND`.
+The APK is only the front-end. On a clean Termux, run:
+
+```bash
+curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh | sh
+```
+
+The script installs `pig` with the official installer, downloads
+`pig-relay-android-arm64` from this repo's latest release, and creates
+`~/.pig/android-ui`.
+
+Then:
+
+1. Set `allow-external-apps = true` in `~/.termux/termux.properties`
+   (uncomment the line) and open the Termux app once so the property reloads.
+2. Install/open the Pig app and grant `com.termux.permission.RUN_COMMAND`.
+3. If the app shows the setup dialog, run the command or tap 一键安装, wait for
+   Termux to finish, then tap 重试.
+
+See [docs/install.md](docs/install.md) for the manual route and troubleshooting.
 
 ## Build the relay
 

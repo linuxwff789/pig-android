@@ -1,5 +1,8 @@
 package com.linuxwff.pigapp.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -72,6 +75,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -82,6 +86,7 @@ import androidx.compose.ui.unit.sp
 import com.linuxwff.pigapp.AppUiState
 import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.ChatMsg
+import com.linuxwff.pigapp.RelayLauncher
 import com.linuxwff.pigapp.Role
 import com.linuxwff.pigapp.SessionInfo
 import com.linuxwff.pigapp.TypeScale
@@ -234,6 +239,77 @@ fun PigApp(vm: AppViewModel) {
 
     ui.pending?.let { PendingDialog(it, vm) }
     ModelPickerDialog(vm)
+    if (ui.setup) SetupDialog(ui, vm)
+}
+
+@Composable
+private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
+    val context = LocalContext.current
+    val command =
+        "curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh | sh"
+    val termuxInstalled = RelayLauncher.isTermuxInstalled(context)
+    AlertDialog(
+        onDismissRequest = vm::dismissSetup,
+        title = { Text("Termux 后端还没准备好") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Pig App 只是前端：pig 和 pig-relay 要装在 Termux 里。",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (!termuxInstalled) {
+                    Text("1. 先安装 Termux（F-Droid 版）", style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    Text("1. 在 Termux 里运行下面这行命令：", style = MaterialTheme.typography.bodyMedium)
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(8.dp),
+                    ) {
+                        SelectionContainer {
+                            Text(
+                                command,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(8.dp),
+                            )
+                        }
+                    }
+                    Text(
+                        "2. 设置 allow-external-apps = true，并打开一次 Termux",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                ui.setupHint?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (termuxInstalled) {
+                TextButton(onClick = { vm.bootstrap() }) { Text("一键安装") }
+            } else {
+                TextButton(onClick = { vm.openTermuxInstallPage() }) { Text("安装 Termux") }
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = {
+                    val clipboard =
+                        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Pig install", command))
+                }) { Text("复制命令") }
+                TextButton(onClick = {
+                    vm.dismissSetup()
+                    vm.reconnect()
+                }) { Text("重试") }
+                TextButton(onClick = vm::dismissSetup) { Text("稍后") }
+            }
+        },
+    )
 }
 
 @Composable

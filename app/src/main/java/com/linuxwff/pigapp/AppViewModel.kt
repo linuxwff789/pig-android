@@ -77,7 +77,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         val launchError = RelayLauncher.launch(ctx, port, token, cwd)
         if (launchError != null) {
-            ui = ui.copy(error = "无法启动 pig-relay：$launchError")
+            ui = ui.copy(
+                error = "无法启动 pig-relay：$launchError",
+                setup = true,
+                setupHint = launchError,
+            )
             return
         }
         ui = ui.copy(error = null)
@@ -99,6 +103,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun reconnect() {
         client.close()
         connect()
+    }
+
+    fun bootstrap() {
+        val error = RelayLauncher.bootstrap(getApplication(), cwd)
+        ui = ui.copy(
+            setup = error == null,
+            setupHint = error,
+            toast = error ?: "已在 Termux 里开始安装，完成后点「重试」",
+        )
+    }
+
+    fun dismissSetup() {
+        ui = ui.copy(setup = false)
+    }
+
+    fun openTermux() {
+        if (!RelayLauncher.openTermux(getApplication())) {
+            RelayLauncher.openTermuxInstallPage(getApplication())
+        }
+    }
+
+    fun openTermuxInstallPage() {
+        RelayLauncher.openTermuxInstallPage(getApplication())
     }
 
     fun sendPrompt(raw: String) {
@@ -463,12 +490,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun handle(event: JSONObject) {
         when (val type = event.optString("type")) {
             "relay_hello" -> {
-                ui = ui.copy(error = null)
+                ui = ui.copy(error = null, setup = false, setupHint = null)
                 client.send(JSONObject().put("id", "state-1").put("type", "get_state"))
                 client.send(JSONObject().put("id", "stats-1").put("type", "get_session_stats"))
                 requestSessions()
             }
-            "relay_client_error" -> ui = ui.copy(error = event.optString("message"))
+            "relay_client_error" -> {
+                val message = event.optString("message")
+                ui = ui.copy(error = message, setup = true, setupHint = message)
+            }
+            "relay_error" -> {
+                val message = event.optString("message", "relay error")
+                ui = ui.copy(error = message, setup = true, setupHint = message)
+            }
             "relay_exit" -> ui = ui.copy(
                 busy = false,
                 status = "",

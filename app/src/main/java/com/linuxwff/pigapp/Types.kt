@@ -84,4 +84,6 @@ data class AppUiState(
     val thinkingLevel: String = "off",
     val thinkingLevels: List<String> = emptyList(),
     val assetCount: Int = 0,
+    val setup: Boolean = false,
+    val setupHint: String? = null,
 )
