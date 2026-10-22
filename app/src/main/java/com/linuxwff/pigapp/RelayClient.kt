@@ -5,14 +5,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -40,11 +39,11 @@ class RelayClient(
     private var writer: BufferedWriter? = null
     private var job: Job? = null
 
-    private val _events = MutableSharedFlow<JSONObject>(
-        extraBufferCapacity = 512,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-    val events: SharedFlow<JSONObject> = _events.asSharedFlow()
+    // A channel buffers events until the ViewModel collector is scheduled.
+    // SharedFlow without replay dropped the relay hello/pack when the
+    // collector started a few milliseconds late.
+    private val eventChannel = Channel<JSONObject>(Channel.UNLIMITED)
+    val events: Flow<JSONObject> = eventChannel.receiveAsFlow()
 
     private val _connected = MutableStateFlow(false)
     val connected: StateFlow<Boolean> = _connected.asStateFlow()
@@ -67,7 +66,7 @@ class RelayClient(
                         val line = reader.readLine() ?: break
                         if (line.isBlank()) continue
                         val obj = runCatching { JSONObject(line) }.getOrNull() ?: continue
-                        _events.tryEmit(obj)
+                        eventChannel.trySend(obj)
                     }
                 } catch (e: Exception) {
                     lastError = e
@@ -80,7 +79,7 @@ class RelayClient(
                 if (attempt < 23) delay(500)
             }
             lastError?.let {
-                _events.tryEmit(
+                eventChannel.trySend(
                     JSONObject()
                         .put("type", "relay_client_error")
                         .put("message", it.message ?: it.javaClass.simpleName),
