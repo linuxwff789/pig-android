@@ -26,7 +26,10 @@ an API key. All agent work happens in the original `pig` binary.
 - Session drawer lists recent sessions (`~/.pig/agent/sessions`), switches via
   `switch_session` and reloads the transcript with `get_messages` (text + tool
   cards). Switching to a file modified in the last minute asks for confirmation
-  because another pig process may be writing it.
+  because another pig process may be writing it. A search box filters by name,
+  preview, id or cwd; each row has a menu to rename (RPC `set_session_name` for
+  the live session, a relay-appended `session_info` entry otherwise) and delete
+  the session file. The active session cannot be deleted.
 - `nav.json` drawer entries: extensions can add a button (e.g. 模型供应商) that
   restores its window and runs a slash command to refresh it.
 - Model picker: tap the model name in the top bar to search the available

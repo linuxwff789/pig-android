@@ -33,6 +33,8 @@ Control frames:
 | --- | --- | --- |
 | `relay_ping` | `id` | `relay_pong` |
 | `relay_projects` | `id`, optional `root` | `relay_projects` with `{name, path}` list |
+| `relay_session_rename` | `id`, `path`, `name` | `relay_session_renamed` (`path`, `name`) |
+| `relay_session_delete` | `id`, `path` | `relay_session_deleted` (`path`) |
 | `relay_ui` | | `relay_ui_pack` snapshot |
 | `relay_restart` | | kills and respawns pig (`relay_restarted`) |
 | `relay_stop` | | closes the connection |
@@ -46,6 +48,10 @@ Control frames:
 | `relay_exit` | pig exited; `code` is the exit status |
 | `relay_error` | relay-level error (not an agent error) |
 | `relay_projects` | project list |
+| `relay_sessions` | session list (`path`, `id`, `cwd`, `name`, `preview`, `updated`, `size`) |
+| `relay_session_renamed` | rename succeeded |
+| `relay_session_deleted` | delete succeeded |
+| `relay_session_error` | rename/delete failed (`message`) |
 | `relay_ui_pack` | UI pack snapshot |
 | `relay_restarted` | pig was respawned |
 

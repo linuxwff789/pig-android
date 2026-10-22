@@ -316,6 +316,43 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         client.send(JSONObject().put("type", "new_session"))
     }
 
+    /** Rename a session: the live pig renames the current one, the relay appends
+     *  a session_info entry for any other file. */
+    fun renameSession(session: SessionInfo, name: String) {
+        val clean = name.trim().replace(Regex("[\\r\\n]+"), " ").take(80)
+        val current = session.path == ui.sessionFile
+        if (current && client.connected.value) {
+            client.send(
+                JSONObject()
+                    .put("id", "rename-${nextId++}")
+                    .put("type", "set_session_name")
+                    .put("name", clean),
+            )
+        } else {
+            client.send(
+                JSONObject()
+                    .put("id", "rename-${nextId++}")
+                    .put("type", "relay_session_rename")
+                    .put("path", session.path)
+                    .put("name", clean),
+            )
+        }
+        ui = ui.copy(sessions = ui.sessions.map { if (it.path == session.path) it.copy(name = clean) else it })
+    }
+
+    fun deleteSession(session: SessionInfo) {
+        if (session.path == ui.sessionFile) {
+            ui = ui.copy(toast = "当前会话不能删除，先切换或新建会话")
+            return
+        }
+        client.send(
+            JSONObject()
+                .put("id", "delete-${nextId++}")
+                .put("type", "relay_session_delete")
+                .put("path", session.path),
+        )
+    }
+
     fun clearLocal() {
         ui = ui.copy(messages = emptyList())
     }
@@ -624,6 +661,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             "relay_ui_pack" -> handleUiPack(event)
             "relay_sessions" -> handleSessions(event)
+            "relay_session_renamed" -> {
+                val path = event.optString("path")
+                val name = event.optString("name")
+                ui = ui.copy(
+                    sessions = ui.sessions.map { if (it.path == path) it.copy(name = name) else it },
+                    toast = "会话已重命名",
+                )
+                requestSessions()
+            }
+            "relay_session_deleted" -> {
+                val path = event.optString("path")
+                if (savedSession() == path) prefs.edit().remove("lastSessionFile").apply()
+                ui = ui.copy(
+                    sessions = ui.sessions.filterNot { it.path == path },
+                    toast = "会话已删除",
+                )
+                requestSessions()
+            }
+            "relay_session_error" ->
+                ui = ui.copy(toast = event.optString("message", "会话操作失败"))
             "response" -> handleResponse(event)
             "agent_start" -> ui = ui.copy(busy = true, status = "thinking")
             "turn_start" -> ui = ui.copy(status = "working")
@@ -690,6 +747,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // These commands carry no data but still change UI state.
         if (command == "set_thinking_level") {
             client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
+            return
+        }
+        if (command == "set_session_name") {
+            requestSessions()
             return
         }
         if (command == "switch_session" || command == "new_session") {

@@ -6,6 +6,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -228,6 +229,8 @@ func (s *session) handleClientLine(line []byte) {
 		ID    any    `json:"id"`
 		Token string `json:"token"`
 		Root  string `json:"root"`
+		Path  string `json:"path"`
+		Name  string `json:"name"`
 	}
 	if err := json.Unmarshal(line, &head); err != nil {
 		_ = s.out.send(frame{"type": "relay_error", "message": "invalid json: " + err.Error()})
@@ -261,6 +264,23 @@ func (s *session) handleClientLine(line []byte) {
 		_ = s.out.send(frame{"type": "relay_projects", "id": head.ID, "root": root, "projects": listProjects(root)})
 	case "relay_sessions":
 		_ = s.out.send(frame{"type": "relay_sessions", "id": head.ID, "sessions": listSessions(s.sessionsDir)})
+	case "relay_session_rename":
+		if err := appendSessionInfo(head.Path, head.Name, s.sessionsDir); err != nil {
+			_ = s.out.send(frame{"type": "relay_session_error", "id": head.ID, "message": "rename: " + err.Error()})
+		} else {
+			_ = s.out.send(frame{
+				"type": "relay_session_renamed",
+				"id":   head.ID,
+				"path": head.Path,
+				"name": truncateRunes(head.Name, 80),
+			})
+		}
+	case "relay_session_delete":
+		if err := deleteSession(head.Path, s.sessionsDir); err != nil {
+			_ = s.out.send(frame{"type": "relay_session_error", "id": head.ID, "message": "delete: " + err.Error()})
+		} else {
+			_ = s.out.send(frame{"type": "relay_session_deleted", "id": head.ID, "path": head.Path})
+		}
 	case "relay_ui":
 		files, assets, assetHashes, hash, err := scanUI(s.uiDir)
 		if err != nil {
@@ -395,7 +415,7 @@ func readSessionMeta(path string, info os.FileInfo) map[string]any {
 		if json.Unmarshal(scanner.Bytes(), &entry) != nil {
 			continue
 		}
-		if entry.Type == "session_info" && entry.Name != "" {
+		if entry.Type == "session_info" {
 			name = entry.Name
 		}
 		if preview == "" && entry.Message.Role == "user" {
@@ -412,7 +432,148 @@ func readSessionMeta(path string, info os.FileInfo) map[string]any {
 	}
 	meta["name"] = name
 	meta["preview"] = preview
+	// A rename is appended to the end; the latest session_info wins. Check the
+	// tail as well so renames in a large file are picked up.
+	if tailName, ok := tailSessionName(path, info.Size()); ok {
+		meta["name"] = tailName
+	}
 	return meta
+}
+
+// tailSessionName returns the last session_info name in the final 256 KiB.
+func tailSessionName(path string, size int64) (string, bool) {
+	const tail = 256 * 1024
+	if size <= 0 {
+		return "", false
+	}
+	n := int64(tail)
+	if n > size {
+		n = size
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	buf := make([]byte, n)
+	if _, err := f.ReadAt(buf, size-n); err != nil && err != io.EOF {
+		return "", false
+	}
+	text := string(buf)
+	if size > n {
+		// Discard the partial first line.
+		idx := strings.IndexByte(text, '\n')
+		if idx < 0 {
+			return "", false
+		}
+		text = text[idx+1:]
+	}
+	name, found := "", false
+	for _, line := range strings.Split(text, "\n") {
+		var entry struct {
+			Type string `json:"type"`
+			Name string `json:"name"`
+		}
+		if json.Unmarshal([]byte(line), &entry) == nil && entry.Type == "session_info" {
+			name, found = entry.Name, true
+		}
+	}
+	return name, found
+}
+
+func validateSessionPath(path, dir string) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("missing session path")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	root, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(root, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return errors.New("session path is outside the sessions directory")
+	}
+	if !strings.HasSuffix(abs, ".jsonl") {
+		return errors.New("not a session file")
+	}
+	return nil
+}
+
+// appendSessionInfo appends a session_info entry (display name) to a session
+// file. The latest such entry wins, so this is how the manager renames sessions.
+func appendSessionInfo(path, name, dir string) error {
+	if err := validateSessionPath(path, dir); err != nil {
+		return err
+	}
+	name = truncateRunes(name, 80)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+
+	needNewline := true
+	var parent any
+	if size := info.Size(); size > 0 {
+		n := int64(64 * 1024)
+		if n > size {
+			n = size
+		}
+		buf := make([]byte, n)
+		if _, err := f.ReadAt(buf, size-n); err != nil && err != io.EOF {
+			return err
+		}
+		needNewline = !bytes.HasSuffix(buf, []byte("\n"))
+		text := strings.TrimRight(string(buf), "\r\n")
+		if idx := strings.LastIndexByte(text, '\n'); idx >= 0 {
+			text = text[idx+1:]
+		}
+		var last struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal([]byte(text), &last) == nil && last.ID != "" {
+			parent = last.ID
+		}
+	}
+
+	rawID := make([]byte, 4)
+	_, _ = rand.Read(rawID)
+	entry := map[string]any{
+		"type":      "session_info",
+		"id":        hex.EncodeToString(rawID),
+		"parentId":  parent,
+		"timestamp": time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+		"name":      name,
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+	if needNewline {
+		data = append([]byte("\n"), data...)
+	}
+	_, err = f.Write(append(data, '\n'))
+	if err != nil {
+		return err
+	}
+	// Metadata changes should not reorder the history list.
+	_ = os.Chtimes(path, info.ModTime(), info.ModTime())
+	return nil
+}
+
+func deleteSession(path, dir string) error {
+	if err := validateSessionPath(path, dir); err != nil {
+		return err
+	}
+	return os.Remove(path)
 }
 
 func truncateRunes(text string, limit int) string {

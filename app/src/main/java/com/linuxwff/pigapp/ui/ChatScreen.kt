@@ -53,15 +53,21 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -488,6 +494,23 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
 private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val corner = ui.uiPack.theme.cornerRadius
+    var sessionQuery by remember { mutableStateOf("") }
+    var renameTarget by remember { mutableStateOf<SessionInfo?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var deleteTarget by remember { mutableStateOf<SessionInfo?>(null) }
+    val shownSessions = remember(ui.sessions, sessionQuery) {
+        val query = sessionQuery.trim()
+        if (query.isEmpty()) {
+            ui.sessions
+        } else {
+            ui.sessions.filter { session ->
+                session.name.contains(query, true) ||
+                    session.preview.contains(query, true) ||
+                    session.id.contains(query, true) ||
+                    session.cwd.contains(query, true)
+            }
+        }
+    }
     Column(
         Modifier
             .fillMaxHeight()
@@ -613,25 +636,52 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
                     .height(2.dp),
             )
         }
+        OutlinedTextField(
+            value = sessionQuery,
+            onValueChange = { sessionQuery = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodySmall,
+            shape = RoundedCornerShape((corner / 2).coerceAtLeast(8).dp),
+            leadingIcon = {
+                Icon(
+                    Icons.Default.Search,
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = scheme.onSurfaceVariant,
+                )
+            },
+            placeholder = { Text("搜索会话…", style = MaterialTheme.typography.labelSmall) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = scheme.primary.copy(alpha = 0.6f),
+                unfocusedBorderColor = scheme.outline.copy(alpha = 0.25f),
+            ),
+        )
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(3.dp),
             contentPadding = PaddingValues(vertical = 2.dp),
         ) {
-            items(ui.sessions, key = { it.path }) { session ->
+            items(shownSessions, key = { it.path }) { session ->
                 SessionRow(
                     session = session,
                     current = session.id == ui.sessionId,
                     cornerRadius = corner,
-                ) {
-                    vm.switchSession(session.path)
-                    onClose()
-                }
+                    onClick = {
+                        vm.switchSession(session.path)
+                        onClose()
+                    },
+                    onRename = {
+                        renameTarget = session
+                        renameText = session.name
+                    },
+                    onDelete = { deleteTarget = session },
+                )
             }
-            if (ui.sessions.isEmpty()) {
+            if (shownSessions.isEmpty()) {
                 item {
                     Text(
-                        "没有可切换的会话",
+                        if (ui.sessions.isEmpty()) "没有可切换的会话" else "没有匹配的会话",
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant,
                     )
@@ -673,6 +723,56 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
             }
         }
         Spacer(Modifier.height(10.dp))
+
+        renameTarget?.let { target ->
+            AlertDialog(
+                onDismissRequest = { renameTarget = null },
+                title = { Text("重命名会话") },
+                text = {
+                    OutlinedTextField(
+                        value = renameText,
+                        onValueChange = { renameText = it },
+                        singleLine = true,
+                        label = { Text("名称（留空清除）") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            vm.renameSession(target, renameText)
+                            renameTarget = null
+                        },
+                    ) { Text("保存") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { renameTarget = null }) { Text("取消") }
+                },
+            )
+        }
+        deleteTarget?.let { target ->
+            AlertDialog(
+                onDismissRequest = { deleteTarget = null },
+                title = { Text("删除会话？") },
+                text = {
+                    Text(
+                        "将删除「${target.name.ifBlank { target.preview.ifBlank { target.id.take(8) } }}" +
+                            "」的会话文件，不可恢复。",
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            vm.deleteSession(target)
+                            deleteTarget = null
+                        },
+                    ) { Text("删除", color = scheme.error) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { deleteTarget = null }) { Text("取消") }
+                },
+            )
+        }
     }
 }
 
@@ -694,17 +794,25 @@ private fun navIcon(name: String) = when (name.lowercase()) {
 }
 
 @Composable
-private fun SessionRow(session: SessionInfo, current: Boolean, cornerRadius: Int, onClick: () -> Unit) {
+private fun SessionRow(
+    session: SessionInfo,
+    current: Boolean,
+    cornerRadius: Int,
+    onClick: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val title = session.name.ifBlank { session.preview.ifBlank { "未命名会话" } }
     val scheme = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(cornerRadius.dp)
+    var menuOpen by remember { mutableStateOf(false) }
     Row(
         Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(if (current) scheme.primary.copy(alpha = 0.13f) else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 7.dp),
+            .padding(start = 8.dp, end = 2.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -724,7 +832,8 @@ private fun SessionRow(session: SessionInfo, current: Boolean, cornerRadius: Int
                 color = if (current) scheme.primary else scheme.onSurface,
             )
             Text(
-                "${session.id.take(8)} · ${DateUtils.getRelativeTimeSpanString(session.updated)}",
+                "${session.id.take(8)} · ${DateUtils.getRelativeTimeSpanString(session.updated)}" +
+                    " · ${session.size / 1024}K",
                 maxLines = 1,
                 style = MaterialTheme.typography.labelSmall,
                 color = scheme.onSurfaceVariant,
@@ -737,6 +846,47 @@ private fun SessionRow(session: SessionInfo, current: Boolean, cornerRadius: Int
                 modifier = Modifier.size(15.dp),
                 tint = scheme.primary,
             )
+        }
+        Box {
+            IconButton(
+                onClick = { menuOpen = true },
+                modifier = Modifier.size(28.dp),
+            ) {
+                Icon(
+                    Icons.Default.MoreVert,
+                    contentDescription = "会话操作",
+                    modifier = Modifier.size(16.dp),
+                    tint = scheme.onSurfaceVariant,
+                )
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text("重命名") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp))
+                    },
+                    onClick = {
+                        menuOpen = false
+                        onRename()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(if (current) "当前会话不可删除" else "删除") },
+                    enabled = !current,
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Delete,
+                            null,
+                            modifier = Modifier.size(16.dp),
+                            tint = if (current) scheme.onSurfaceVariant else scheme.error,
+                        )
+                    },
+                    onClick = {
+                        menuOpen = false
+                        onDelete()
+                    },
+                )
+            }
         }
     }
 }
