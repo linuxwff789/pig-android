@@ -1942,7 +1942,7 @@ private fun ToolCard(
             detailsJson = message.toolDetails,
             isError = message.isError,
             running = message.running,
-            text = { key, fallback -> toolStrings[key] ?: fallback },
+            text = { key, fallback -> toolStrings.values[key] ?: fallback },
         )
     }
     val scheme = MaterialTheme.colorScheme

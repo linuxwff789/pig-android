@@ -1743,6 +1743,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         /** UI-pack string lookup for services / launchers outside a composition. */
         fun packString(key: String, fallback: String): String =
-            current?.ui?.uiPack?.strings?.get(key) ?: fallback
+            current?.ui?.uiPack?.strings?.values?.get(key) ?: fallback
     }
 }
