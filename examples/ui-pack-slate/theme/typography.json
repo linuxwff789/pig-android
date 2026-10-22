@@ -1,0 +1,20 @@
+{
+  "body": 13,
+  "label": 10,
+  "h1": 18,
+  "h2": 16,
+  "h3": 15,
+  "h4": 14,
+  "h5": 13,
+  "h6": 12,
+  "code": 11,
+  "lineHeight": 1.4,
+  "fontFamily": "sans",
+  "headingFontFamily": "sans",
+  "labelFontFamily": "mono",
+  "codeFontFamily": "mono",
+  "bodyWeight": 400,
+  "headingWeight": 600,
+  "labelWeight": 400,
+  "letterSpacing": 0
+}
