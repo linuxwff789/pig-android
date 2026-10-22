@@ -117,6 +117,8 @@ data class UiLayout(
     val composerPlaceholderColor: String = "onSurfaceVariant",
     /** Drawer appearance (no behaviour switches). */
     val drawer: UiDrawerAppearance = UiDrawerAppearance(),
+    val bubble: UiBubbleAppearance = UiBubbleAppearance(),
+    val toolCard: UiToolCardAppearance = UiToolCardAppearance(),
     /** Skin switcher: show, where and how (chips/list). */
     val showSkinSwitcher: Boolean = true,
     val skinSwitcherPlacement: String = "drawer",
@@ -360,6 +362,8 @@ object UiPackParser {
         val chat = json.optJSONObject("chat")
         val composer = json.optJSONObject("composer")
         val drawerJson = json.optJSONObject("drawer")
+        val bubbleJson = chat?.optJSONObject("bubble")
+        val toolCardJson = chat?.optJSONObject("toolCard")
         val skinSwitcher = json.optJSONObject("skinSwitcher")
         val packManager = json.optJSONObject("packManager")
         val header = json.optJSONObject("header")?.let { parseHeader(it, warnings) }
@@ -415,6 +419,8 @@ object UiPackParser {
                 d.composerPlaceholderColor,
             )?.takeIf { it.isNotBlank() } ?: d.composerPlaceholderColor,
             drawer = parseDrawer(drawerJson, warnings),
+            bubble = parseBubble(bubbleJson, warnings),
+            toolCard = parseToolCard(toolCardJson, warnings),
             showSkinSwitcher = skinSwitcher?.optBoolean("show", d.showSkinSwitcher)
                 ?: d.showSkinSwitcher,
             skinSwitcherPlacement = placement.takeIf { it in placements } ?: d.skinSwitcherPlacement,
@@ -473,6 +479,66 @@ object UiPackParser {
             warnings.add("skins.default=$requested 不存在，使用 $default")
         }
         return default to out
+    }
+
+    private fun parseBubble(json: JSONObject?, warnings: MutableList<String>): UiBubbleAppearance {
+        if (json == null) return UiBubbleAppearance()
+        val d = UiBubbleAppearance()
+        return UiBubbleAppearance(
+            paddingH = json.optInt("paddingH", d.paddingH).coerceIn(0, 40),
+            paddingV = json.optInt("paddingV", d.paddingV).coerceIn(0, 40),
+            borderWidth = json.optInt("borderWidth", d.borderWidth).coerceIn(0, 4),
+            textColor = json.optString("textColor", d.textColor),
+            assistantBubble = json.optBoolean("assistantBubble", d.assistantBubble),
+            assistantBackgroundAlpha = json.optDouble(
+                "assistantBackgroundAlpha",
+                d.assistantBackgroundAlpha.toDouble(),
+            ).toFloat().coerceIn(0f, 1f),
+            assistantBorderAlpha = json.optDouble(
+                "assistantBorderAlpha",
+                d.assistantBorderAlpha.toDouble(),
+            ).toFloat().coerceIn(0f, 1f),
+            assistantTextColor = json.optString("assistantTextColor", d.assistantTextColor),
+        )
+    }
+
+    private fun parseToolCard(
+        json: JSONObject?,
+        warnings: MutableList<String>,
+    ): UiToolCardAppearance {
+        if (json == null) return UiToolCardAppearance()
+        val d = UiToolCardAppearance()
+        val backgrounds = setOf("surface", "surfaceVariant", "background", "transparent")
+        val background = json.optString("background", d.background)
+        if (background !in backgrounds) warnings.add("chat.toolCard.background=$background 无效")
+        return UiToolCardAppearance(
+            background = background.takeIf { it in backgrounds } ?: d.background,
+            backgroundAlpha = json.optDouble("backgroundAlpha", d.backgroundAlpha.toDouble())
+                .toFloat().coerceIn(0f, 1f),
+            radius = json.optInt("radius", d.radius)
+                .let { if (it < 0) -1 else it.coerceIn(0, 40) },
+            borderWidth = json.optInt("borderWidth", d.borderWidth).coerceIn(0, 4),
+            borderAlpha = json.optDouble("borderAlpha", d.borderAlpha.toDouble())
+                .toFloat().coerceIn(-1f, 1f),
+            padding = json.optInt("padding", d.padding).coerceIn(0, 40),
+            collapsedPaddingH = json.optInt("collapsedPaddingH", d.collapsedPaddingH)
+                .coerceIn(0, 40),
+            collapsedPaddingV = json.optInt("collapsedPaddingV", d.collapsedPaddingV)
+                .coerceIn(0, 40),
+            iconBoxSize = json.optInt("iconBoxSize", d.iconBoxSize).coerceIn(12, 64),
+            iconSize = json.optInt("iconSize", d.iconSize).coerceIn(8, 40),
+            iconRadius = json.optInt("iconRadius", d.iconRadius).coerceIn(0, 24),
+            iconAlpha = json.optDouble("iconAlpha", d.iconAlpha.toDouble())
+                .toFloat().coerceIn(0f, 1f),
+            titleSize = json.optInt("titleSize", d.titleSize).coerceIn(0, 32),
+            metricsColor = json.optString("metricsColor", d.metricsColor),
+            chipRadius = json.optInt("chipRadius", d.chipRadius).coerceIn(0, 24),
+            chipAlpha = json.optDouble("chipAlpha", d.chipAlpha.toDouble())
+                .toFloat().coerceIn(0f, 1f),
+            groupRadius = json.optInt("groupRadius", d.groupRadius)
+                .let { if (it < 0) -1 else it.coerceIn(0, 40) },
+            groupPadding = json.optInt("groupPadding", d.groupPadding).coerceIn(0, 40),
+        )
     }
 
     private fun parseDrawer(json: JSONObject?, warnings: MutableList<String>): UiDrawerAppearance {

@@ -18,7 +18,37 @@
     "messageSpacing": 16,
     "emptyAvatarSize": 72,
     "codeBlockRadius": 14,
-    "codeBlockBorderAlpha": 0.5
+    "codeBlockBorderAlpha": 0.5,
+    "bubble": {
+      "paddingH": 16,
+      "paddingV": 12,
+      "borderWidth": 2,
+      "textColor": "onSurface",
+      "assistantBubble": true,
+      "assistantBackgroundAlpha": 0.72,
+      "assistantBorderAlpha": 0.45,
+      "assistantTextColor": "onSurface"
+    },
+    "toolCard": {
+      "background": "surfaceVariant",
+      "backgroundAlpha": 0.55,
+      "radius": 18,
+      "borderWidth": 2,
+      "borderAlpha": 0.55,
+      "padding": 14,
+      "collapsedPaddingH": 12,
+      "collapsedPaddingV": 9,
+      "iconBoxSize": 30,
+      "iconSize": 17,
+      "iconRadius": 10,
+      "iconAlpha": 0.22,
+      "titleSize": 15,
+      "metricsColor": "secondary",
+      "chipRadius": 10,
+      "chipAlpha": 0.22,
+      "groupRadius": 20,
+      "groupPadding": 12
+    }
   },
   "composer": {
     "placeholder": "向 Aurora 说点什么…",

@@ -79,6 +79,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -94,6 +95,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -2004,18 +2006,40 @@ private fun ToolGroupCard(
 ) {
     val scheme = MaterialTheme.colorScheme
     val theme = packTheme()
+    val appearance = LocalUiPack.current.layout.toolCard
     val name = tools.first().toolName ?: "tool"
     val running = tools.any { it.running }
     val errors = tools.count { it.isError }
     var expanded by remember(tools.first().id) { mutableStateOf(false) }
-    val shape = RoundedCornerShape(cornerRadius.dp)
+    val groupRadius = if (appearance.groupRadius >= 0) appearance.groupRadius else cornerRadius
+    val shape = RoundedCornerShape(groupRadius.dp)
+    val groupBorder = if (appearance.borderWidth > 0) {
+        BorderStroke(
+            appearance.borderWidth.dp,
+            scheme.outline.copy(
+                alpha = if (appearance.borderAlpha >= 0f) {
+                    appearance.borderAlpha
+                } else {
+                    theme.cardBorderAlpha
+                },
+            ),
+        )
+    } else {
+        null
+    }
+    val groupBox = (appearance.iconBoxSize - 4).coerceAtLeast(16)
+    val groupTitle = if (appearance.titleSize > 0) {
+        MaterialTheme.typography.titleSmall.copy(fontSize = appearance.titleSize.sp)
+    } else {
+        MaterialTheme.typography.titleSmall
+    }
     Surface(
-        color = scheme.surface,
+        color = toolSurfaceColor(appearance),
         shape = shape,
-        border = BorderStroke(1.dp, scheme.outline.copy(alpha = theme.cardBorderAlpha)),
+        border = groupBorder,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(10.dp)) {
+        Column(Modifier.padding(appearance.groupPadding.dp)) {
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -2026,15 +2050,17 @@ private fun ToolGroupCard(
             ) {
                 Box(
                     Modifier
-                        .size(22.dp)
-                        .clip(RoundedCornerShape(7.dp))
-                        .background(scheme.secondary.copy(alpha = 0.14f)),
+                        .size(groupBox.dp)
+                        .clip(RoundedCornerShape(appearance.iconRadius.dp))
+                        .background(scheme.secondary.copy(alpha = appearance.iconAlpha)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         packIcon("tool", "build"),
                         contentDescription = null,
-                        modifier = Modifier.size(14.dp),
+                        modifier = Modifier.size(
+                            (appearance.iconSize - 1).coerceAtLeast(8).dp,
+                        ),
                         tint = scheme.secondary,
                     )
                 }
@@ -2044,7 +2070,7 @@ private fun ToolGroupCard(
                         packText("tool.groupHeader", "{tool} × {count}")
                             .replace("{tool}", name)
                             .replace("{count}", tools.size.toString()),
-                        style = MaterialTheme.typography.titleSmall,
+                        style = groupTitle,
                     )
                     Text(
                         buildString {
@@ -2265,6 +2291,30 @@ private fun MessageList(
     }
 }
 
+@Composable
+private fun packColor(name: String): Color = when (name) {
+    "primary" -> MaterialTheme.colorScheme.primary
+    "secondary" -> MaterialTheme.colorScheme.secondary
+    "tertiary" -> MaterialTheme.colorScheme.tertiary
+    "onSurface" -> MaterialTheme.colorScheme.onSurface
+    "error" -> MaterialTheme.colorScheme.error
+    "success" -> MaterialTheme.colorScheme.tertiary
+    "warning" -> MaterialTheme.colorScheme.secondary
+    else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+@Composable
+private fun toolSurfaceColor(appearance: com.linuxwff.pigapp.UiToolCardAppearance): Color {
+    val scheme = MaterialTheme.colorScheme
+    val base = when (appearance.background) {
+        "surfaceVariant" -> scheme.surfaceVariant
+        "background" -> scheme.background
+        "transparent" -> Color.Transparent
+        else -> scheme.surface
+    }
+    return base.copy(alpha = appearance.backgroundAlpha)
+}
+
 private val suggestions = listOf(
     "这个项目是做什么的？",
     "看看有哪些可以改进的地方",
@@ -2372,6 +2422,7 @@ private fun MessageRow(
                 bottomStart = (cornerRadius + 4).dp,
             )
             val scheme = MaterialTheme.colorScheme
+            val bubbleAppearance = LocalUiPack.current.layout.bubble
             var selecting by remember(message.id) { mutableStateOf(false) }
             val bubble: @Composable () -> Unit = {
                 Box(
@@ -2399,13 +2450,26 @@ private fun MessageRow(
                             ),
                             shape,
                         )
-                        .border(1.dp, scheme.primary.copy(alpha = theme.bubbleBorderAlpha), shape)
-                        .padding(horizontal = 14.dp, vertical = 11.dp),
+                        .then(
+                            if (bubbleAppearance.borderWidth > 0) {
+                                Modifier.border(
+                                    bubbleAppearance.borderWidth.dp,
+                                    scheme.primary.copy(alpha = theme.bubbleBorderAlpha),
+                                    shape,
+                                )
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .padding(
+                            horizontal = bubbleAppearance.paddingH.dp,
+                            vertical = bubbleAppearance.paddingV.dp,
+                        ),
                 ) {
                     Text(
                         message.text,
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = packColor(bubbleAppearance.textColor),
                     )
                 }
             }
@@ -2435,6 +2499,8 @@ private fun MessageRow(
         }
 
         Role.ASSISTANT -> Row(Modifier.fillMaxWidth()) {
+            val bubbleAppearance = LocalUiPack.current.layout.bubble
+            val scheme = MaterialTheme.colorScheme
             if (components.assistantAvatar) {
                 BrandAvatar(components.messageAvatarSize.dp, shadow = avatarShadow)
                 Spacer(Modifier.width(9.dp))
@@ -2479,6 +2545,46 @@ private fun MessageRow(
                         )
                     }
                 }
+                val contentBlock: @Composable () -> Unit = {
+                    if (bubbleAppearance.assistantBubble) {
+                        val bubbleShape = RoundedCornerShape(
+                            (theme.bubbleRadius ?: (cornerRadius + 4)).dp,
+                        )
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(bubbleShape)
+                                .background(
+                                    scheme.surfaceVariant.copy(
+                                        alpha = bubbleAppearance.assistantBackgroundAlpha,
+                                    ),
+                                )
+                                .then(
+                                    if (bubbleAppearance.borderWidth > 0) {
+                                        Modifier.border(
+                                            bubbleAppearance.borderWidth.dp,
+                                            scheme.outline.copy(alpha = bubbleAppearance.assistantBorderAlpha),
+                                            bubbleShape,
+                                        )
+                                    } else {
+                                        Modifier
+                                    },
+                                )
+                                .padding(
+                                    horizontal = bubbleAppearance.paddingH.dp,
+                                    vertical = bubbleAppearance.paddingV.dp,
+                                ),
+                        ) {
+                            CompositionLocalProvider(
+                                LocalContentColor provides packColor(bubbleAppearance.assistantTextColor),
+                            ) {
+                                content()
+                            }
+                        }
+                    } else {
+                        content()
+                    }
+                }
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -2491,9 +2597,9 @@ private fun MessageRow(
                         },
                 ) {
                     if (selecting && components.showSelection) {
-                        SelectionContainer { content() }
+                        SelectionContainer { contentBlock() }
                     } else {
-                        content()
+                        contentBlock()
                     }
                 }
             }
@@ -2562,40 +2668,70 @@ private fun ToolCard(
     val scheme = MaterialTheme.colorScheme
     val components = packComponents()
     val theme = packTheme()
+    val appearance = LocalUiPack.current.layout.toolCard
+    val toolRadius = if (appearance.radius >= 0) appearance.radius else cornerRadius
+    val toolShape = RoundedCornerShape(toolRadius.dp)
+    val toolColor = toolSurfaceColor(appearance)
+    val toolBorder = if (appearance.borderWidth > 0) {
+        BorderStroke(
+            appearance.borderWidth.dp,
+            scheme.outline.copy(
+                alpha = if (appearance.borderAlpha >= 0f) {
+                    appearance.borderAlpha
+                } else {
+                    theme.cardBorderAlpha
+                },
+            ),
+        )
+    } else {
+        null
+    }
+    val titleStyle = if (appearance.titleSize > 0) {
+        MaterialTheme.typography.titleSmall.copy(fontSize = appearance.titleSize.sp)
+    } else {
+        MaterialTheme.typography.titleSmall
+    }
+    val metricsColor = packColor(appearance.metricsColor)
+    val collapsedBox = (appearance.iconBoxSize - 4).coerceAtLeast(16)
 
     if (viewMode == ToolMode.COLLAPSED) {
         // Collapsed is deliberately minimal: tool name only, tap to see details.
         Surface(
-            color = scheme.surface,
-            shape = RoundedCornerShape(cornerRadius.dp),
-            border = BorderStroke(1.dp, scheme.outline.copy(alpha = theme.cardBorderAlpha)),
+            color = toolColor,
+            shape = toolShape,
+            border = toolBorder,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(
                 Modifier
                     .fillMaxWidth()
                     .clickable { viewMode = ToolMode.SUMMARY }
-                    .padding(horizontal = 11.dp, vertical = 8.dp),
+                    .padding(
+                        horizontal = appearance.collapsedPaddingH.dp,
+                        vertical = appearance.collapsedPaddingV.dp,
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     Modifier
-                        .size(22.dp)
-                        .clip(RoundedCornerShape(7.dp))
-                        .background(scheme.secondary.copy(alpha = 0.14f)),
+                        .size(collapsedBox.dp)
+                        .clip(RoundedCornerShape(appearance.iconRadius.dp))
+                        .background(scheme.secondary.copy(alpha = appearance.iconAlpha)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         packIcon("tool", "build"),
                         contentDescription = null,
-                        modifier = Modifier.size(14.dp),
+                        modifier = Modifier.size(
+                            (appearance.iconSize - 1).coerceAtLeast(8).dp,
+                        ),
                         tint = scheme.secondary,
                     )
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(
                     message.toolName ?: "tool",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = titleStyle,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -2625,30 +2761,30 @@ private fun ToolCard(
     }
 
     Surface(
-        color = scheme.surface,
-        shape = RoundedCornerShape(cornerRadius.dp),
-        border = BorderStroke(1.dp, scheme.outline.copy(alpha = theme.cardBorderAlpha)),
+        color = toolColor,
+        shape = toolShape,
+        border = toolBorder,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(appearance.padding.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier
-                        .size(26.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(scheme.secondary.copy(alpha = 0.14f)),
+                        .size(appearance.iconBoxSize.dp)
+                        .clip(RoundedCornerShape(appearance.iconRadius.dp))
+                        .background(scheme.secondary.copy(alpha = appearance.iconAlpha)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         packIcon("tool", "build"),
                         contentDescription = null,
-                        modifier = Modifier.size(15.dp),
+                        modifier = Modifier.size(appearance.iconSize.dp),
                         tint = scheme.secondary,
                     )
                 }
                 Spacer(Modifier.width(9.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(message.toolName ?: "tool", style = MaterialTheme.typography.titleSmall)
+                    Text(message.toolName ?: "tool", style = titleStyle)
                     Text(
                         view.headline,
                         style = MaterialTheme.typography.labelSmall,
@@ -2674,7 +2810,7 @@ private fun ToolCard(
                 Text(
                     view.metrics,
                     style = MaterialTheme.typography.labelSmall,
-                    color = scheme.onSurfaceVariant,
+                    color = metricsColor,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -2763,7 +2899,8 @@ private fun ToolModeChip(
     onLongClick: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape((cornerRadius / 3).coerceAtLeast(6).dp)
+    val appearance = LocalUiPack.current.layout.toolCard
+    val shape = RoundedCornerShape(appearance.chipRadius.dp)
     Text(
         label,
         style = MaterialTheme.typography.labelSmall,
@@ -2772,7 +2909,9 @@ private fun ToolModeChip(
         modifier = Modifier
             .padding(start = 3.dp)
             .clip(shape)
-            .background(if (selected) scheme.primary.copy(alpha = 0.15f) else Color.Transparent)
+            .background(
+                if (selected) scheme.primary.copy(alpha = appearance.chipAlpha) else Color.Transparent,
+            )
             .pointerInput(onClick, onLongClick) {
                 detectTapGestures(
                     onTap = { onClick() },

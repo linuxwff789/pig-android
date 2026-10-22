@@ -71,6 +71,42 @@ data class UiAction(
     val confirm: String = "",
 )
 
+data class UiBubbleAppearance(
+    val paddingH: Int = 14,
+    val paddingV: Int = 11,
+    val borderWidth: Int = 1,
+    /** Theme token for user bubble text. */
+    val textColor: String = "onSurface",
+    /** Render assistant Markdown inside a surface card. */
+    val assistantBubble: Boolean = false,
+    val assistantBackgroundAlpha: Float = 0.55f,
+    val assistantBorderAlpha: Float = 0.25f,
+    val assistantTextColor: String = "onSurface",
+)
+
+data class UiToolCardAppearance(
+    /** surface | surfaceVariant | background | transparent */
+    val background: String = "surface",
+    val backgroundAlpha: Float = 1f,
+    val radius: Int = -1,
+    val borderWidth: Int = 1,
+    /** -1 inherits theme.cardBorderAlpha. */
+    val borderAlpha: Float = -1f,
+    val padding: Int = 12,
+    val collapsedPaddingH: Int = 11,
+    val collapsedPaddingV: Int = 8,
+    val iconBoxSize: Int = 26,
+    val iconSize: Int = 15,
+    val iconRadius: Int = 8,
+    val iconAlpha: Float = 0.14f,
+    val titleSize: Int = 0,
+    val metricsColor: String = "onSurfaceVariant",
+    val chipRadius: Int = 6,
+    val chipAlpha: Float = 0.15f,
+    val groupRadius: Int = -1,
+    val groupPadding: Int = 10,
+)
+
 data class UiDrawerAppearance(
     /** theme | surface | gradient | transparent */
     val background: String = "theme",

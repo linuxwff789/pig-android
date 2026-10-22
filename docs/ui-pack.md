@@ -463,6 +463,46 @@ visibility. They do not reorder menu actions or change messaging behavior.
 `layout/chat.json` → `composer.placeholderColor`: `onSurfaceVariant` (default),
 `primary`, `secondary`, `tertiary`, `text`, `error`.
 
+### Chat bubbles (`chat.bubble`)
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `paddingH` / `paddingV` | 14 / 11 | bubble inner padding |
+| `borderWidth` | 1 | bubble border width; `0` removes it |
+| `textColor` | `onSurface` | user bubble text token |
+| `assistantBubble` | false | render assistant Markdown inside a surface card |
+| `assistantBackgroundAlpha` | 0.55 | assistant card background opacity |
+| `assistantBorderAlpha` | 0.25 | assistant card border opacity |
+| `assistantTextColor` | `onSurface` | assistant card text token |
+
+The user bubble gradient, radius, alpha, elevation and shadow still come from
+`theme/colors.json`; `components.bubbleMaxWidthDp` still sets the width.
+
+### Tool cards (`chat.toolCard`)
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `background` | `surface` | `surface`, `surfaceVariant`, `background`, `transparent` |
+| `backgroundAlpha` | 1.0 | card background opacity |
+| `radius` | -1 | card radius; `-1` = theme `cornerRadius` |
+| `borderWidth` | 1 | border width; `0` removes it |
+| `borderAlpha` | -1 | `-1` = theme `cardBorderAlpha` |
+| `padding` | 12 | expanded card padding |
+| `collapsedPaddingH` / `collapsedPaddingV` | 11 / 8 | collapsed row padding |
+| `iconBoxSize` | 26 | tool icon box dp |
+| `iconSize` | 15 | tool icon dp |
+| `iconRadius` | 8 | tool icon box radius |
+| `iconAlpha` | 0.14 | tool icon background opacity |
+| `titleSize` | 0 | tool name size; `0` = theme titleSmall |
+| `metricsColor` | `onSurfaceVariant` | metrics text token |
+| `chipRadius` | 6 | 收起/摘要/展开 chip radius |
+| `chipAlpha` | 0.15 | selected chip background opacity |
+| `groupRadius` | -1 | tool-group radius; `-1` = card radius |
+| `groupPadding` | 10 | tool-group padding |
+
+These only affect card/bubble visuals; tool execution, grouping and actions are
+unchanged.
+
 The existing `components.json` controls remain for visibility and line counts;
 these new keys are for deeper visual tuning.
 
