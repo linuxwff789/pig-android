@@ -286,6 +286,7 @@ fun AssistantMarkdown(
 private fun CollapsibleCode(language: String, code: String, cornerRadius: Int) {
     var expanded by remember(code) { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
+    val components = packComponents()
     val shape = RoundedCornerShape((cornerRadius / 2).coerceAtLeast(6).dp)
     val lineCount = remember(code) { code.count { it == '\n' } + 1 }
     Column(
@@ -303,34 +304,38 @@ private fun CollapsibleCode(language: String, code: String, cornerRadius: Int) {
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         ) {
             Text(
-                language.ifBlank { "code" },
+                language.ifBlank { packText("markdown.code", "code") },
                 style = MaterialTheme.typography.labelSmall,
                 color = scheme.secondary,
                 modifier = Modifier.weight(1f),
             )
             Text(
-                "$lineCount 行",
+                packText("markdown.lines", "{count} 行").replace("{count}", lineCount.toString()),
                 style = MaterialTheme.typography.labelSmall,
                 color = scheme.onSurfaceVariant,
             )
             Spacer(Modifier.width(6.dp))
             Text(
-                if (expanded) "收起" else "展开",
+                if (expanded) {
+                    packText("tool.collapse", "收起")
+                } else {
+                    packText("tool.expand", "展开")
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = scheme.primary,
             )
             Icon(
-                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                packIcon(if (expanded) "chevronUp" else "chevronDown", if (expanded) "up" else "down"),
                 contentDescription = null,
                 modifier = Modifier.size(14.dp),
                 tint = scheme.primary,
             )
         }
         if (expanded) {
-            val shown = remember(code) {
-                val lines = code.lineSequence().take(400).toList()
+            val shown = remember(code, components.codeFenceMaxLines) {
+                val lines = code.lineSequence().take(components.codeFenceMaxLines).toList()
                 lines.joinToString("\n").ifEmpty { " " } +
-                    if (code.lineSequence().count() > 400) "\n…" else ""
+                    if (code.lineSequence().count() > components.codeFenceMaxLines) "\n…" else ""
             }
             Box(
                 Modifier

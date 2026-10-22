@@ -20,6 +20,60 @@ data class UiTheme(
     val avatarShadow: Boolean = false,
     /** Default for the user message bubble shadow; a user setting overrides it. */
     val bubbleShadow: Boolean = true,
+    val onPrimary: Color? = null,
+    val onSecondary: Color? = null,
+    val onAccent: Color? = null,
+    val outline: Color? = null,
+    val outlineVariant: Color? = null,
+    val success: Color = Color(0xFF4ADE80),
+    val warning: Color = Color(0xFFFBBF24),
+    val scrim: Color = Color(0x9E000000),
+    val bubbleStart: Color? = null,
+    val bubbleEnd: Color? = null,
+    val cardRadius: Int? = null,
+    val bubbleRadius: Int? = null,
+    val chipRadius: Int? = null,
+    val composerRadius: Int? = null,
+    val composerElevation: Int = 12,
+    val bubbleElevation: Int = 8,
+    val fabElevation: Int = 6,
+    val bubbleStartAlpha: Float = 0.30f,
+    val bubbleEndAlpha: Float = 0.16f,
+    val bubbleBorderAlpha: Float = 0.32f,
+    val cardBorderAlpha: Float = 0.6f,
+    val chipAlpha: Float = 0.15f,
+)
+
+/** Flat key/value strings, e.g. "header.online" -> "在线". */
+data class UiStrings(val values: Map<String, String> = emptyMap()) {
+    fun get(key: String, fallback: String): String = values[key] ?: fallback
+}
+
+/** Visibility/size/format switches read by the built-in components. */
+data class UiComponents(
+    val showHeaderAvatar: Boolean = true,
+    val headerAvatarSize: Int = 36,
+    val showHeaderOnline: Boolean = true,
+    val showDrawerBrand: Boolean = true,
+    val showPanels: Boolean = true,
+    val showSessions: Boolean = true,
+    val showSessionBadges: Boolean = true,
+    val showSessionSize: Boolean = true,
+    val showCopy: Boolean = true,
+    val showSelection: Boolean = true,
+    val showSuggestions: Boolean = true,
+    val showReadOnlyBanner: Boolean = true,
+    val showPendingBanner: Boolean = true,
+    val showSteerHint: Boolean = true,
+    val showStatusBar: Boolean = true,
+    val assistantAvatar: Boolean = true,
+    val messageAvatarSize: Int = 24,
+    val bubbleMaxWidthDp: Int = 520,
+    val toolSummaryLines: Int = 4,
+    val toolExpandedLines: Int = 200,
+    val codeFenceMaxLines: Int = 400,
+    val tableMaxLines: Int = 6,
+    val composerButtonSize: Int = 46,
 )
 
 data class TypeScale(
@@ -53,6 +107,9 @@ data class UiPack(
     val theme: UiTheme = UiTheme(),
     val layout: UiLayout = UiLayout(),
     val types: TypeScale = TypeScale(),
+    val strings: UiStrings = UiStrings(),
+    val components: UiComponents = UiComponents(),
+    val icons: Map<String, String> = emptyMap(),
     val nav: List<NavItem> = emptyList(),
     val files: Int = 0,
     val loadedAt: Long = 0L,
@@ -87,6 +144,9 @@ object UiPackParser {
         var types = TypeScale()
         files[typographyPath]?.let { types = parseTypes(it, warnings) }
 
+        val strings = files["strings.json"]?.let { parseStrings(it, warnings) } ?: UiStrings()
+        val components = files["components.json"]?.let { parseComponents(it, warnings) } ?: UiComponents()
+        val icons = files["icons.json"]?.let { parseIcons(it, warnings) } ?: emptyMap()
         val nav = files["nav.json"]?.let { parseNav(it, warnings) } ?: emptyList()
 
         return Result(
@@ -96,6 +156,9 @@ object UiPackParser {
                 theme = theme,
                 layout = layout,
                 types = types,
+                strings = strings,
+                components = components,
+                icons = icons,
                 nav = nav,
                 files = files.size,
                 loadedAt = System.currentTimeMillis(),
@@ -175,6 +238,28 @@ object UiPackParser {
             accent = json.color("accent", d.secondary, warnings),
             avatarShadow = json.optBoolean("avatarShadow", d.avatarShadow),
             bubbleShadow = json.optBoolean("bubbleShadow", d.bubbleShadow),
+            onPrimary = json.colorOrNull("onPrimary", warnings),
+            onSecondary = json.colorOrNull("onSecondary", warnings),
+            onAccent = json.colorOrNull("onAccent", warnings),
+            outline = json.colorOrNull("outline", warnings),
+            outlineVariant = json.colorOrNull("outlineVariant", warnings),
+            success = json.color("success", d.success, warnings),
+            warning = json.color("warning", d.warning, warnings),
+            scrim = json.color("scrim", d.scrim, warnings),
+            bubbleStart = json.colorOrNull("bubbleStart", warnings),
+            bubbleEnd = json.colorOrNull("bubbleEnd", warnings),
+            cardRadius = json.optInt("cardRadius", d.cardRadius ?: -1).takeIf { it >= 0 }?.coerceIn(0, 40),
+            bubbleRadius = json.optInt("bubbleRadius", d.bubbleRadius ?: -1).takeIf { it >= 0 }?.coerceIn(0, 40),
+            chipRadius = json.optInt("chipRadius", d.chipRadius ?: -1).takeIf { it >= 0 }?.coerceIn(0, 40),
+            composerRadius = json.optInt("composerRadius", d.composerRadius ?: -1).takeIf { it >= 0 }?.coerceIn(0, 40),
+            composerElevation = json.optInt("composerElevation", d.composerElevation).coerceIn(0, 40),
+            bubbleElevation = json.optInt("bubbleElevation", d.bubbleElevation).coerceIn(0, 40),
+            fabElevation = json.optInt("fabElevation", d.fabElevation).coerceIn(0, 40),
+            bubbleStartAlpha = json.optDouble("bubbleStartAlpha", d.bubbleStartAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
+            bubbleEndAlpha = json.optDouble("bubbleEndAlpha", d.bubbleEndAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
+            bubbleBorderAlpha = json.optDouble("bubbleBorderAlpha", d.bubbleBorderAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
+            cardBorderAlpha = json.optDouble("cardBorderAlpha", d.cardBorderAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
+            chipAlpha = json.optDouble("chipAlpha", d.chipAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
         )
     }
 
@@ -238,6 +323,103 @@ object UiPackParser {
                 ?: d.composerMaxLines).coerceIn(1, 12),
             sendOnEnter = composer?.optBoolean("sendOnEnter", d.sendOnEnter) ?: d.sendOnEnter,
         )
+    }
+
+    private fun parseStrings(text: String, warnings: MutableList<String>): UiStrings {
+        val json = try {
+            JSONObject(text)
+        } catch (e: Exception) {
+            warnings.add("strings.json 解析失败: ${e.message}")
+            return UiStrings()
+        }
+        val out = mutableMapOf<String, String>()
+        fun walk(prefix: String, obj: JSONObject) {
+            val keys = obj.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val value = obj.opt(key)
+                if (value is JSONObject) {
+                    walk(if (prefix.isEmpty()) key else "$prefix.$key", value)
+                } else if (value is String) {
+                    out[if (prefix.isEmpty()) key else "$prefix.$key"] = value
+                }
+            }
+        }
+        walk("", json)
+        return UiStrings(out)
+    }
+
+    private fun parseComponents(text: String, warnings: MutableList<String>): UiComponents {
+        val json = try {
+            JSONObject(text)
+        } catch (e: Exception) {
+            warnings.add("components.json 解析失败: ${e.message}")
+            return UiComponents()
+        }
+        val d = UiComponents()
+        fun flag(key: String, fallback: Boolean): Boolean = json.optBoolean(key, fallback)
+        fun size(key: String, fallback: Int, range: IntRange): Int {
+            val value = json.optInt(key, fallback)
+            if (value !in range) {
+                warnings.add("components.$key=$value 超出 ${range.first}..${range.last}")
+                return fallback
+            }
+            return value
+        }
+        return UiComponents(
+            showHeaderAvatar = flag("showHeaderAvatar", d.showHeaderAvatar),
+            headerAvatarSize = size("headerAvatarSize", d.headerAvatarSize, 16..96),
+            showHeaderOnline = flag("showHeaderOnline", d.showHeaderOnline),
+            showDrawerBrand = flag("showDrawerBrand", d.showDrawerBrand),
+            showPanels = flag("showPanels", d.showPanels),
+            showSessions = flag("showSessions", d.showSessions),
+            showSessionBadges = flag("showSessionBadges", d.showSessionBadges),
+            showSessionSize = flag("showSessionSize", d.showSessionSize),
+            showCopy = flag("showCopy", d.showCopy),
+            showSelection = flag("showSelection", d.showSelection),
+            showSuggestions = flag("showSuggestions", d.showSuggestions),
+            showReadOnlyBanner = flag("showReadOnlyBanner", d.showReadOnlyBanner),
+            showPendingBanner = flag("showPendingBanner", d.showPendingBanner),
+            showSteerHint = flag("showSteerHint", d.showSteerHint),
+            showStatusBar = flag("showStatusBar", d.showStatusBar),
+            assistantAvatar = flag("assistantAvatar", d.assistantAvatar),
+            messageAvatarSize = size("messageAvatarSize", d.messageAvatarSize, 12..64),
+            bubbleMaxWidthDp = size("bubbleMaxWidthDp", d.bubbleMaxWidthDp, 200..1200),
+            toolSummaryLines = size("toolSummaryLines", d.toolSummaryLines, 1..20),
+            toolExpandedLines = size("toolExpandedLines", d.toolExpandedLines, 20..2000),
+            codeFenceMaxLines = size("codeFenceMaxLines", d.codeFenceMaxLines, 20..2000),
+            tableMaxLines = size("tableMaxLines", d.tableMaxLines, 1..20),
+            composerButtonSize = size("composerButtonSize", d.composerButtonSize, 32..72),
+        )
+    }
+
+    private fun parseIcons(text: String, warnings: MutableList<String>): Map<String, String> {
+        val json = try {
+            JSONObject(text)
+        } catch (e: Exception) {
+            warnings.add("icons.json 解析失败: ${e.message}")
+            return emptyMap()
+        }
+        val out = mutableMapOf<String, String>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = json.optString(key, "")
+            if (value.isNotBlank()) out[key] = value.trim()
+        }
+        return out
+    }
+
+    private fun JSONObject.colorOrNull(name: String, warnings: MutableList<String>): Color? {
+        if (!has(name)) return null
+        val raw = optString(name, "")
+        if (raw.isBlank()) return null
+        return try {
+            Color(AndroidColor.parseColor(raw))
+        } catch (e: Exception) {
+            warnings.add("$name=$raw 不是有效颜色")
+            null
+        }
     }
 
     private fun JSONObject.color(name: String, fallback: Color, warnings: MutableList<String>): Color {

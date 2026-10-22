@@ -4,6 +4,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
@@ -13,6 +15,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.linuxwff.pigapp.TypeScale
 import com.linuxwff.pigapp.UiPack
+
+/** The effective pack, so any component can read strings/components/extra tokens. */
+val LocalUiPack = staticCompositionLocalOf { UiPack() }
 
 private fun pigTypography(types: TypeScale): Typography {
     fun style(size: Int, weight: FontWeight? = null, lineHeight: Float = types.lineHeight): TextStyle =
@@ -51,9 +56,13 @@ private fun pigTypography(types: TypeScale): Typography {
 @Composable
 fun PigTheme(pack: UiPack, content: @Composable () -> Unit) {
     val t = pack.theme
-    val onPrimary = if (t.primary.luminance() > 0.55f) Color(0xFF0B0A12) else Color.White
-    val onSecondary = if (t.secondary.luminance() > 0.55f) Color(0xFF00202A) else Color.White
-    val onAccent = if (t.accent.luminance() > 0.55f) Color(0xFF04131A) else Color.White
+    val onPrimary = t.onPrimary
+        ?: if (t.primary.luminance() > 0.55f) Color(0xFF0B0A12) else Color.White
+    val onSecondary = t.onSecondary
+        ?: if (t.secondary.luminance() > 0.55f) Color(0xFF00202A) else Color.White
+    val onAccent = t.onAccent
+        ?: if (t.accent.luminance() > 0.55f) Color(0xFF04131A) else Color.White
+    CompositionLocalProvider(LocalUiPack provides pack) {
     MaterialTheme(
         colorScheme = darkColorScheme(
             primary = t.primary,
@@ -79,14 +88,15 @@ fun PigTheme(pack: UiPack, content: @Composable () -> Unit) {
             surfaceContainerHighest = t.surfaceVariant,
             surfaceBright = t.surfaceVariant,
             surfaceDim = t.background,
-            outline = t.textMuted.copy(alpha = 0.4f),
-            outlineVariant = t.textMuted.copy(alpha = 0.18f),
+            outline = t.outline ?: t.textMuted.copy(alpha = 0.4f),
+            outlineVariant = t.outlineVariant ?: t.textMuted.copy(alpha = 0.18f),
             error = t.danger,
             errorContainer = t.danger.copy(alpha = 0.16f).compositeOver(t.background),
             onErrorContainer = t.text,
-            scrim = Color.Black.copy(alpha = 0.62f),
+            scrim = t.scrim,
         ),
         typography = pigTypography(pack.types),
         content = content,
     )
+    }
 }

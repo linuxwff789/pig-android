@@ -154,6 +154,7 @@ fun PigApp(vm: AppViewModel) {
         }
     }
     var showSettings by remember { mutableStateOf(false) }
+    val components = packComponents()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -209,7 +210,7 @@ fun PigApp(vm: AppViewModel) {
                 snackbarHost = { SnackbarHost(snackbar) },
                 topBar = {
                     PigHeader(
-                        title = ui.titleOverride ?: "Pig",
+                        title = ui.titleOverride ?: packText("header.title", "Pig"),
                         connected = ui.connected,
                         model = ui.model,
                         showUsage = ui.uiPack.layout.showUsage,
@@ -232,7 +233,7 @@ fun PigApp(vm: AppViewModel) {
                     ) {
                         InlineWindows(ui.windows, "aboveComposer", vm)
                         WidgetPane(ui.widgets, "aboveEditor", vm)
-                        if (ui.pendingMessages > 0) {
+                        if (ui.pendingMessages > 0 && components.showPendingBanner) {
                             PendingBanner(ui.pendingMessages)
                         }
                         Composer(
@@ -265,13 +266,13 @@ fun PigApp(vm: AppViewModel) {
                         ui.error?.let { ErrorBanner(it, vm::dismissError) }
                     }
                     AnimatedVisibility(
-                        visible = ui.status.isNotBlank(),
+                        visible = components.showStatusBar && ui.status.isNotBlank(),
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically(),
                     ) {
                         StatusBar(ui.status)
                     }
-                    if (ui.readOnly) {
+                    if (ui.readOnly && components.showReadOnlyBanner) {
                         ReadOnlyBanner()
                     }
                     MessageList(
@@ -301,7 +302,10 @@ fun PigApp(vm: AppViewModel) {
     }
 
     ui.pendingSwitch?.let { session ->
-        val title = session.name.ifBlank { session.preview.ifBlank { "未命名会话" } }
+        val title = session.name.ifBlank {
+        session.preview.ifBlank { packText("session.untitled", "未命名会话") }
+    }
+    val components = packComponents()
         AlertDialog(
             onDismissRequest = vm::cancelSwitch,
             shape = RoundedCornerShape(24.dp),
@@ -343,6 +347,7 @@ private fun PigHeader(
     onStop: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val components = packComponents()
     Column(
         Modifier
             .fillMaxWidth()
@@ -367,13 +372,15 @@ private fun PigHeader(
             ) {
                 IconButton(onClick = onMenu) {
                     Icon(
-                        Icons.Default.Menu,
-                        contentDescription = "菜单",
+                        packIcon("menu", "menu"),
+                        contentDescription = packText("a11y.menu", "菜单"),
                         tint = scheme.onSurfaceVariant,
                     )
                 }
-                BrandAvatar(36.dp)
-                Spacer(Modifier.width(10.dp))
+                if (components.showHeaderAvatar) {
+                    BrandAvatar(components.headerAvatarSize.dp)
+                    Spacer(Modifier.width(10.dp))
+                }
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -383,14 +390,19 @@ private fun PigHeader(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Spacer(Modifier.width(8.dp))
-                        ConnectionDot(connected)
-                        Spacer(Modifier.width(5.dp))
-                        Text(
-                            if (connected) "在线" else "离线",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (connected) scheme.tertiary else scheme.onSurfaceVariant,
-                        )
+                        if (components.showHeaderOnline) {
+                            Spacer(Modifier.width(8.dp))
+                            ConnectionDot(connected)
+                            Spacer(Modifier.width(5.dp))
+                            Text(
+                                packText(
+                                    if (connected) "header.online" else "header.offline",
+                                    if (connected) "在线" else "离线",
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (connected) scheme.tertiary else scheme.onSurfaceVariant,
+                            )
+                        }
                     }
                     Spacer(Modifier.height(2.dp))
                     Row(
@@ -401,7 +413,7 @@ private fun PigHeader(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            model.ifBlank { "点击选择模型" },
+                            model.ifBlank { packText("header.modelEmpty", "点击选择模型") },
                             modifier = Modifier.weight(1f, fill = false),
                             style = MaterialTheme.typography.labelSmall,
                             color = if (connected) scheme.secondary else scheme.onSurfaceVariant,
@@ -428,7 +440,7 @@ private fun PigHeader(
                         }
                         Spacer(Modifier.width(2.dp))
                         Icon(
-                            Icons.Default.KeyboardArrowDown,
+                            packIcon("chevronDown", "down"),
                             contentDescription = null,
                             modifier = Modifier.size(14.dp),
                             tint = scheme.onSurfaceVariant,
@@ -437,7 +449,11 @@ private fun PigHeader(
                 }
                 if (busy) {
                     IconButton(onClick = onStop) {
-                        Icon(Icons.Default.Stop, contentDescription = "停止", tint = scheme.primary)
+                        Icon(
+                            packIcon("stop", "stop"),
+                            contentDescription = packText("a11y.stop", "停止"),
+                            tint = scheme.primary,
+                        )
                     }
                 }
                 IconButton(onClick = onReconnect) {
@@ -764,6 +780,7 @@ private fun DrawerContent(
 ) {
     val scheme = MaterialTheme.colorScheme
     val corner = ui.uiPack.theme.cornerRadius
+    val components = packComponents()
     var sessionQuery by remember { mutableStateOf("") }
     var renameTarget by remember { mutableStateOf<SessionInfo?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -788,7 +805,7 @@ private fun DrawerContent(
             .padding(top = 20.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Box(
+        if (components.showDrawerBrand) Box(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(corner.dp))
@@ -809,12 +826,12 @@ private fun DrawerContent(
                     Spacer(Modifier.width(12.dp))
                     Column {
                         Text(
-                            "Pig",
+                            packText("header.title", "Pig"),
                             style = MaterialTheme.typography.titleLarge.copy(brush = brandBrush()),
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            "Termux 里的本地 coding agent",
+                            packText("drawer.tagline", "Termux 里的本地 coding agent"),
                             style = MaterialTheme.typography.labelSmall,
                             color = scheme.onSurfaceVariant,
                         )
@@ -822,23 +839,26 @@ private fun DrawerContent(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     InfoPill(
-                        text = if (ui.connected) "在线" else "离线",
+                        text = packText(
+                            if (ui.connected) "header.online" else "header.offline",
+                            if (ui.connected) "在线" else "离线",
+                        ),
                         color = if (ui.connected) scheme.tertiary else scheme.onSurfaceVariant,
                     )
                     InfoPill(
-                        text = ui.model.substringAfter('/').ifBlank { "无模型" },
+                        text = ui.model.substringAfter('/').ifBlank { packText("header.noModel", "无模型") },
                         color = scheme.secondary,
                     )
                     if (ui.sessionId.isNotBlank()) {
-                        InfoPill(text = "会话 ${ui.sessionId.take(6)}")
+                        InfoPill(text = packText("drawer.sessionPill", "会话 {id}").replace("{id}", ui.sessionId.take(6)))
                     }
                 }
             }
         }
 
         GradientButton(
-            text = "新会话",
-            icon = Icons.Default.Add,
+            text = packText("drawer.newSession", "新会话"),
+            icon = packIcon("add", "add"),
             cornerRadius = corner,
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -853,14 +873,14 @@ private fun DrawerContent(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(corner.dp),
         ) {
-            Icon(Icons.Default.Settings, null, modifier = Modifier.size(16.dp))
+            Icon(packIcon("settings", "settings"), null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
-            Text("设置")
+            Text(packText("drawer.settings", "设置"))
         }
 
         val drawerNav = ui.uiPack.nav.filter { it.placement != "settings" }
-        if (drawerNav.isNotEmpty()) {
-            SectionLabel("面板")
+        if (components.showPanels && drawerNav.isNotEmpty()) {
+            SectionLabel(packText("drawer.panels", "面板"))
             drawerNav.forEach { item ->
                 OutlinedButton(
                     onClick = {
@@ -881,20 +901,21 @@ private fun DrawerContent(
             }
         }
 
+        if (components.showSessions) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(top = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SectionLabel("最近会话", Modifier.weight(1f))
+            SectionLabel(packText("drawer.recent", "最近会话"), Modifier.weight(1f))
             IconButton(
                 onClick = { vm.requestSessions() },
                 modifier = Modifier.size(30.dp),
             ) {
                 Icon(
-                    Icons.Default.Refresh,
-                    contentDescription = "刷新会话",
+                    packIcon("refresh", "refresh"),
+                    contentDescription = packText("a11y.refreshSessions", "刷新会话"),
                     modifier = Modifier.size(15.dp),
                     tint = scheme.onSurfaceVariant,
                 )
@@ -916,13 +937,18 @@ private fun DrawerContent(
             shape = RoundedCornerShape((corner / 2).coerceAtLeast(8).dp),
             leadingIcon = {
                 Icon(
-                    Icons.Default.Search,
+                    packIcon("search", "search"),
                     contentDescription = null,
                     modifier = Modifier.size(15.dp),
                     tint = scheme.onSurfaceVariant,
                 )
             },
-            placeholder = { Text("搜索会话…", style = MaterialTheme.typography.labelSmall) },
+            placeholder = {
+                Text(
+                    packText("drawer.search", "搜索会话…"),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = scheme.primary.copy(alpha = 0.6f),
                 unfocusedBorderColor = scheme.outline.copy(alpha = 0.25f),
@@ -952,7 +978,11 @@ private fun DrawerContent(
             if (shownSessions.isEmpty()) {
                 item {
                     Text(
-                        if (ui.sessions.isEmpty()) "没有可切换的会话" else "没有匹配的会话",
+                        if (ui.sessions.isEmpty()) {
+                            packText("drawer.empty", "没有可切换的会话")
+                        } else {
+                            packText("drawer.noMatch", "没有匹配的会话")
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant,
                     )
@@ -960,18 +990,19 @@ private fun DrawerContent(
             }
         }
 
+        }
         Spacer(Modifier.height(10.dp))
 
         renameTarget?.let { target ->
             AlertDialog(
                 onDismissRequest = { renameTarget = null },
-                title = { Text("重命名会话") },
+                title = { Text(packText("session.renameTitle", "重命名会话")) },
                 text = {
                     OutlinedTextField(
                         value = renameText,
                         onValueChange = { renameText = it },
                         singleLine = true,
-                        label = { Text("名称（留空清除）") },
+                        label = { Text(packText("session.nameLabel", "名称（留空清除）")) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 },
@@ -981,26 +1012,38 @@ private fun DrawerContent(
                             vm.renameSession(target, renameText)
                             renameTarget = null
                         },
-                    ) { Text("保存") }
+                    ) { Text(packText("session.save", "保存")) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { renameTarget = null }) { Text("取消") }
+                    TextButton(onClick = { renameTarget = null }) {
+                        Text(packText("session.cancel", "取消"))
+                    }
                 },
             )
         }
         deleteTarget?.let { target ->
             AlertDialog(
                 onDismissRequest = { deleteTarget = null },
-                title = { Text("删除会话？") },
+                title = { Text(packText("session.deleteTitle", "删除会话？")) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
-                            "将删除「${target.name.ifBlank { target.preview.ifBlank { target.id.take(8) } }}" +
-                                "」的会话文件，不可恢复。",
+                            packText(
+                                "session.deleteBody",
+                                "将删除「{name}」的会话文件，不可恢复。",
+                            ).replace(
+                                "{name}",
+                                target.name.ifBlank {
+                                    target.preview.ifBlank { target.id.take(8) }
+                                },
+                            ),
                         )
                         if (System.currentTimeMillis() - target.updated < 60_000) {
                             Text(
-                                "这个会话刚刚被修改过，可能还有其他 pig 进程在使用它。",
+                                packText(
+                                    "session.deleteRecent",
+                                    "这个会话刚刚被修改过，可能还有其他 pig 进程在使用它。",
+                                ),
                                 color = scheme.error,
                                 style = MaterialTheme.typography.labelSmall,
                             )
@@ -1013,10 +1056,12 @@ private fun DrawerContent(
                             vm.deleteSession(target)
                             deleteTarget = null
                         },
-                    ) { Text("删除", color = scheme.error) }
+                    ) { Text(packText("session.delete", "删除"), color = scheme.error) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { deleteTarget = null }) { Text("取消") }
+                    TextButton(onClick = { deleteTarget = null }) {
+                        Text(packText("session.cancel", "取消"))
+                    }
                 },
             )
         }
@@ -1044,10 +1089,10 @@ private fun navIcon(name: String) = when (name.lowercase()) {
 private fun SessionBadge(session: SessionInfo) {
     val scheme = MaterialTheme.colorScheme
     val (label, color) = when {
-        session.busy -> "运行中" to scheme.tertiary
-        session.live -> "已打开" to scheme.secondary
-        session.visited -> "开过" to scheme.onSurfaceVariant
-        else -> "历史" to scheme.onSurfaceVariant.copy(alpha = 0.75f)
+        session.busy -> packText("session.busy", "运行中") to scheme.tertiary
+        session.live -> packText("session.live", "已打开") to scheme.secondary
+        session.visited -> packText("session.visited", "开过") to scheme.onSurfaceVariant
+        else -> packText("session.history", "历史") to scheme.onSurfaceVariant.copy(alpha = 0.75f)
     }
     Row(
         modifier = Modifier
@@ -1089,7 +1134,7 @@ private fun ReadOnlyBanner() {
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            "历史会话 · 发送消息后启动后端",
+            packText("banner.readOnly", "历史会话 · 发送消息后启动后端"),
             style = MaterialTheme.typography.labelSmall,
             color = scheme.onSurfaceVariant,
         )
@@ -1105,7 +1150,10 @@ private fun SessionRow(
     onRename: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val title = session.name.ifBlank { session.preview.ifBlank { "未命名会话" } }
+    val title = session.name.ifBlank {
+        session.preview.ifBlank { packText("session.untitled", "未命名会话") }
+    }
+    val components = packComponents()
     val scheme = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(cornerRadius.dp)
     var menuOpen by remember { mutableStateOf(false) }
@@ -1136,14 +1184,16 @@ private fun SessionRow(
             )
             Text(
                 "${session.id.take(8)} · ${DateUtils.getRelativeTimeSpanString(session.updated)}" +
-                    " · ${session.size / 1024}K",
+                    if (components.showSessionSize) " · ${session.size / 1024}K" else "",
                 maxLines = 1,
                 style = MaterialTheme.typography.labelSmall,
                 color = scheme.onSurfaceVariant,
             )
         }
-        SessionBadge(session)
-        Spacer(Modifier.width(2.dp))
+        if (components.showSessionBadges) {
+            SessionBadge(session)
+            Spacer(Modifier.width(2.dp))
+        }
         if (current) {
             Icon(
                 Icons.Default.Check,
@@ -1158,17 +1208,17 @@ private fun SessionRow(
                 modifier = Modifier.size(28.dp),
             ) {
                 Icon(
-                    Icons.Default.MoreVert,
-                    contentDescription = "会话操作",
+                    packIcon("more", "more"),
+                    contentDescription = packText("a11y.sessionActions", "会话操作"),
                     modifier = Modifier.size(16.dp),
                     tint = scheme.onSurfaceVariant,
                 )
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 DropdownMenuItem(
-                    text = { Text("重命名") },
+                    text = { Text(packText("session.rename", "重命名")) },
                     leadingIcon = {
-                        Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp))
+                        Icon(packIcon("edit", "edit"), null, modifier = Modifier.size(16.dp))
                     },
                     onClick = {
                         menuOpen = false
@@ -1176,11 +1226,19 @@ private fun SessionRow(
                     },
                 )
                 DropdownMenuItem(
-                    text = { Text(if (current) "当前会话不可删除" else "删除") },
+                    text = {
+                        Text(
+                            if (current) {
+                                packText("session.currentNoDelete", "当前会话不可删除")
+                            } else {
+                                packText("session.delete", "删除")
+                            },
+                        )
+                    },
                     enabled = !current,
                     leadingIcon = {
                         Icon(
-                            Icons.Default.Delete,
+                            packIcon("delete", "delete"),
                             null,
                             modifier = Modifier.size(16.dp),
                             tint = if (current) scheme.onSurfaceVariant else scheme.error,
@@ -1247,6 +1305,7 @@ private fun ToolGroupCard(
     onToolModeAll: (String) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val theme = packTheme()
     val name = tools.first().toolName ?: "tool"
     val running = tools.any { it.running }
     val errors = tools.count { it.isError }
@@ -1255,7 +1314,7 @@ private fun ToolGroupCard(
     Surface(
         color = scheme.surface,
         shape = shape,
-        border = BorderStroke(1.dp, scheme.outline.copy(alpha = 0.6f)),
+        border = BorderStroke(1.dp, scheme.outline.copy(alpha = theme.cardBorderAlpha)),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(10.dp)) {
@@ -1275,7 +1334,7 @@ private fun ToolGroupCard(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        Icons.Default.Build,
+                        packIcon("tool", "build"),
                         contentDescription = null,
                         modifier = Modifier.size(14.dp),
                         tint = scheme.secondary,
@@ -1283,11 +1342,25 @@ private fun ToolGroupCard(
                 }
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("$name × ${tools.size}", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        packText("tool.groupHeader", "{tool} × {count}")
+                            .replace("{tool}", name)
+                            .replace("{count}", tools.size.toString()),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
                     Text(
                         buildString {
-                            append("${tools.size} 次调用")
-                            if (errors > 0) append(" · $errors 失败")
+                            append(
+                                packText("tool.groupCount", "{count} 次调用")
+                                    .replace("{count}", tools.size.toString()),
+                            )
+                            if (errors > 0) {
+                                append(" · ")
+                                append(
+                                    packText("tool.groupErrors", "{count} 失败")
+                                        .replace("{count}", errors.toString()),
+                                )
+                            }
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant,
@@ -1301,12 +1374,16 @@ private fun ToolGroupCard(
                 }
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    if (expanded) "收起" else "展开",
+                    if (expanded) {
+                        packText("tool.collapse", "收起")
+                    } else {
+                        packText("tool.expand", "展开")
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = scheme.primary,
                 )
                 Icon(
-                    if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    packIcon(if (expanded) "chevronUp" else "chevronDown", if (expanded) "up" else "down"),
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
                     tint = scheme.primary,
@@ -1466,7 +1543,7 @@ private fun MessageList(
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        "回到底部",
+                        packText("chat.jumpBottom", "回到底部"),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
@@ -1485,6 +1562,11 @@ private val suggestions = listOf(
 @Composable
 private fun EmptyState(onSuggestion: (String) -> Unit) {
     val scheme = MaterialTheme.colorScheme
+    val components = packComponents()
+    val packSuggestions = packText(
+        "empty.suggestions",
+        "这个项目是做什么的？|看看有哪些可以改进的地方|帮我跑一下测试",
+    ).split("|").map { it.trim() }.filter { it.isNotEmpty() }
     Box(
         Modifier
             .fillMaxSize()
@@ -1507,18 +1589,19 @@ private fun EmptyState(onSuggestion: (String) -> Unit) {
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                "开始聊天",
+                packText("empty.title", "开始聊天"),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold,
             )
-            Spacer(Modifier.height(5.dp))
-            Text(
-                "在下面输入，或试试：",
-                style = MaterialTheme.typography.bodyMedium,
-                color = scheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(18.dp))
-            suggestions.forEach { text ->
+            if (components.showSuggestions) {
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    packText("empty.hint", "在下面输入，或试试："),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(18.dp))
+                packSuggestions.forEach { text ->
                 Surface(
                     shape = CircleShape,
                     color = scheme.surface,
@@ -1533,6 +1616,7 @@ private fun EmptyState(onSuggestion: (String) -> Unit) {
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
+                }
             }
         }
     }
@@ -1542,8 +1626,8 @@ private fun EmptyState(onSuggestion: (String) -> Unit) {
 private fun CopyButton(onClick: () -> Unit) {
     IconButton(onClick = onClick, modifier = Modifier.size(26.dp)) {
         Icon(
-            Icons.Default.ContentCopy,
-            contentDescription = "复制",
+            packIcon("copy", "copy"),
+            contentDescription = packText("a11y.copy", "复制"),
             modifier = Modifier.size(14.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1563,9 +1647,11 @@ private fun MessageRow(
     onCopy: (String) -> Unit,
     onToolModeAll: (String) -> Unit,
 ) {
+    val components = packComponents()
+    val theme = packTheme()
     when (message.role) {
         Role.USER -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            val shape = RoundedCornerShape(
+            val shape = theme.bubbleRadius?.let { RoundedCornerShape(it.dp) } ?: RoundedCornerShape(
                 topStart = (cornerRadius + 4).dp,
                 topEnd = (cornerRadius + 4).dp,
                 bottomEnd = if (cornerRadius == 0) 0.dp else 5.dp,
@@ -1576,11 +1662,11 @@ private fun MessageRow(
             val bubble: @Composable () -> Unit = {
                 Box(
                     Modifier
-                        .widthIn(max = 520.dp)
+                        .widthIn(max = components.bubbleMaxWidthDp.dp)
                         .then(
                             if (bubbleShadow) {
                                 Modifier.shadow(
-                                    8.dp,
+                                    theme.bubbleElevation.dp,
                                     shape,
                                     ambientColor = scheme.primary,
                                     spotColor = scheme.primary,
@@ -1593,13 +1679,13 @@ private fun MessageRow(
                         .background(
                             Brush.linearGradient(
                                 listOf(
-                                    scheme.primary.copy(alpha = 0.30f),
-                                    scheme.tertiary.copy(alpha = 0.16f),
+                                    (theme.bubbleStart ?: scheme.primary).copy(alpha = theme.bubbleStartAlpha),
+                                    (theme.bubbleEnd ?: scheme.tertiary).copy(alpha = theme.bubbleEndAlpha),
                                 ),
                             ),
                             shape,
                         )
-                        .border(1.dp, scheme.primary.copy(alpha = 0.32f), shape)
+                        .border(1.dp, scheme.primary.copy(alpha = theme.bubbleBorderAlpha), shape)
                         .padding(horizontal = 14.dp, vertical = 11.dp),
                 ) {
                     Text(
@@ -1611,22 +1697,34 @@ private fun MessageRow(
             }
             Box(
                 Modifier.pointerInput(message.id) {
-                    detectTapGestures(onLongPress = { selecting = true })
+                    detectTapGestures(
+                        onLongPress = {
+                            if (components.showSelection) selecting = true
+                        },
+                    )
                 },
             ) {
-                if (selecting) SelectionContainer { bubble() } else bubble()
+                if (selecting && components.showSelection) {
+                    SelectionContainer { bubble() }
+                } else {
+                    bubble()
+                }
             }
-            if (selecting) {
-                TextButton(onClick = { selecting = false }) { Text("完成") }
+            if (selecting && components.showSelection) {
+                TextButton(onClick = { selecting = false }) {
+                    Text(packText("chat.done", "完成"))
+                }
             }
-            if (message.text.isNotBlank()) {
+            if (components.showCopy && message.text.isNotBlank()) {
                 CopyButton { onCopy(message.text) }
             }
         }
 
         Role.ASSISTANT -> Row(Modifier.fillMaxWidth()) {
-            BrandAvatar(24.dp, shadow = avatarShadow)
-            Spacer(Modifier.width(9.dp))
+            if (components.assistantAvatar) {
+                BrandAvatar(components.messageAvatarSize.dp, shadow = avatarShadow)
+                Spacer(Modifier.width(9.dp))
+            }
             Column(Modifier.weight(1f)) {
                 var selecting by remember(message.id) { mutableStateOf(false) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1636,10 +1734,12 @@ private fun MessageRow(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f),
                     )
-                    if (selecting) {
-                        TextButton(onClick = { selecting = false }) { Text("完成") }
+                    if (selecting && components.showSelection) {
+                        TextButton(onClick = { selecting = false }) {
+                            Text(packText("chat.done", "完成"))
+                        }
                     }
-                    if (message.text.isNotBlank()) {
+                    if (components.showCopy && message.text.isNotBlank()) {
                         CopyButton { onCopy(message.text) }
                     }
                 }
@@ -1667,10 +1767,18 @@ private fun MessageRow(
                     Modifier
                         .fillMaxWidth()
                         .pointerInput(message.id) {
-                            detectTapGestures(onLongPress = { selecting = true })
+                            detectTapGestures(
+                                onLongPress = {
+                                    if (components.showSelection) selecting = true
+                                },
+                            )
                         },
                 ) {
-                    if (selecting) SelectionContainer { content() } else content()
+                    if (selecting && components.showSelection) {
+                        SelectionContainer { content() }
+                    } else {
+                        content()
+                    }
                 }
             }
         }
@@ -1733,13 +1841,15 @@ private fun ToolCard(
         )
     }
     val scheme = MaterialTheme.colorScheme
+    val components = packComponents()
+    val theme = packTheme()
 
     if (viewMode == ToolMode.COLLAPSED) {
         // Collapsed is deliberately minimal: tool name only, tap to see details.
         Surface(
             color = scheme.surface,
             shape = RoundedCornerShape(cornerRadius.dp),
-            border = BorderStroke(1.dp, scheme.outline.copy(alpha = 0.6f)),
+            border = BorderStroke(1.dp, scheme.outline.copy(alpha = theme.cardBorderAlpha)),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(
@@ -1757,7 +1867,7 @@ private fun ToolCard(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        Icons.Default.Build,
+                        packIcon("tool", "build"),
                         contentDescription = null,
                         modifier = Modifier.size(14.dp),
                         tint = scheme.secondary,
@@ -1776,16 +1886,16 @@ private fun ToolCard(
                         modifier = Modifier.size(14.dp),
                         strokeWidth = 2.dp,
                     )
-                    message.isError -> InfoPill(text = "失败", color = scheme.error)
+                    message.isError -> InfoPill(text = packText("tool.failed", "失败"), color = scheme.error)
                 }
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    "展开",
+                    packText("tool.expand", "展开"),
                     style = MaterialTheme.typography.labelSmall,
                     color = scheme.primary,
                 )
                 Icon(
-                    Icons.Default.KeyboardArrowDown,
+                    packIcon("chevronDown", "down"),
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
                     tint = scheme.primary,
@@ -1798,7 +1908,7 @@ private fun ToolCard(
     Surface(
         color = scheme.surface,
         shape = RoundedCornerShape(cornerRadius.dp),
-        border = BorderStroke(1.dp, scheme.outline.copy(alpha = 0.6f)),
+        border = BorderStroke(1.dp, scheme.outline.copy(alpha = theme.cardBorderAlpha)),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(12.dp)) {
@@ -1811,7 +1921,7 @@ private fun ToolCard(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        Icons.Default.Build,
+                        packIcon("tool", "build"),
                         contentDescription = null,
                         modifier = Modifier.size(15.dp),
                         tint = scheme.secondary,
@@ -1833,7 +1943,7 @@ private fun ToolCard(
                         modifier = Modifier.size(15.dp),
                         strokeWidth = 2.dp,
                     )
-                    message.isError -> InfoPill(text = "失败", color = scheme.error)
+                    message.isError -> InfoPill(text = packText("tool.failed", "失败"), color = scheme.error)
                 }
             }
             Row(
@@ -1851,21 +1961,21 @@ private fun ToolCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 ToolModeChip(
-                    "收起",
+                    packText("tool.collapse", "收起"),
                     viewMode == ToolMode.COLLAPSED,
                     cornerRadius,
                     onClick = { viewMode = ToolMode.COLLAPSED },
                     onLongClick = { onToolModeAll("collapsed") },
                 )
                 ToolModeChip(
-                    "摘要",
+                    packText("tool.summary", "摘要"),
                     viewMode == ToolMode.SUMMARY,
                     cornerRadius,
                     onClick = { viewMode = ToolMode.SUMMARY },
                     onLongClick = { onToolModeAll("summary") },
                 )
                 ToolModeChip(
-                    "展开",
+                    packText("tool.expand", "展开"),
                     viewMode == ToolMode.EXPANDED,
                     cornerRadius,
                     onClick = { viewMode = ToolMode.EXPANDED },
@@ -1879,27 +1989,45 @@ private fun ToolCard(
                     Spacer(Modifier.height(6.dp))
                     when {
                         message.running -> Text(
-                            "运行中…",
+                            packText("tool.running", "运行中…"),
                             style = MaterialTheme.typography.labelSmall,
                             color = scheme.onSurfaceVariant,
                         )
                         view.diff.isNotBlank() -> DiffBlock(
-                            view.diff.lineSequence().take(6).joinToString("\n"),
+                            view.diff.lineSequence().take(components.toolSummaryLines).joinToString("\n"),
                             cornerRadius,
+                            components.toolSummaryLines,
                         )
-                        view.summary.isNotBlank() -> CodeBlock(view.summary, cornerRadius)
-                        view.expanded.isNotBlank() -> CodeBlock(
-                            view.expanded.lineSequence().take(4).joinToString("\n"),
+                        view.summary.isNotBlank() -> CodeBlock(
+                            view.summary,
                             cornerRadius,
+                            components.toolSummaryLines,
+                        )
+                        view.expanded.isNotBlank() -> CodeBlock(
+                            view.expanded,
+                            cornerRadius,
+                            components.toolSummaryLines,
                         )
                     }
                 }
                 ToolMode.EXPANDED -> {
                     Spacer(Modifier.height(6.dp))
                     when {
-                        view.diff.isNotBlank() -> DiffBlock(view.diff, cornerRadius)
-                        view.expanded.isNotBlank() -> CodeBlock(view.expanded, cornerRadius)
-                        view.summary.isNotBlank() -> CodeBlock(view.summary, cornerRadius)
+                        view.diff.isNotBlank() -> DiffBlock(
+                            view.diff,
+                            cornerRadius,
+                            components.toolExpandedLines,
+                        )
+                        view.expanded.isNotBlank() -> CodeBlock(
+                            view.expanded,
+                            cornerRadius,
+                            components.toolExpandedLines,
+                        )
+                        view.summary.isNotBlank() -> CodeBlock(
+                            view.summary,
+                            cornerRadius,
+                            components.toolExpandedLines,
+                        )
                     }
                 }
             }
@@ -1937,11 +2065,11 @@ private fun ToolModeChip(
 }
 
 @Composable
-private fun CodeBlock(text: String, cornerRadius: Int) {
+private fun CodeBlock(text: String, cornerRadius: Int, maxLines: Int = 200) {
     if (text.isBlank()) return
-    val body = remember(text) {
-        val shown = text.lineSequence().take(200).toList()
-        val truncated = text.lineSequence().count() > 200
+    val body = remember(text, maxLines) {
+        val shown = text.lineSequence().take(maxLines).toList()
+        val truncated = text.lineSequence().count() > maxLines
         shown.joinToString("\n").ifEmpty { " " } + if (truncated) "\n…" else ""
     }
     val scheme = MaterialTheme.colorScheme
@@ -1965,16 +2093,17 @@ private fun CodeBlock(text: String, cornerRadius: Int) {
 }
 
 @Composable
-private fun DiffBlock(diff: String, cornerRadius: Int) {
+private fun DiffBlock(diff: String, cornerRadius: Int, maxLines: Int = 200) {
     if (diff.isBlank()) return
     val scheme = MaterialTheme.colorScheme
-    val annotated = remember(diff, scheme.error, scheme.onSurfaceVariant) {
-        val lines = diff.lineSequence().take(200).toList()
-        val truncated = diff.lineSequence().count() > 200
+    val theme = packTheme()
+    val annotated = remember(diff, scheme.error, scheme.onSurfaceVariant, theme.success, maxLines) {
+        val lines = diff.lineSequence().take(maxLines).toList()
+        val truncated = diff.lineSequence().count() > maxLines
         buildAnnotatedString {
             lines.forEachIndexed { index, line ->
                 val color = when {
-                    line.startsWith("+") && !line.startsWith("+++") -> Color(0xFF4ADE80)
+                    line.startsWith("+") && !line.startsWith("+++") -> theme.success
                     line.startsWith("-") && !line.startsWith("---") -> scheme.error
                     else -> scheme.onSurfaceVariant
                 }
@@ -2025,7 +2154,8 @@ private fun PendingBanner(count: Int) {
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            "已插队，等待当前步骤 · $count",
+            packText("banner.pending", "已插队，等待当前步骤 · {count}")
+                .replace("{count}", count.toString()),
             style = MaterialTheme.typography.labelSmall,
             color = scheme.secondary,
         )
@@ -2046,6 +2176,8 @@ private fun Composer(
     onStop: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val components = packComponents()
+    val buttonSize = components.composerButtonSize.dp
     val canSend = connected && value.isNotBlank()
     val shape = RoundedCornerShape(
         topStart = (cornerRadius + 8).dp,
@@ -2070,7 +2202,11 @@ private fun Composer(
                     modifier = Modifier.weight(1f),
                     placeholder = {
                         Text(
-                            if (busy) "插队指令…" else layout.composerPlaceholder,
+                            if (busy) {
+                                packText("composer.steerPlaceholder", "插队指令…")
+                            } else {
+                                layout.composerPlaceholder
+                            },
                             color = scheme.onSurfaceVariant.copy(alpha = 0.75f),
                         )
                     },
@@ -2094,15 +2230,15 @@ private fun Composer(
                 if (busy) {
                     Box(
                         Modifier
-                            .size(46.dp)
+                            .size(buttonSize)
                             .clip(CircleShape)
                             .background(scheme.error.copy(alpha = 0.16f))
                             .clickable { onStop() },
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            Icons.Default.Stop,
-                            contentDescription = "停止",
+                            packIcon("stop", "stop"),
+                            contentDescription = packText("a11y.stop", "停止"),
                             modifier = Modifier.size(21.dp),
                             tint = scheme.error,
                         )
@@ -2111,7 +2247,7 @@ private fun Composer(
                         Spacer(Modifier.width(6.dp))
                         Box(
                             Modifier
-                                .size(46.dp)
+                                .size(buttonSize)
                                 .shadow(8.dp, CircleShape, ambientColor = scheme.primary, spotColor = scheme.primary)
                                 .clip(CircleShape)
                                 .background(brandBrush())
@@ -2124,17 +2260,17 @@ private fun Composer(
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
-                                Icons.Default.Send,
-                                contentDescription = "插队",
+                                packIcon("send", "send"),
+                                contentDescription = packText("a11y.steer", "插队"),
                                 modifier = Modifier.size(21.dp),
-                                tint = BrandInk,
+                                tint = MaterialTheme.colorScheme.onPrimary,
                             )
                         }
                     }
                 } else {
                     Box(
                         Modifier
-                            .size(46.dp)
+                            .size(buttonSize)
                             .then(
                                 if (canSend) {
                                     Modifier.shadow(8.dp, CircleShape, ambientColor = scheme.primary, spotColor = scheme.primary)
@@ -2148,17 +2284,17 @@ private fun Composer(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            Icons.Default.Send,
-                            contentDescription = "发送",
+                            packIcon("send", "send"),
+                            contentDescription = packText("a11y.send", "发送"),
                             modifier = Modifier.size(21.dp),
-                            tint = if (canSend) BrandInk else scheme.onSurfaceVariant,
+                            tint = if (canSend) MaterialTheme.colorScheme.onPrimary else scheme.onSurfaceVariant,
                         )
                     }
                 }
             }
-            if (busy && canSend) {
+            if (busy && canSend && components.showSteerHint) {
                 Text(
-                    "点发送=插队 · 长按=排队",
+                    packText("composer.steerHint", "点发送=插队 · 长按=排队"),
                     modifier = Modifier.padding(start = 6.dp, top = 4.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = scheme.onSurfaceVariant,
@@ -2166,7 +2302,7 @@ private fun Composer(
             }
             if (!connected) {
                 Text(
-                    "未连接 · 点右上角重连，或从菜单启动 relay",
+                    packText("composer.offline", "未连接 · 点右上角重连，或从菜单启动 relay"),
                     modifier = Modifier.padding(start = 6.dp, top = 6.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = scheme.onSurfaceVariant,
@@ -2290,6 +2426,15 @@ private fun PendingDialog(request: UiRequest, vm: AppViewModel) {
 @Composable
 private fun StatusBar(status: String) {
     val scheme = MaterialTheme.colorScheme
+    val label = when (status) {
+        "thinking" -> packText("status.thinking", "思考中")
+        "working" -> packText("status.working", "工作中")
+        "compacting" -> packText("status.compacting", "压缩上下文")
+        "retrying" -> packText("status.retrying", "重试中")
+        "switching" -> packText("status.switching", "切换中")
+        "restoring" -> packText("status.restoring", "恢复中")
+        else -> status
+    }
     Row(
         Modifier
             .padding(horizontal = 14.dp, vertical = 5.dp)
@@ -2305,7 +2450,7 @@ private fun StatusBar(status: String) {
         )
         Spacer(Modifier.width(9.dp))
         Text(
-            status,
+            label,
             style = MaterialTheme.typography.labelSmall,
             color = scheme.onSurfaceVariant,
             maxLines = 1,

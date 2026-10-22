@@ -1,0 +1,87 @@
+{
+  "header": {
+    "title": "Pig",
+    "online": "在线",
+    "offline": "离线",
+    "modelEmpty": "点击选择模型",
+    "noModel": "无模型"
+  },
+  "drawer": {
+    "tagline": "Termux 里的本地 coding agent",
+    "newSession": "新会话",
+    "settings": "设置",
+    "panels": "面板",
+    "recent": "最近会话",
+    "search": "搜索会话…",
+    "empty": "没有可切换的会话",
+    "noMatch": "没有匹配的会话",
+    "sessionPill": "会话 {id}"
+  },
+  "session": {
+    "untitled": "未命名会话",
+    "busy": "运行中",
+    "live": "已打开",
+    "visited": "开过",
+    "history": "历史",
+    "rename": "重命名",
+    "delete": "删除",
+    "currentNoDelete": "当前会话不可删除",
+    "renameTitle": "重命名会话",
+    "nameLabel": "名称（留空清除）",
+    "save": "保存",
+    "cancel": "取消",
+    "deleteTitle": "删除会话？",
+    "deleteBody": "将删除「{name}」的会话文件，不可恢复。",
+    "deleteRecent": "这个会话刚刚被修改过，可能还有其他 pig 进程在使用它。"
+  },
+  "status": {
+    "thinking": "思考中",
+    "working": "工作中",
+    "compacting": "压缩上下文",
+    "retrying": "重试中",
+    "switching": "切换中",
+    "restoring": "恢复中"
+  },
+  "tool": {
+    "running": "运行中…",
+    "failed": "失败",
+    "collapse": "收起",
+    "summary": "摘要",
+    "expand": "展开",
+    "groupHeader": "{tool} × {count}",
+    "groupCount": "{count} 次调用",
+    "groupErrors": "{count} 失败"
+  },
+  "markdown": {
+    "code": "code",
+    "lines": "{count} 行"
+  },
+  "empty": {
+    "title": "开始聊天",
+    "hint": "在下面输入，或试试：",
+    "suggestions": "这个项目是做什么的？|看看有哪些可以改进的地方|帮我跑一下测试"
+  },
+  "chat": {
+    "done": "完成",
+    "jumpBottom": "回到底部"
+  },
+  "banner": {
+    "readOnly": "历史会话 · 发送消息后启动后端",
+    "pending": "已插队，等待当前步骤 · {count}"
+  },
+  "composer": {
+    "steerPlaceholder": "插队指令…",
+    "steerHint": "点发送=插队 · 长按=排队",
+    "offline": "未连接 · 点右上角重连，或从菜单启动 relay"
+  },
+  "a11y": {
+    "menu": "菜单",
+    "stop": "停止",
+    "reconnect": "重连",
+    "refreshSessions": "刷新会话",
+    "sessionActions": "会话操作",
+    "copy": "复制",
+    "steer": "插队",
+    "send": "发送"
+  }
+}

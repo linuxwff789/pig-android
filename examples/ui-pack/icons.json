@@ -1,0 +1,18 @@
+{
+  "menu": "menu",
+  "send": "send",
+  "stop": "stop",
+  "copy": "copy",
+  "settings": "settings",
+  "refresh": "refresh",
+  "add": "add",
+  "tool": "build",
+  "more": "more",
+  "edit": "edit",
+  "delete": "delete",
+  "check": "check",
+  "search": "search",
+  "history": "history",
+  "chevronDown": "down",
+  "chevronUp": "up"
+}
