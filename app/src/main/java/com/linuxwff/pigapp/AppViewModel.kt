@@ -61,7 +61,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var desiredSessionPath: String? = null
     private var restorePending = false
     private var restoreChecked = false
-    private var liveText: String? = null
+    private val liveBuffer = StringBuilder()
+    private var liveActive = false
     private var liveFlushScheduled = false
     private val pendingToolPartials = mutableMapOf<String, String>()
 
@@ -133,10 +134,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Called from Activity.onResume: resume the relay/session after a lock or process freeze. */
     fun onForeground() {
         foreground = true
-        val text = liveText
-        val id = currentAssistant
-        if (text != null && id != null) {
-            update(id) { it.copy(text = text) }
+        if (liveActive) {
+            val id = currentAssistant
+            if (id != null) update(id) { it.copy(text = liveBuffer.toString()) }
         }
         val ctx = getApplication<Application>()
         if (prefs.getBoolean("keepalive", true)) {
@@ -192,6 +192,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (path.isBlank()) return
         if (savedSession() != path) prefs.edit().putString("lastSessionFile", path).apply()
         markVisited(path)
+    }
+
+    private fun clearLive() {
+        liveActive = false
+        liveBuffer.setLength(0)
     }
 
     private fun markVisited(path: String) {
@@ -263,6 +268,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             keepAlive = enabled,
             toast = if (enabled) "后台保活已开启" else "后台保活已关闭",
         )
+    }
+
+    fun setAvatarShadow(enabled: Boolean) {
+        prefs.edit().putBoolean("avatarShadow", enabled).apply()
+        ui = ui.copy(avatarShadow = enabled)
     }
 
     fun setWakeLock(enabled: Boolean) {
@@ -705,7 +715,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 restoreChecked = false
                 restorePending = false
                 desiredSessionPath = null
-                liveText = null
+                clearLive()
                 ui = ui.copy(streamingId = null)
                 pendingToolPartials.clear()
                 // The relay may have kept the previous pig alive (mid-turn
@@ -735,7 +745,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     streamingId = null,
                 )
                 lastPongAt = 0
-                liveText = null
+                clearLive()
                 pendingToolPartials.clear()
                 client.close()
                 if (foreground) startAutoReconnect()
@@ -767,7 +777,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "turn_start" -> ui = ui.copy(status = "working")
             "agent_end", "agent_settled" -> {
                 ui = ui.copy(busy = false, status = "", streamingId = null)
-                liveText = null
+                clearLive()
                 pendingToolPartials.clear()
                 requestStats()
             }
@@ -850,7 +860,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 restorePending = false
             }
             ui = ui.copy(messages = emptyList(), status = "", streamingId = null)
-            liveText = null
+            clearLive()
             pendingToolPartials.clear()
             client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
             client.send(JSONObject().put("id", "msgs-${nextId++}").put("type", "get_messages"))
@@ -1169,14 +1179,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // If the relay replayed an in-flight assistant message, put it back
         // after the history rebuild. Only the last input message can be the
         // partial assistant, so never overwrite an older completed bubble.
-        val live = liveText
+        val live = if (liveActive) liveBuffer.toString() else null
         if (!live.isNullOrEmpty() && lastInputRole == "assistant") {
             val last = out.lastOrNull()
             if (last?.role == Role.ASSISTANT) {
                 if (last.text.length > live.length) {
                     // History got further than the relay snapshot; continue
                     // appending from the longer text.
-                    liveText = last.text
+                    liveBuffer.setLength(0)
+                    liveBuffer.append(last.text)
                 }
                 out[out.lastIndex] = last.copy(text = if (last.text.length < live.length) live else last.text)
                 currentAssistant = out.last().id
@@ -1249,7 +1260,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun handleMessageStart(message: JSONObject?) {
         if (message == null || message.optString("role") != "assistant") return
         val text = contentText(message)
-        liveText = text
+        liveBuffer.setLength(0)
+        liveBuffer.append(text)
+        liveActive = true
         val id = currentAssistant ?: "a${nextId++}".also {
             currentAssistant = it
             append(ChatMsg(id = it, role = Role.ASSISTANT, text = text))
@@ -1266,7 +1279,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (delta.isEmpty()) return
         // liveText holds the text including the prefix replayed by relay_resume,
         // so replacing the bubble is safe after a mid-stream reconnect.
-        liveText = (liveText ?: "") + delta
+        liveBuffer.append(delta)
+        liveActive = true
         if (currentAssistant == null) {
             currentAssistant = "a${nextId++}".also {
                 append(ChatMsg(id = it, role = Role.ASSISTANT))
@@ -1290,7 +1304,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             delay(50)
             liveFlushScheduled = false
-            val text = liveText ?: return@launch
+            if (!liveActive) return@launch
+            val text = liveBuffer.toString()
             val id = currentAssistant ?: return@launch
             update(id) { it.copy(text = text) }
         }
@@ -1299,7 +1314,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Relay replayed the assistant text that was streamed before the reconnect. */
     private fun handleResumeText(text: String) {
         if (text.isEmpty()) return
-        liveText = text
+        liveBuffer.setLength(0)
+        liveBuffer.append(text)
+        liveActive = true
         val id = currentAssistant ?: "a${nextId++}".also {
             currentAssistant = it
             append(ChatMsg(id = it, role = Role.ASSISTANT))
@@ -1341,7 +1358,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (message == null || message.optString("role") != "assistant") return
         val id = currentAssistant
         if (id == null) {
-            liveText = null
+            clearLive()
             return
         }
         val text = contentText(message)
@@ -1350,7 +1367,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // visible representation, so drop the empty bubble.
         if (ui.messages.firstOrNull { it.id == id }?.text.isNullOrBlank()) remove(id)
         currentAssistant = null
-        liveText = null
+        clearLive()
         ui = ui.copy(streamingId = null)
     }
 

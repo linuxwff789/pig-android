@@ -97,6 +97,8 @@ data class AppUiState(
     val setupHint: String? = null,
     val wakeLock: Boolean = true,
     val keepAlive: Boolean = true,
+    /** Glow behind per-message avatars; off by default for cheaper drawing. */
+    val avatarShadow: Boolean = false,
     /** Empty = use the UI pack's chat.toolCards; otherwise collapsed/summary/expanded. */
     val toolMode: String = "",
     /** True for a history session served from disk (no pig process running). */

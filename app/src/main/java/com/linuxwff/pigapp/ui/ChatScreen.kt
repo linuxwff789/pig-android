@@ -174,15 +174,19 @@ fun PigApp(vm: AppViewModel) {
                     modifier = Modifier.width(ui.uiPack.layout.sidebarWidthDp.dp),
                     drawerContainerColor = MaterialTheme.colorScheme.background,
                 ) {
-                    DrawerContent(
-                        vm = vm,
-                        ui = ui,
-                        onClose = { scope.launch { drawerState.close() } },
-                        onSettings = {
-                            scope.launch { drawerState.close() }
-                            showSettings = true
-                        },
-                    )
+                    val open = drawerState.currentValue == DrawerValue.Open ||
+                        drawerState.targetValue == DrawerValue.Open
+                    if (open) {
+                        DrawerContent(
+                            vm = vm,
+                            ui = ui,
+                            onClose = { scope.launch { drawerState.close() } },
+                            onSettings = {
+                                scope.launch { drawerState.close() }
+                                showSettings = true
+                            },
+                        )
+                    }
                 }
             },
         ) {
@@ -191,7 +195,14 @@ fun PigApp(vm: AppViewModel) {
                 snackbarHost = { SnackbarHost(snackbar) },
                 topBar = {
                     PigHeader(
-                        ui = ui,
+                        title = ui.titleOverride ?: "Pig",
+                        connected = ui.connected,
+                        model = ui.model,
+                        showUsage = ui.uiPack.layout.showUsage,
+                        contextPercent = ui.contextPercent,
+                        contextWindow = ui.contextWindow,
+                        contextTokens = ui.contextTokens,
+                        busy = ui.busy,
                         onMenu = { scope.launch { drawerState.open() } },
                         onModel = vm::openModelPicker,
                         onReconnect = vm::reconnect,
@@ -245,8 +256,14 @@ fun PigApp(vm: AppViewModel) {
                         ReadOnlyBanner()
                     }
                     MessageList(
-                        ui = ui,
+                        messages = ui.messages,
+                        busy = ui.busy,
+                        streamingId = ui.streamingId,
+                        toolMode = ui.toolMode.ifBlank { ui.uiPack.layout.toolCards },
+                        assistantLabel = ui.uiPack.layout.assistantLabel,
+                        types = ui.uiPack.types,
                         cornerRadius = ui.uiPack.theme.cornerRadius,
+                        avatarShadow = ui.avatarShadow,
                         modifier = Modifier.weight(1f),
                         onSuggestion = { if (!ui.busy) vm.sendPrompt(it) },
                         onCopy = vm::copyText,
@@ -291,7 +308,14 @@ fun PigApp(vm: AppViewModel) {
 
 @Composable
 private fun PigHeader(
-    ui: AppUiState,
+    title: String,
+    connected: Boolean,
+    model: String,
+    showUsage: Boolean,
+    contextPercent: Double?,
+    contextWindow: Int,
+    contextTokens: Int,
+    busy: Boolean,
     onMenu: () -> Unit,
     onModel: () -> Unit,
     onReconnect: () -> Unit,
@@ -332,19 +356,19 @@ private fun PigHeader(
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            ui.titleOverride ?: "Pig",
+                            title,
                             style = MaterialTheme.typography.titleLarge.copy(brush = brandBrush()),
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Spacer(Modifier.width(8.dp))
-                        ConnectionDot(ui.connected)
+                        ConnectionDot(connected)
                         Spacer(Modifier.width(5.dp))
                         Text(
-                            if (ui.connected) "在线" else "离线",
+                            if (connected) "在线" else "离线",
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (ui.connected) scheme.tertiary else scheme.onSurfaceVariant,
+                            color = if (connected) scheme.tertiary else scheme.onSurfaceVariant,
                         )
                     }
                     Spacer(Modifier.height(2.dp))
@@ -356,22 +380,22 @@ private fun PigHeader(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            ui.model.ifBlank { "点击选择模型" },
+                            model.ifBlank { "点击选择模型" },
                             modifier = Modifier.weight(1f, fill = false),
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (ui.connected) scheme.secondary else scheme.onSurfaceVariant,
+                            color = if (connected) scheme.secondary else scheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        if (ui.uiPack.layout.showUsage) {
-                            ui.contextPercent?.let { percent ->
+                        if (showUsage) {
+                            contextPercent?.let { percent ->
                                 val usage = buildString {
                                     append("  ·  %.0f%%".format(percent))
-                                    if (ui.contextWindow > 0) {
+                                    if (contextWindow > 0) {
                                         append(" · ")
-                                        append(formatTokens(ui.contextTokens))
+                                        append(formatTokens(contextTokens))
                                         append('/')
-                                        append(formatTokens(ui.contextWindow))
+                                        append(formatTokens(contextWindow))
                                     }
                                 }
                                 Text(
@@ -390,7 +414,7 @@ private fun PigHeader(
                         )
                     }
                 }
-                if (ui.busy) {
+                if (busy) {
                     IconButton(onClick = onStop) {
                         Icon(Icons.Default.Stop, contentDescription = "停止", tint = scheme.primary)
                     }
@@ -584,6 +608,12 @@ private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Un
                     subtitle = "像 termux-wake-lock 一样让 CPU 不休眠",
                     checked = ui.wakeLock,
                     onCheckedChange = vm::setWakeLock,
+                )
+                SettingToggle(
+                    title = "消息头像阴影",
+                    subtitle = "关闭可减少每条消息的绘制开销",
+                    checked = ui.avatarShadow,
+                    onCheckedChange = vm::setAvatarShadow,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -1141,8 +1171,14 @@ private fun SessionRow(
 
 @Composable
 private fun MessageList(
-    ui: AppUiState,
+    messages: List<ChatMsg>,
+    busy: Boolean,
+    streamingId: String?,
+    toolMode: String,
+    assistantLabel: String,
+    types: TypeScale,
     cornerRadius: Int,
+    avatarShadow: Boolean,
     modifier: Modifier = Modifier,
     onSuggestion: (String) -> Unit,
     onCopy: (String) -> Unit,
@@ -1152,14 +1188,12 @@ private fun MessageList(
     val scope = rememberCoroutineScope()
     var autoScroll by remember { mutableStateOf(true) }
     var programmaticScroll by remember { mutableStateOf(false) }
-    val last = ui.messages.lastOrNull()
-    val showTyping = ui.busy && (
+    val last = messages.lastOrNull()
+    val showTyping = busy && (
         last == null ||
             last.role == Role.USER ||
             (last.role == Role.ASSISTANT && last.text.isBlank())
         )
-    val toolMode = ui.toolMode.ifBlank { ui.uiPack.layout.toolCards }
-    val streamingId = ui.streamingId
 
     // Follow new output only while the user is parked at the bottom. A manual
     // upward drag disables it; reaching the bottom again re-enables it.
@@ -1177,12 +1211,12 @@ private fun MessageList(
     }
 
     LaunchedEffect(
-        ui.messages.size,
+        messages.size,
         last?.text?.length,
         last?.toolResult?.length,
         showTyping,
     ) {
-        if (ui.messages.isNotEmpty() && autoScroll) {
+        if (messages.isNotEmpty() && autoScroll) {
             programmaticScroll = true
             try {
                 runCatching {
@@ -1194,7 +1228,7 @@ private fun MessageList(
         }
     }
 
-    if (ui.messages.isEmpty()) {
+    if (messages.isEmpty()) {
         EmptyState(onSuggestion)
         return
     }
@@ -1206,21 +1240,22 @@ private fun MessageList(
             contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            items(ui.messages, key = { it.id }, contentType = { it.role }) { message ->
+            items(messages, key = { it.id }, contentType = { it.role }) { message ->
                 MessageRow(
                     message = message,
-                    assistantLabel = ui.uiPack.layout.assistantLabel,
+                    assistantLabel = assistantLabel,
                     toolMode = toolMode,
-                    types = ui.uiPack.types,
+                    types = types,
                     cornerRadius = cornerRadius,
                     streaming = message.id == streamingId,
+                    avatarShadow = avatarShadow,
                     onCopy = onCopy,
                     onToolModeAll = onToolModeAll,
                 )
             }
             if (showTyping) {
                 item(key = "typing") {
-                    TypingRow(ui.uiPack.layout.assistantLabel)
+                    TypingRow(assistantLabel, avatarShadow)
                 }
             }
         }
@@ -1354,6 +1389,7 @@ private fun MessageRow(
     types: TypeScale,
     cornerRadius: Int,
     streaming: Boolean,
+    avatarShadow: Boolean,
     onCopy: (String) -> Unit,
     onToolModeAll: (String) -> Unit,
 ) {
@@ -1366,7 +1402,8 @@ private fun MessageRow(
                 bottomStart = (cornerRadius + 4).dp,
             )
             val scheme = MaterialTheme.colorScheme
-            SelectionContainer {
+            var selecting by remember(message.id) { mutableStateOf(false) }
+            val bubble: @Composable () -> Unit = {
                 Box(
                     Modifier
                         .widthIn(max = 520.dp)
@@ -1391,15 +1428,26 @@ private fun MessageRow(
                     )
                 }
             }
+            Box(
+                Modifier.pointerInput(message.id) {
+                    detectTapGestures(onLongPress = { selecting = true })
+                },
+            ) {
+                if (selecting) SelectionContainer { bubble() } else bubble()
+            }
+            if (selecting) {
+                TextButton(onClick = { selecting = false }) { Text("完成") }
+            }
             if (message.text.isNotBlank()) {
                 CopyButton { onCopy(message.text) }
             }
         }
 
         Role.ASSISTANT -> Row(Modifier.fillMaxWidth()) {
-            BrandAvatar(24.dp)
+            BrandAvatar(24.dp, shadow = avatarShadow)
             Spacer(Modifier.width(9.dp))
             Column(Modifier.weight(1f)) {
+                var selecting by remember(message.id) { mutableStateOf(false) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         assistantLabel,
@@ -1407,29 +1455,41 @@ private fun MessageRow(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f),
                     )
+                    if (selecting) {
+                        TextButton(onClick = { selecting = false }) { Text("完成") }
+                    }
                     if (message.text.isNotBlank()) {
                         CopyButton { onCopy(message.text) }
                     }
                 }
                 Spacer(Modifier.height(4.dp))
-                if (streaming) {
-                    // Parsing a growing Markdown document on every delta is
-                    // O(n²); show the raw text while it streams and render
-                    // Markdown once the message is complete.
-                    Text(
-                        message.text.ifBlank { "…" },
-                        modifier = Modifier.fillMaxWidth(),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                } else {
-                    SelectionContainer {
-                        PigMarkdown(
+                val content: @Composable () -> Unit = {
+                    if (streaming) {
+                        // Parsing a growing Markdown document on every delta is
+                        // O(n²); show the raw text while it streams and render
+                        // Markdown once the message is complete.
+                        Text(
+                            message.text.ifBlank { "…" },
+                            modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    } else {
+                        AssistantMarkdown(
                             text = message.text.ifBlank { "…" },
                             modifier = Modifier.fillMaxWidth(),
                             types = types,
                             cornerRadius = cornerRadius,
                         )
                     }
+                }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .pointerInput(message.id) {
+                            detectTapGestures(onLongPress = { selecting = true })
+                        },
+                ) {
+                    if (selecting) SelectionContainer { content() } else content()
                 }
             }
         }
@@ -1859,9 +1919,9 @@ private fun Composer(
 }
 
 @Composable
-private fun TypingRow(label: String) {
+private fun TypingRow(label: String, avatarShadow: Boolean = false) {
     Row(Modifier.fillMaxWidth()) {
-        BrandAvatar(24.dp)
+        BrandAvatar(24.dp, shadow = avatarShadow)
         Spacer(Modifier.width(9.dp))
         Column {
             Text(

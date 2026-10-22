@@ -32,6 +32,12 @@ type toolProgress struct {
 	Partial json.RawMessage
 }
 
+type msgCacheEntry struct {
+	size     int64
+	mod      time.Time
+	messages []json.RawMessage
+}
+
 type session struct {
 	token       string
 	cwd         string
@@ -54,6 +60,9 @@ type session struct {
 	uiMu   sync.Mutex
 	uiHash string
 
+	msgMu    sync.Mutex
+	msgCache map[string]msgCacheEntry
+
 	stopOnce sync.Once
 	stopped  chan struct{}
 }
@@ -66,6 +75,7 @@ func newSession(token, cwd, uiDir, sessionsDir, pigBin string) *session {
 		sessionsDir: sessionsDir,
 		pigBin:      pigBin,
 		agents:      map[string]*agentProc{},
+		msgCache:    map[string]msgCacheEntry{},
 		stopped:     make(chan struct{}),
 	}
 }
@@ -623,9 +633,36 @@ func (s *session) syntheticMessages(id any) frame {
 		"command": "get_messages",
 		"success": true,
 		"data": frame{
-			"messages": readSessionMessages(s.activePath),
+			"messages": s.cachedMessages(s.activePath),
 		},
 	}
+}
+
+// cachedMessages avoids re-reading multi-megabyte JSONL files when switching
+// back and forth between history sessions.
+func (s *session) cachedMessages(path string) []json.RawMessage {
+	if path == "" {
+		return []json.RawMessage{}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return []json.RawMessage{}
+	}
+	s.msgMu.Lock()
+	entry, ok := s.msgCache[path]
+	s.msgMu.Unlock()
+	if ok && entry.size == info.Size() && entry.mod.Equal(info.ModTime()) {
+		return entry.messages
+	}
+	messages := readSessionMessages(path)
+	s.msgMu.Lock()
+	s.msgCache[path] = msgCacheEntry{
+		size:     info.Size(),
+		mod:      info.ModTime(),
+		messages: messages,
+	}
+	s.msgMu.Unlock()
+	return messages
 }
 
 func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath string) {
@@ -789,6 +826,9 @@ func (s *session) handleClientLine(line []byte) {
 		if a != nil {
 			s.stopAgent(a)
 		}
+		s.msgMu.Lock()
+		delete(s.msgCache, head.Path)
+		s.msgMu.Unlock()
 		if err := deleteSession(head.Path, s.sessionsDir); err != nil {
 			_ = s.send(frame{"type": "relay_session_error", "id": head.ID, "message": "delete: " + err.Error()})
 		} else {

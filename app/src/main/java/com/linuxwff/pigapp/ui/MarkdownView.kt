@@ -1,25 +1,43 @@
 package com.linuxwff.pigapp.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mikepenz.markdown.compose.components.MarkdownComponentModel
@@ -188,6 +206,145 @@ private fun parseAlignments(separator: String?, columns: Int): List<TextAlign> {
             cell.startsWith(":") && cell.endsWith(":") -> TextAlign.Center
             cell.endsWith(":") -> TextAlign.End
             else -> TextAlign.Start
+        }
+    }
+}
+
+
+sealed interface MarkdownSegment {
+    data class Text(val text: String) : MarkdownSegment
+    data class Code(val language: String, val code: String) : MarkdownSegment
+}
+
+private val fenceRegex = Regex("""^\s*(```|~~~)(.*)$""")
+
+fun splitCodeFences(text: String): List<MarkdownSegment> {
+    val lines = text.lines()
+    val out = mutableListOf<MarkdownSegment>()
+    val buffer = StringBuilder()
+    fun flushText() {
+        val value = buffer.toString().trimEnd()
+        if (value.isNotBlank()) out.add(MarkdownSegment.Text(value))
+        buffer.setLength(0)
+    }
+    var index = 0
+    while (index < lines.size) {
+        val match = fenceRegex.find(lines[index])
+        if (match == null) {
+            if (buffer.isNotEmpty()) buffer.append('\n')
+            buffer.append(lines[index])
+            index++
+            continue
+        }
+        flushText()
+        val fence = match.groupValues[1]
+        val language = match.groupValues[2].trim()
+        val code = StringBuilder()
+        index++
+        while (index < lines.size && !lines[index].trimStart().startsWith(fence)) {
+            if (code.isNotEmpty()) code.append('\n')
+            code.append(lines[index])
+            index++
+        }
+        if (index < lines.size) index++ // closing fence
+        out.add(MarkdownSegment.Code(language, code.toString()))
+    }
+    flushText()
+    return out
+}
+
+/** Markdown with fenced code blocks rendered as collapsed cards. */
+@Composable
+fun AssistantMarkdown(
+    text: String,
+    modifier: Modifier = Modifier,
+    types: TypeScale = TypeScale(),
+    cornerRadius: Int = 16,
+) {
+    val segments = remember(text) { splitCodeFences(text) }
+    Column(modifier) {
+        segments.forEachIndexed { index, segment ->
+            if (index > 0) Spacer(Modifier.height(6.dp))
+            when (segment) {
+                is MarkdownSegment.Text -> PigMarkdown(
+                    text = segment.text,
+                    modifier = Modifier.fillMaxWidth(),
+                    types = types,
+                    cornerRadius = cornerRadius,
+                )
+                is MarkdownSegment.Code -> CollapsibleCode(
+                    language = segment.language,
+                    code = segment.code,
+                    cornerRadius = cornerRadius,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CollapsibleCode(language: String, code: String, cornerRadius: Int) {
+    var expanded by remember(code) { mutableStateOf(false) }
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape((cornerRadius / 2).coerceAtLeast(6).dp)
+    val lineCount = remember(code) { code.count { it == '\n' } + 1 }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(scheme.background.copy(alpha = 0.6f))
+            .border(1.dp, scheme.outline.copy(alpha = 0.35f), shape),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Text(
+                language.ifBlank { "code" },
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.secondary,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "$lineCount 行",
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                if (expanded) "收起" else "展开",
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.primary,
+            )
+            Icon(
+                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = scheme.primary,
+            )
+        }
+        if (expanded) {
+            val shown = remember(code) {
+                val lines = code.lineSequence().take(400).toList()
+                lines.joinToString("\n").ifEmpty { " " } +
+                    if (code.lineSequence().count() > 400) "\n…" else ""
+            }
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(10.dp),
+            ) {
+                Text(
+                    shown,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    softWrap = false,
+                )
+            }
         }
     }
 }

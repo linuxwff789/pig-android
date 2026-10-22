@@ -49,13 +49,15 @@ fun brandBrush(alpha: Float = 1f): Brush {
 
 /** The pig badge: bright gradient disc with a soft glow. */
 @Composable
-fun BrandAvatar(size: Dp = 34.dp, emoji: String = "🐷") {
+fun BrandAvatar(size: Dp = 34.dp, emoji: String = "🐷", shadow: Boolean = true) {
     val shape = CircleShape
     val primary = MaterialTheme.colorScheme.primary
+    var modifier = Modifier.size(size)
+    if (shadow) {
+        modifier = modifier.shadow(size * 0.25f, shape, ambientColor = primary, spotColor = primary)
+    }
     Box(
-        Modifier
-            .size(size)
-            .shadow(size * 0.25f, shape, ambientColor = primary, spotColor = primary)
+        modifier
             .clip(shape)
             .background(brandBrush(), shape)
             .border(1.dp, Color.White.copy(alpha = 0.22f), shape),
