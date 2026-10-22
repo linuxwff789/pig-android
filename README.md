@@ -167,6 +167,14 @@ app's private storage and switches between them and the relay pack
 (`layout/chat.json` → `packManager`). See `docs/ui-pack.md` for the key groups
 and placeholders.
 
+## Model picker
+
+The picker shows models with a `思考` badge when they declare reasoning support
+and has a `只看支持思考` filter. Thinking levels are model-specific; a
+non-reasoning model only reports `off`. After a switch the picker stays open,
+shows `切换中…`, then refreshes the available thinking levels so they can be
+changed immediately.
+
 ## Context and cache
 
 The header shows the current context percentage/tokens and the cumulative
