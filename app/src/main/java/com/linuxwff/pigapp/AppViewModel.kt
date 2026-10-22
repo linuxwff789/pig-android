@@ -38,6 +38,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val windowPositions = mutableStateMapOf<String, WindowPos>()
     private val dismissedWindows = mutableMapOf<String, String>() // pack path -> window id
     private val knownWindows = mutableMapOf<String, AppWindow>() // window id -> last parsed definition
+    private var basePack: UiPack? = null
     private var packAssets: Map<String, String> = emptyMap()
     private var packAssetHashes: Map<String, String> = emptyMap()
     private val imageCache = mutableStateMapOf<String, ImageBitmap>()
@@ -69,13 +70,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var liveFlushScheduled = false
     private val pendingToolPartials = mutableMapOf<String, String>()
 
-    private fun builtinCommands(): List<UiCommand> = listOf(
-        UiCommand("compact", str("commands.compact", "压缩上下文")),
-        UiCommand("new", str("commands.new", "新建会话")),
-        UiCommand("name", str("commands.name", "重命名会话：/name 名称")),
-        UiCommand("thinking", str("commands.thinking", "思考档位：/thinking off|low|medium|high")),
-        UiCommand("model", str("commands.model", "选择模型")),
-        UiCommand("stop", str("commands.stop", "中止当前输出")),
+    private fun builtinCommands(pack: UiPack = ui.uiPack): List<UiCommand> = listOf(
+        UiCommand("compact", pack.strings.get("commands.compact", "压缩上下文")),
+        UiCommand("new", pack.strings.get("commands.new", "新建会话")),
+        UiCommand("name", pack.strings.get("commands.name", "重命名会话：/name 名称")),
+        UiCommand(
+            "thinking",
+            pack.strings.get("commands.thinking", "思考档位：/thinking off|low|medium|high"),
+        ),
+        UiCommand("model", pack.strings.get("commands.model", "选择模型")),
+        UiCommand("stop", pack.strings.get("commands.stop", "中止当前输出")),
     )
 
     init {
@@ -92,6 +96,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 true
             },
+            skinId = prefs.getString("skinId", "").orEmpty(),
         )
         viewModelScope.launch {
             client.connected.collect { connected ->
@@ -314,6 +319,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setBubbleShadow(enabled: Boolean) {
         prefs.edit().putBoolean("bubbleShadow", enabled).apply()
         ui = ui.copy(bubbleShadow = enabled)
+    }
+
+    /** Switch to a `skins.json` entry; null/unknown ids are ignored. */
+    fun selectSkin(id: String) {
+        val base = basePack ?: return
+        val skin = base.skins.firstOrNull { it.id == id } ?: return
+        if (id == ui.skinId) return
+        prefs.edit().putString("skinId", id).apply()
+        ui = ui.copy(
+            skinId = id,
+            uiPack = base.withSkin(id),
+            avatarShadow = if (prefs.contains("avatarShadow")) {
+                ui.avatarShadow
+            } else {
+                skin.theme.avatarShadow
+            },
+            bubbleShadow = if (prefs.contains("bubbleShadow")) {
+                ui.bubbleShadow
+            } else {
+                skin.theme.bubbleShadow
+            },
+            toast = str("toast.skinChanged", "已切换皮肤：{name}")
+                .replace("{name}", skin.name),
+        )
     }
 
     fun setWakeLock(enabled: Boolean) {
@@ -1495,28 +1524,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
             return
         }
+        basePack = pack
+        val preferredSkin = prefs.getString("skinId", "").orEmpty()
+        val skinId = pack.skins.firstOrNull { it.id == preferredSkin }?.id
+            ?: pack.defaultSkin.takeIf { id -> pack.skins.any { it.id == id } }
+            ?: pack.skins.firstOrNull()?.id
+            ?: ""
+        if (skinId.isNotBlank()) prefs.edit().putString("skinId", skinId).apply()
+        val resolvedPack = pack.withSkin(skinId)
         val changed = ui.uiPackHash.isNotEmpty() && hash != ui.uiPackHash
         // UI pack provides defaults; an explicit user toggle wins.
         val avatarShadow = if (prefs.contains("avatarShadow")) {
             prefs.getBoolean("avatarShadow", false)
         } else {
-            pack.theme.avatarShadow
+            resolvedPack.theme.avatarShadow
         }
         val bubbleShadow = if (prefs.contains("bubbleShadow")) {
             prefs.getBoolean("bubbleShadow", true)
         } else {
-            pack.theme.bubbleShadow
+            resolvedPack.theme.bubbleShadow
         }
         ui = ui.copy(
-            uiPack = pack,
+            uiPack = resolvedPack,
             uiPackHash = hash,
             uiPackFiles = files.size,
+            skinId = skinId,
             assetCount = assets.size,
             avatarShadow = avatarShadow,
             bubbleShadow = bubbleShadow,
             uiPackError = result.warnings.firstOrNull(),
-            commands = builtinCommands() + ui.commands.filter { command ->
-                builtinCommands().none { it.name == command.name }
+            commands = builtinCommands(resolvedPack) + ui.commands.filter { command ->
+                builtinCommands(resolvedPack).none { it.name == command.name }
             },
             toast = when {
                 changed -> str("toast.packApplied", "UI pack 已应用: {name} v{version}")

@@ -134,6 +134,7 @@ import com.linuxwff.pigapp.SessionInfo
 import com.linuxwff.pigapp.TypeScale
 import com.linuxwff.pigapp.UiLayout
 import com.linuxwff.pigapp.UiRequest
+import com.linuxwff.pigapp.UiSkin
 import com.linuxwff.pigapp.toolPresentation
 import kotlinx.coroutines.launch
 
@@ -782,6 +783,34 @@ private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Un
                     }
                 }
 
+                if (ui.uiPack.layout.showSkinSwitcher &&
+                    ui.uiPack.layout.skinSwitcherPlacement in setOf("settings", "both") &&
+                    ui.uiPack.skins.isNotEmpty()
+                ) {
+                    HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            packIcon("skin", "palette"),
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = scheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            packText("skin.title", "皮肤"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    SkinSwitcher(
+                        skins = ui.uiPack.skins,
+                        selectedId = ui.skinId,
+                        style = ui.uiPack.layout.skinSwitcherStyle,
+                        cornerRadius = ui.uiPack.theme.cornerRadius,
+                        onPick = vm::selectSkin,
+                    )
+                }
+
                 val settingsNav = ui.uiPack.nav.filter { it.placement == "settings" }
                 if (settingsNav.isNotEmpty()) {
                     HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
@@ -980,6 +1009,29 @@ private fun DrawerContent(
             Text(packText("drawer.settings", "设置"))
         }
 
+        if (ui.uiPack.layout.showSkinSwitcher &&
+            ui.uiPack.layout.skinSwitcherPlacement in setOf("drawer", "both") &&
+            ui.uiPack.skins.isNotEmpty()
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    packIcon("skin", "palette"),
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(5.dp))
+                SectionLabel(packText("skin.title", "皮肤"))
+            }
+            SkinSwitcher(
+                skins = ui.uiPack.skins,
+                selectedId = ui.skinId,
+                style = ui.uiPack.layout.skinSwitcherStyle,
+                cornerRadius = corner,
+                onPick = vm::selectSkin,
+            )
+        }
+
         val drawerNav = ui.uiPack.nav.filter { it.placement != "settings" }
         if (components.showPanels && drawerNav.isNotEmpty()) {
             SectionLabel(packText("drawer.panels", "面板"))
@@ -1168,6 +1220,110 @@ private fun DrawerContent(
             )
         }
     }
+}
+
+@Composable
+private fun SkinSwitcher(
+    skins: List<UiSkin>,
+    selectedId: String,
+    style: String,
+    cornerRadius: Int,
+    onPick: (String) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    if (style == "list") {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            skins.forEach { skin ->
+                val selected = skin.id == selectedId
+                Surface(
+                    color = if (selected) {
+                        scheme.primary.copy(alpha = 0.10f)
+                    } else {
+                        scheme.surface
+                    },
+                    shape = RoundedCornerShape((cornerRadius / 2).coerceAtLeast(8).dp),
+                    border = BorderStroke(
+                        1.dp,
+                        if (selected) scheme.primary else scheme.outline.copy(alpha = 0.5f),
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPick(skin.id) },
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        SkinSwatch(skin)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            skin.name,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (selected) {
+                            Icon(
+                                packIcon("check", "check"),
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp),
+                                tint = scheme.primary,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            skins.forEach { skin ->
+                val selected = skin.id == selectedId
+                Surface(
+                    color = if (selected) {
+                        scheme.primary.copy(alpha = 0.12f)
+                    } else {
+                        scheme.surface
+                    },
+                    shape = RoundedCornerShape((cornerRadius / 2).coerceAtLeast(8).dp),
+                    border = BorderStroke(
+                        1.dp,
+                        if (selected) scheme.primary else scheme.outline.copy(alpha = 0.5f),
+                    ),
+                    modifier = Modifier.clickable { onPick(skin.id) },
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        SkinSwatch(skin)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            skin.name,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (selected) scheme.primary else scheme.onSurface,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkinSwatch(skin: UiSkin) {
+    Box(
+        Modifier
+            .size(14.dp)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(listOf(skin.theme.primary, skin.theme.accent))),
+    )
 }
 
 @Composable

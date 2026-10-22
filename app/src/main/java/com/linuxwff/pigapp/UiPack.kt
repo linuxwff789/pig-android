@@ -44,6 +44,13 @@ data class UiTheme(
     val chipAlpha: Float = 0.15f,
 )
 
+/** A named theme override in `skins.json`; absent fields inherit the base theme. */
+data class UiSkin(
+    val id: String,
+    val name: String,
+    val theme: UiTheme,
+)
+
 /** Flat key/value strings, e.g. "header.online" -> "在线". */
 data class UiStrings(val values: Map<String, String> = emptyMap()) {
     fun get(key: String, fallback: String): String = values[key] ?: fallback
@@ -99,6 +106,10 @@ data class UiLayout(
     val composerPlaceholder: String = "给 Pig 发消息…",
     val composerMaxLines: Int = 6,
     val sendOnEnter: Boolean = true,
+    /** Skin switcher: show, where and how (chips/list). */
+    val showSkinSwitcher: Boolean = true,
+    val skinSwitcherPlacement: String = "drawer",
+    val skinSwitcherStyle: String = "chips",
 )
 
 data class UiPack(
@@ -111,9 +122,17 @@ data class UiPack(
     val components: UiComponents = UiComponents(),
     val icons: Map<String, String> = emptyMap(),
     val nav: List<NavItem> = emptyList(),
+    val skins: List<UiSkin> = emptyList(),
+    val defaultSkin: String = "",
     val files: Int = 0,
     val loadedAt: Long = 0L,
 )
+
+/** Resolve a skin id to a pack whose theme is the selected skin (base if unknown). */
+fun UiPack.withSkin(id: String?): UiPack {
+    val skin = skins.firstOrNull { it.id == id } ?: return this
+    return copy(theme = skin.theme)
+}
 
 /** Parses the pack pushed by pig-relay: manifest + theme/colors + layout/chat. */
 object UiPackParser {
@@ -136,6 +155,14 @@ object UiPackParser {
         var theme = UiTheme()
         files[themePath]?.let { theme = parseTheme(it, warnings) }
             ?: warnings.add("$themePath 缺失，使用默认主题")
+
+        var skins = emptyList<UiSkin>()
+        var defaultSkin = ""
+        files["skins.json"]?.let { text ->
+            val parsed = parseSkins(text, theme, warnings)
+            skins = parsed.second
+            defaultSkin = parsed.first
+        }
 
         var layout = UiLayout()
         files[layoutPath]?.let { layout = parseLayout(it, warnings) }
@@ -160,6 +187,8 @@ object UiPackParser {
                 components = components,
                 icons = icons,
                 nav = nav,
+                skins = skins,
+                defaultSkin = defaultSkin,
                 files = files.size,
                 loadedAt = System.currentTimeMillis(),
             ),
@@ -217,14 +246,18 @@ object UiPackParser {
         return out
     }
 
-    private fun parseTheme(text: String, warnings: MutableList<String>): UiTheme {
+    private fun parseTheme(
+        text: String,
+        warnings: MutableList<String>,
+        base: UiTheme = UiTheme(),
+    ): UiTheme {
         val json = try {
             JSONObject(text)
         } catch (e: Exception) {
             warnings.add("theme JSON 解析失败: ${e.message}")
-            return UiTheme()
+            return base
         }
-        val d = UiTheme()
+        val d = base
         return UiTheme(
             background = json.color("background", d.background, warnings),
             surface = json.color("surface", d.surface, warnings),
@@ -235,19 +268,19 @@ object UiPackParser {
             textMuted = json.color("textMuted", d.textMuted, warnings),
             danger = json.color("danger", d.danger, warnings),
             cornerRadius = json.optInt("cornerRadius", d.cornerRadius).coerceIn(0, 40),
-            accent = json.color("accent", d.secondary, warnings),
+            accent = json.color("accent", d.accent, warnings),
             avatarShadow = json.optBoolean("avatarShadow", d.avatarShadow),
             bubbleShadow = json.optBoolean("bubbleShadow", d.bubbleShadow),
-            onPrimary = json.colorOrNull("onPrimary", warnings),
-            onSecondary = json.colorOrNull("onSecondary", warnings),
-            onAccent = json.colorOrNull("onAccent", warnings),
-            outline = json.colorOrNull("outline", warnings),
-            outlineVariant = json.colorOrNull("outlineVariant", warnings),
+            onPrimary = json.colorOrNull("onPrimary", warnings) ?: d.onPrimary,
+            onSecondary = json.colorOrNull("onSecondary", warnings) ?: d.onSecondary,
+            onAccent = json.colorOrNull("onAccent", warnings) ?: d.onAccent,
+            outline = json.colorOrNull("outline", warnings) ?: d.outline,
+            outlineVariant = json.colorOrNull("outlineVariant", warnings) ?: d.outlineVariant,
             success = json.color("success", d.success, warnings),
             warning = json.color("warning", d.warning, warnings),
             scrim = json.color("scrim", d.scrim, warnings),
-            bubbleStart = json.colorOrNull("bubbleStart", warnings),
-            bubbleEnd = json.colorOrNull("bubbleEnd", warnings),
+            bubbleStart = json.colorOrNull("bubbleStart", warnings) ?: d.bubbleStart,
+            bubbleEnd = json.colorOrNull("bubbleEnd", warnings) ?: d.bubbleEnd,
             cardRadius = json.optInt("cardRadius", d.cardRadius ?: -1).takeIf { it >= 0 }?.coerceIn(0, 40),
             bubbleRadius = json.optInt("bubbleRadius", d.bubbleRadius ?: -1).takeIf { it >= 0 }?.coerceIn(0, 40),
             chipRadius = json.optInt("chipRadius", d.chipRadius ?: -1).takeIf { it >= 0 }?.coerceIn(0, 40),
@@ -305,9 +338,18 @@ object UiPackParser {
         val sidebar = json.optJSONObject("sidebar")
         val chat = json.optJSONObject("chat")
         val composer = json.optJSONObject("composer")
+        val skinSwitcher = json.optJSONObject("skinSwitcher")
         val modes = setOf("collapsible", "expanded", "collapsed")
         val mode = chat?.optString("toolCards", d.toolCards) ?: d.toolCards
         if (mode !in modes) warnings.add("chat.toolCards=$mode 无效")
+        val placements = setOf("drawer", "settings", "both")
+        val placement = skinSwitcher?.optString("placement", d.skinSwitcherPlacement)
+            ?: d.skinSwitcherPlacement
+        if (placement !in placements) warnings.add("skinSwitcher.placement=$placement 无效")
+        val styles = setOf("chips", "list")
+        val skinStyle = skinSwitcher?.optString("style", d.skinSwitcherStyle)
+            ?: d.skinSwitcherStyle
+        if (skinStyle !in styles) warnings.add("skinSwitcher.style=$skinStyle 无效")
 
         return UiLayout(
             sidebarWidthDp = (sidebar?.optInt("widthDp", d.sidebarWidthDp)
@@ -322,7 +364,56 @@ object UiPackParser {
             composerMaxLines = (composer?.optInt("maxLines", d.composerMaxLines)
                 ?: d.composerMaxLines).coerceIn(1, 12),
             sendOnEnter = composer?.optBoolean("sendOnEnter", d.sendOnEnter) ?: d.sendOnEnter,
+            showSkinSwitcher = skinSwitcher?.optBoolean("show", d.showSkinSwitcher)
+                ?: d.showSkinSwitcher,
+            skinSwitcherPlacement = placement.takeIf { it in placements } ?: d.skinSwitcherPlacement,
+            skinSwitcherStyle = skinStyle.takeIf { it in styles } ?: d.skinSwitcherStyle,
         )
+    }
+
+    /**
+     * `skins.json`: `{"default":"id","skins":[{"id","name","theme":{...}}]}`.
+     * Each skin's theme inherits every field it does not override from the base
+     * theme; an unknown id or a duplicate is skipped.
+     */
+    private fun parseSkins(
+        text: String,
+        base: UiTheme,
+        warnings: MutableList<String>,
+    ): Pair<String, List<UiSkin>> {
+        val json = try {
+            JSONObject(text)
+        } catch (e: Exception) {
+            warnings.add("skins.json 解析失败: ${e.message}")
+            return "" to emptyList()
+        }
+        val out = mutableListOf<UiSkin>()
+        val seen = mutableSetOf<String>()
+        val array = json.optJSONArray("skins") ?: return "" to emptyList()
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val id = item.optString("id").trim()
+            if (id.isBlank()) {
+                warnings.add("skins[$index] 缺少 id")
+                continue
+            }
+            if (!seen.add(id)) {
+                warnings.add("skins[$index] 重复 id: $id")
+                continue
+            }
+            val theme = item.optJSONObject("theme")?.let {
+                parseTheme(it.toString(), warnings, base)
+            } ?: base
+            out.add(UiSkin(id = id, name = item.optString("name").ifBlank { id }, theme = theme))
+        }
+        val requested = json.optString("default").trim()
+        val default = out.firstOrNull { it.id == requested }?.id
+            ?: out.firstOrNull()?.id
+            ?: ""
+        if (requested.isNotBlank() && requested != default) {
+            warnings.add("skins.default=$requested 不存在，使用 $default")
+        }
+        return default to out
     }
 
     private fun parseStrings(text: String, warnings: MutableList<String>): UiStrings {

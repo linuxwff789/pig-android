@@ -80,6 +80,8 @@ data class AppUiState(
     val uiPackFiles: Int = 0,
     val uiPack: UiPack = UiPack(),
     val uiPackError: String? = null,
+    /** Selected `skins.json` id; empty means the base theme. */
+    val skinId: String = "",
     val contextPercent: Double? = null,
     val contextTokens: Int = 0,
     /** Right after /compact PiG reports null usage until the next model call. */

@@ -99,7 +99,11 @@ fun GradientButton(
     } else {
         SolidColor(MaterialTheme.colorScheme.surfaceVariant)
     }
-    val ink = if (enabled) BrandInk else MaterialTheme.colorScheme.onSurfaceVariant
+    val ink = if (enabled) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
     Row(
         modifier
             .clip(shape)

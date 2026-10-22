@@ -9,6 +9,7 @@ the app. The app applies it immediately — no rebuild, no restart.
   manifest.json
   theme/colors.json
   theme/typography.json
+  skins.json
   layout/chat.json
   strings.json
   components.json
@@ -18,8 +19,8 @@ the app. The app applies it immediately — no rebuild, no restart.
   assets/
 ```
 
-`strings.json`, `components.json` and `icons.json` are optional and are
-discovered by filename (no manifest entry needed).
+`strings.json`, `components.json`, `icons.json` and `skins.json` are optional
+and are discovered by filename (no manifest entry needed).
 
 Start from `examples/ui-pack/`:
 
@@ -191,6 +192,7 @@ built-in Chinese defaults, so a pack can override only a few strings.
   "composer": { "steerPlaceholder": "插队指令…", "steerHint": "点发送=插队 · 长按=排队" },
   "empty": { "title": "开始聊天", "hint": "在下面输入，或试试：", "suggestions": "问题一|问题二|问题三" },
   "commands": { "compact": "压缩上下文", "new": "新建会话", "name": "重命名会话：/name 名称" },
+  "skin": { "title": "皮肤" },
   "setup": { "title": "Termux 后端还没准备好", "oneClick": "一键安装", "retry": "重试" },
   "dialog": { "cancel": "取消", "allow": "允许", "ok": "确定", "deny": "拒绝" }
 }
@@ -244,6 +246,7 @@ next model call provides a fresh usage value.
 | `notification.*` | foreground-service notification (best-effort: the service may start before a pack is loaded, then falls back) |
 | `a11y.*` | menu/stop/reconnect/copy/close/window-close labels |
 | `brand.emoji` | avatar glyph (default 🐷) |
+| `skin.title`, `toast.skinChanged` | skin switcher heading / confirmation |
 | `toast.*` | short confirmations and validation errors |
 
 Every literal in these groups has a built-in Chinese fallback, so a pack can
@@ -293,6 +296,7 @@ component default; unknown keys are ignored.
   "menu": "menu", "send": "send", "stop": "stop", "copy": "copy",
   "settings": "settings", "refresh": "refresh", "add": "add",
   "tool": "build", "more": "more", "edit": "edit", "delete": "delete",
+  "skin": "palette",
   "check": "check", "search": "search", "history": "history",
   "chevronDown": "down", "chevronUp": "up"
 }
@@ -300,7 +304,51 @@ component default; unknown keys are ignored.
 
 Built-in names: `menu`, `send`, `stop`, `refresh`, `add`, `settings`, `build`
 (alias `tool`), `check`, `delete`, `edit`, `more`, `search`, `copy`, `history`,
-`down`, `up`, `close`, `warning`.
+`down`, `up`, `close`, `warning`, `palette` (skin switcher).
+
+## skins.json
+
+Named theme overrides for the skin switcher. The base theme stays in
+`theme/colors.json`; a skin only needs the fields it changes. Missing fields
+inherit the base theme.
+
+```json
+{
+  "default": "default",
+  "skins": [
+    { "id": "default", "name": "默认", "theme": {} },
+    {
+      "id": "neon",
+      "name": "霓虹",
+      "theme": {
+        "primary": "#FF3DDC",
+        "secondary": "#00E5FF",
+        "accent": "#7C4DFF"
+      }
+    },
+    {
+      "id": "paper",
+      "name": "纸白",
+      "theme": {
+        "background": "#F6F7FB", "surface": "#FFFFFF",
+        "surfaceVariant": "#EDF0F6",
+        "primary": "#6D5BD0", "accent": "#0891B2",
+        "text": "#171A21", "textMuted": "#5E6778",
+        "onPrimary": "#FFFFFF", "onAccent": "#FFFFFF"
+      }
+    }
+  ]
+}
+```
+
+- Every skin accepts the same keys as `theme/colors.json`.
+- `default` selects the skin used when the saved choice is unavailable or no
+  choice was made yet. If absent, the first skin is used. An empty/unknown id
+  falls back to the first skin; with no `skins` the switcher stays hidden.
+- The selection is persisted on the device (`skinId`) and applied on the next
+  app start after the pack loads.
+- Switch at runtime from the drawer/settings; the whole app recolors instantly,
+  including already-open pack windows.
 
 ## layout/chat.json
 
@@ -317,6 +365,11 @@ Built-in names: `menu`, `send`, `stop`, `refresh`, `add`, `settings`, `build`
     "placeholder": "给 Pig 发消息…",
     "maxLines": 6,
     "sendOnEnter": true
+  },
+  "skinSwitcher": {
+    "show": true,
+    "placement": "drawer",
+    "style": "chips"
   }
 }
 ```
@@ -341,6 +394,11 @@ Built-in names: `menu`, `send`, `stop`, `refresh`, `add`, `settings`, `build`
   the header shows `已压缩` until the next model call provides a fresh usage.
 - `composer.maxLines` is clamped to 1–12.
 - `sendOnEnter` changes the IME action to Send.
+- `skinSwitcher.show` hides the switcher entirely; it is also hidden when the
+  pack has no `skins.json` entries.
+- `skinSwitcher.placement`: `drawer` (default), `settings`, or `both`.
+- `skinSwitcher.style`: `chips` (horizontal swatches, default) or `list`
+  (full-width rows with a check mark).
 
 Unknown keys are ignored. Invalid JSON in a file produces a warning, keeps the
 previous good value for that file's fields and still applies the rest of the

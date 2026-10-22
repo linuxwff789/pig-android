@@ -160,7 +160,9 @@ The app is designed to survive screen locks, Doze and process death:
 `~/.pig/android-ui/` drives colors, typography, layout switches, component
 visibility/sizes, icons, nav entries, windows, assets and **all app-owned
 strings** — including setup, dialogs, tool metrics, notification text and
-launcher errors. See `docs/ui-pack.md` for the key groups and placeholders.
+launcher errors. Add `skins.json` for named theme variants and the drawer /
+settings skin switcher (`layout/chat.json` → `skinSwitcher`). See
+`docs/ui-pack.md` for the key groups and placeholders.
 
 ## Context and cache
 

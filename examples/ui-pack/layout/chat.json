@@ -1,7 +1,10 @@
 {
   "version": 1,
   "sidebar": {
-    "sections": ["sessions", "projects"],
+    "sections": [
+      "sessions",
+      "projects"
+    ],
     "widthDp": 300
   },
   "chat": {
@@ -13,5 +16,10 @@
     "placeholder": "给 Pig 发消息…",
     "maxLines": 6,
     "sendOnEnter": true
+  },
+  "skinSwitcher": {
+    "show": true,
+    "placement": "drawer",
+    "style": "chips"
   }
 }

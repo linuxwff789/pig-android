@@ -175,7 +175,8 @@
     "openedWindow": "已打开 {label}",
     "noWindowFor": "还没有 {label} 窗口",
     "previousMissing": "上次会话已不存在，已开始新会话",
-    "packApplied": "UI pack 已应用: {name} v{version}"
+    "packApplied": "UI pack 已应用: {name} v{version}",
+    "skinChanged": "已切换皮肤：{name}"
   },
   "commands": {
     "compact": "压缩上下文",
@@ -227,5 +228,8 @@
   },
   "brand": {
     "emoji": "🐷"
+  },
+  "skin": {
+    "title": "皮肤"
   }
 }
