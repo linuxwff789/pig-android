@@ -71,6 +71,30 @@ data class UiAction(
     val confirm: String = "",
 )
 
+data class UiDrawerAppearance(
+    /** theme | surface | gradient | transparent */
+    val background: String = "theme",
+    val gradientAlpha: Float = 0.18f,
+    val cornerRadius: Int = -1,
+    val paddingH: Int = 16,
+    val paddingV: Int = 20,
+    val spacing: Int = 10,
+    val brandAvatarSize: Int = 44,
+    val brandTagline: Boolean = true,
+    val brandCardAlpha: Float = 0.34f,
+    val brandPills: Boolean = true,
+    val buttonHeight: Int = 0,
+    val buttonRadius: Int = -1,
+    val buttonIconSize: Int = 16,
+    val sectionLabelSize: Int = 0,
+    val sectionLabelUppercase: Boolean = false,
+    val sessionRowRadius: Int = -1,
+    val sessionSelectedAlpha: Float = 0.13f,
+    val showSessionId: Boolean = true,
+    val showSessionTime: Boolean = true,
+    val searchRadius: Int = -1,
+)
+
 data class UiHeader(
     val show: Boolean = true,
     val heightDp: Int = 0,

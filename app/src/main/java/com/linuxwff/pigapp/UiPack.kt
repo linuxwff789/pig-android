@@ -106,6 +106,17 @@ data class UiLayout(
     val composerPlaceholder: String = "给 Pig 发消息…",
     val composerMaxLines: Int = 6,
     val sendOnEnter: Boolean = true,
+    /** Chat transcript appearance. */
+    val chatPaddingH: Int = 14,
+    val chatPaddingV: Int = 10,
+    val chatBottomPadding: Int = 16,
+    val messageSpacing: Int = 14,
+    val emptyAvatarSize: Int = 64,
+    val codeBlockRadius: Int = -1,
+    val codeBlockBorderAlpha: Float = 0.35f,
+    val composerPlaceholderColor: String = "onSurfaceVariant",
+    /** Drawer appearance (no behaviour switches). */
+    val drawer: UiDrawerAppearance = UiDrawerAppearance(),
     /** Skin switcher: show, where and how (chips/list). */
     val showSkinSwitcher: Boolean = true,
     val skinSwitcherPlacement: String = "drawer",
@@ -348,6 +359,7 @@ object UiPackParser {
         val sidebar = json.optJSONObject("sidebar")
         val chat = json.optJSONObject("chat")
         val composer = json.optJSONObject("composer")
+        val drawerJson = json.optJSONObject("drawer")
         val skinSwitcher = json.optJSONObject("skinSwitcher")
         val packManager = json.optJSONObject("packManager")
         val header = json.optJSONObject("header")?.let { parseHeader(it, warnings) }
@@ -382,6 +394,27 @@ object UiPackParser {
             composerMaxLines = (composer?.optInt("maxLines", d.composerMaxLines)
                 ?: d.composerMaxLines).coerceIn(1, 12),
             sendOnEnter = composer?.optBoolean("sendOnEnter", d.sendOnEnter) ?: d.sendOnEnter,
+            chatPaddingH = (chat?.optInt("paddingH", d.chatPaddingH) ?: d.chatPaddingH)
+                .coerceIn(0, 64),
+            chatPaddingV = (chat?.optInt("paddingV", d.chatPaddingV) ?: d.chatPaddingV)
+                .coerceIn(0, 64),
+            chatBottomPadding = (chat?.optInt("bottomPadding", d.chatBottomPadding)
+                ?: d.chatBottomPadding).coerceIn(0, 128),
+            messageSpacing = (chat?.optInt("messageSpacing", d.messageSpacing)
+                ?: d.messageSpacing).coerceIn(0, 64),
+            emptyAvatarSize = (chat?.optInt("emptyAvatarSize", d.emptyAvatarSize)
+                ?: d.emptyAvatarSize).coerceIn(16, 128),
+            codeBlockRadius = (chat?.optInt("codeBlockRadius", d.codeBlockRadius)
+                ?: d.codeBlockRadius).coerceIn(-1, 40),
+            codeBlockBorderAlpha = chat?.optDouble(
+                "codeBlockBorderAlpha",
+                d.codeBlockBorderAlpha.toDouble(),
+            )?.toFloat()?.coerceIn(0f, 1f) ?: d.codeBlockBorderAlpha,
+            composerPlaceholderColor = composer?.optString(
+                "placeholderColor",
+                d.composerPlaceholderColor,
+            )?.takeIf { it.isNotBlank() } ?: d.composerPlaceholderColor,
+            drawer = parseDrawer(drawerJson, warnings),
             showSkinSwitcher = skinSwitcher?.optBoolean("show", d.showSkinSwitcher)
                 ?: d.showSkinSwitcher,
             skinSwitcherPlacement = placement.takeIf { it in placements } ?: d.skinSwitcherPlacement,
@@ -440,6 +473,52 @@ object UiPackParser {
             warnings.add("skins.default=$requested 不存在，使用 $default")
         }
         return default to out
+    }
+
+    private fun parseDrawer(json: JSONObject?, warnings: MutableList<String>): UiDrawerAppearance {
+        if (json == null) return UiDrawerAppearance()
+        val d = UiDrawerAppearance()
+        val backgrounds = setOf("theme", "surface", "gradient", "transparent")
+        val background = json.optString("background", d.background)
+        if (background !in backgrounds) warnings.add("drawer.background=$background 无效")
+        fun colorRadius(key: String): Int {
+            val value = json.optInt(key, d.cornerRadius)
+            return if (value < 0) -1 else value.coerceIn(0, 40)
+        }
+        val budget = json.optInt("buttonHeight", d.buttonHeight).coerceIn(0, 96)
+        return UiDrawerAppearance(
+            background = background.takeIf { it in backgrounds } ?: d.background,
+            gradientAlpha = json.optDouble("gradientAlpha", d.gradientAlpha.toDouble())
+                .toFloat().coerceIn(0f, 1f),
+            cornerRadius = colorRadius("cornerRadius"),
+            paddingH = json.optInt("paddingH", d.paddingH).coerceIn(0, 48),
+            paddingV = json.optInt("paddingV", d.paddingV).coerceIn(0, 48),
+            spacing = json.optInt("spacing", d.spacing).coerceIn(0, 40),
+            brandAvatarSize = json.optInt("brandAvatarSize", d.brandAvatarSize).coerceIn(16, 96),
+            brandTagline = json.optBoolean("brandTagline", d.brandTagline),
+            brandCardAlpha = json.optDouble("brandCardAlpha", d.brandCardAlpha.toDouble())
+                .toFloat().coerceIn(0f, 1f),
+            brandPills = json.optBoolean("brandPills", d.brandPills),
+            buttonHeight = budget,
+            buttonRadius = json.optInt("buttonRadius", d.buttonRadius)
+                .let { if (it < 0) -1 else it.coerceIn(0, 40) },
+            buttonIconSize = json.optInt("buttonIconSize", d.buttonIconSize).coerceIn(8, 32),
+            sectionLabelSize = json.optInt("sectionLabelSize", d.sectionLabelSize).coerceIn(0, 24),
+            sectionLabelUppercase = json.optBoolean(
+                "sectionLabelUppercase",
+                d.sectionLabelUppercase,
+            ),
+            sessionRowRadius = json.optInt("sessionRowRadius", d.sessionRowRadius)
+                .let { if (it < 0) -1 else it.coerceIn(0, 40) },
+            sessionSelectedAlpha = json.optDouble(
+                "sessionSelectedAlpha",
+                d.sessionSelectedAlpha.toDouble(),
+            ).toFloat().coerceIn(0f, 1f),
+            showSessionId = json.optBoolean("showSessionId", d.showSessionId),
+            showSessionTime = json.optBoolean("showSessionTime", d.showSessionTime),
+            searchRadius = json.optInt("searchRadius", d.searchRadius)
+                .let { if (it < 0) -1 else it.coerceIn(0, 40) },
+        )
     }
 
     private fun parseHeader(json: JSONObject, warnings: MutableList<String>): UiHeader {

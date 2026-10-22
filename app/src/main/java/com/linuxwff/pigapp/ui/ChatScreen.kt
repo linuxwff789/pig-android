@@ -213,29 +213,64 @@ fun PigApp(vm: AppViewModel) {
     }
 
     Box(Modifier.fillMaxSize()) {
+        val drawerAppearance = ui.uiPack.layout.drawer
+        val drawerCorner = if (drawerAppearance.cornerRadius >= 0) {
+            drawerAppearance.cornerRadius
+        } else {
+            ui.uiPack.theme.cornerRadius
+        }
+        val drawerScheme = MaterialTheme.colorScheme
+        val drawerBackground = when (drawerAppearance.background) {
+            "surface" -> drawerScheme.surface
+            "transparent" -> Color.Transparent
+            else -> drawerScheme.background
+        }
+        val drawerBrush = if (drawerAppearance.background == "gradient") {
+            Brush.verticalGradient(
+                listOf(
+                    drawerScheme.primary.copy(alpha = drawerAppearance.gradientAlpha),
+                    drawerScheme.background,
+                ),
+            )
+        } else {
+            null
+        }
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
                 ModalDrawerSheet(
                     modifier = Modifier.width(ui.uiPack.layout.sidebarWidthDp.dp),
-                    drawerContainerColor = MaterialTheme.colorScheme.background,
+                    drawerShape = RoundedCornerShape(drawerCorner.dp),
+                    drawerContainerColor = Color.Transparent,
                 ) {
-                    val open = drawerState.currentValue == DrawerValue.Open ||
-                        drawerState.targetValue == DrawerValue.Open
-                    if (open) {
-                        DrawerContent(
-                            vm = vm,
-                            ui = ui,
-                            onClose = { scope.launch { drawerState.close() } },
-                            onSettings = {
-                                scope.launch { drawerState.close() }
-                                showSettings = true
-                            },
-                            onOpenPacks = {
-                                scope.launch { drawerState.close() }
-                                showPackManager = true
-                            },
-                        )
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .then(
+                                if (drawerBrush != null) {
+                                    Modifier.background(drawerBrush)
+                                } else {
+                                    Modifier.background(drawerBackground)
+                                },
+                            ),
+                    ) {
+                        val open = drawerState.currentValue == DrawerValue.Open ||
+                            drawerState.targetValue == DrawerValue.Open
+                        if (open) {
+                            DrawerContent(
+                                vm = vm,
+                                ui = ui,
+                                onClose = { scope.launch { drawerState.close() } },
+                                onSettings = {
+                                    scope.launch { drawerState.close() }
+                                    showSettings = true
+                                },
+                                onOpenPacks = {
+                                    scope.launch { drawerState.close() }
+                                    showPackManager = true
+                                },
+                            )
+                        }
                     }
                 }
             },
@@ -344,6 +379,13 @@ fun PigApp(vm: AppViewModel) {
                         streamingId = ui.streamingId,
                         toolMode = ui.toolMode.ifBlank { ui.uiPack.layout.toolCards },
                         assistantLabel = ui.uiPack.layout.assistantLabel,
+                        chatPaddingH = ui.uiPack.layout.chatPaddingH,
+                        chatPaddingV = ui.uiPack.layout.chatPaddingV,
+                        chatBottomPadding = ui.uiPack.layout.chatBottomPadding,
+                        messageSpacing = ui.uiPack.layout.messageSpacing,
+                        emptyAvatarSize = ui.uiPack.layout.emptyAvatarSize,
+                        codeBlockRadius = ui.uiPack.layout.codeBlockRadius,
+                        codeBlockBorderAlpha = ui.uiPack.layout.codeBlockBorderAlpha,
                         types = ui.uiPack.types,
                         cornerRadius = ui.uiPack.theme.cornerRadius,
                         avatarShadow = ui.avatarShadow,
@@ -1037,6 +1079,13 @@ private fun DrawerContent(
 ) {
     val scheme = MaterialTheme.colorScheme
     val corner = ui.uiPack.theme.cornerRadius
+    val appearance = ui.uiPack.layout.drawer
+    val buttonCorner = if (appearance.buttonRadius >= 0) appearance.buttonRadius else corner
+    val buttonHeight = if (appearance.buttonHeight > 0) {
+        Modifier.heightIn(min = appearance.buttonHeight.dp)
+    } else {
+        Modifier
+    }
     val components = packComponents()
     var sessionQuery by remember { mutableStateOf("") }
     var renameTarget by remember { mutableStateOf<SessionInfo?>(null) }
@@ -1058,9 +1107,9 @@ private fun DrawerContent(
     Column(
         Modifier
             .fillMaxHeight()
-            .padding(horizontal = 16.dp)
-            .padding(top = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = appearance.paddingH.dp)
+            .padding(top = appearance.paddingV.dp),
+        verticalArrangement = Arrangement.spacedBy(appearance.spacing.dp),
     ) {
         if (components.showDrawerBrand) Box(
             Modifier
@@ -1069,8 +1118,8 @@ private fun DrawerContent(
                 .background(
                     Brush.linearGradient(
                         listOf(
-                            scheme.primary.copy(alpha = 0.34f),
-                            scheme.tertiary.copy(alpha = 0.10f),
+                            scheme.primary.copy(alpha = appearance.brandCardAlpha),
+                            scheme.tertiary.copy(alpha = appearance.brandCardAlpha * 0.3f),
                         ),
                     ),
                 )
@@ -1079,7 +1128,7 @@ private fun DrawerContent(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    BrandAvatar(44.dp)
+                    BrandAvatar(appearance.brandAvatarSize.dp)
                     Spacer(Modifier.width(12.dp))
                     Column {
                         Text(
@@ -1087,14 +1136,16 @@ private fun DrawerContent(
                             style = MaterialTheme.typography.titleLarge.copy(brush = brandBrush()),
                             fontWeight = FontWeight.Bold,
                         )
-                        Text(
-                            packText("drawer.tagline", "Termux 里的本地 coding agent"),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = scheme.onSurfaceVariant,
-                        )
+                        if (appearance.brandTagline) {
+                            Text(
+                                packText("drawer.tagline", "Termux 里的本地 coding agent"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = scheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (appearance.brandPills) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     InfoPill(
                         text = if (ui.connected) {
                             packText("header.online", "在线")
@@ -1119,8 +1170,9 @@ private fun DrawerContent(
         GradientButton(
             text = packText("drawer.newSession", "新会话"),
             icon = packIcon("add", "add"),
-            cornerRadius = corner,
-            modifier = Modifier.fillMaxWidth(),
+            cornerRadius = buttonCorner,
+            iconSize = appearance.buttonIconSize,
+            modifier = Modifier.fillMaxWidth().then(buttonHeight),
         ) {
             vm.newSession()
             onClose()
@@ -1130,10 +1182,14 @@ private fun DrawerContent(
                 onClose()
                 onSettings()
             },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(corner.dp),
+            modifier = Modifier.fillMaxWidth().then(buttonHeight),
+            shape = RoundedCornerShape(buttonCorner.dp),
         ) {
-            Icon(packIcon("settings", "settings"), null, modifier = Modifier.size(16.dp))
+            Icon(
+                packIcon("settings", "settings"),
+                null,
+                modifier = Modifier.size(appearance.buttonIconSize.dp),
+            )
             Spacer(Modifier.width(8.dp))
             Text(packText("drawer.settings", "设置"))
         }
@@ -1150,7 +1206,11 @@ private fun DrawerContent(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.width(5.dp))
-                SectionLabel(packText("skin.title", "皮肤"))
+                SectionLabel(
+                    packText("skin.title", "皮肤"),
+                    size = appearance.sectionLabelSize,
+                    uppercase = appearance.sectionLabelUppercase,
+                )
             }
             SkinSwitcher(
                 skins = ui.uiPack.skins,
@@ -1169,10 +1229,14 @@ private fun DrawerContent(
                     onClose()
                     onOpenPacks()
                 },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(corner.dp),
+                modifier = Modifier.fillMaxWidth().then(buttonHeight),
+                shape = RoundedCornerShape(buttonCorner.dp),
             ) {
-                Icon(packIcon("folder", "folder"), null, modifier = Modifier.size(16.dp))
+                Icon(
+                    packIcon("folder", "folder"),
+                    null,
+                    modifier = Modifier.size(appearance.buttonIconSize.dp),
+                )
                 Spacer(Modifier.width(8.dp))
                 Text(
                     packText("pack.manage", "UI pack 管理"),
@@ -1196,20 +1260,24 @@ private fun DrawerContent(
 
         val drawerNav = ui.uiPack.nav.filter { it.placement != "settings" }
         if (components.showPanels && drawerNav.isNotEmpty()) {
-            SectionLabel(packText("drawer.panels", "面板"))
+            SectionLabel(
+                packText("drawer.panels", "面板"),
+                size = appearance.sectionLabelSize,
+                uppercase = appearance.sectionLabelUppercase,
+            )
             drawerNav.forEach { item ->
                 OutlinedButton(
                     onClick = {
                         vm.openNavItem(item)
                         onClose()
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(corner.dp),
+                    modifier = Modifier.fillMaxWidth().then(buttonHeight),
+                    shape = RoundedCornerShape(buttonCorner.dp),
                 ) {
                     Icon(
                         navIcon(item.icon),
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(appearance.buttonIconSize.dp),
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(item.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1224,7 +1292,12 @@ private fun DrawerContent(
                 .padding(top = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SectionLabel(packText("drawer.recent", "最近会话"), Modifier.weight(1f))
+            SectionLabel(
+                packText("drawer.recent", "最近会话"),
+                Modifier.weight(1f),
+                size = appearance.sectionLabelSize,
+                uppercase = appearance.sectionLabelUppercase,
+            )
             IconButton(
                 onClick = { vm.requestSessions() },
                 modifier = Modifier.size(30.dp),
@@ -1250,7 +1323,10 @@ private fun DrawerContent(
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             textStyle = MaterialTheme.typography.bodySmall,
-            shape = RoundedCornerShape((corner / 2).coerceAtLeast(8).dp),
+            shape = RoundedCornerShape(
+                (if (appearance.searchRadius >= 0) appearance.searchRadius else corner / 2)
+                    .coerceAtLeast(8).dp,
+            ),
             leadingIcon = {
                 Icon(
                     packIcon("search", "search"),
@@ -1279,7 +1355,14 @@ private fun DrawerContent(
                 SessionRow(
                     session = session,
                     current = session.path == ui.sessionFile,
-                    cornerRadius = corner,
+                    cornerRadius = if (appearance.sessionRowRadius >= 0) {
+                        appearance.sessionRowRadius
+                    } else {
+                        corner
+                    },
+                    selectedAlpha = appearance.sessionSelectedAlpha,
+                    showId = appearance.showSessionId,
+                    showTime = appearance.showSessionTime,
                     onClick = {
                         vm.switchSession(session.path)
                         onClose()
@@ -1664,11 +1747,20 @@ private fun SkinSwatch(skin: UiSkin) {
 }
 
 @Composable
-private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
+private fun SectionLabel(
+    text: String,
+    modifier: Modifier = Modifier,
+    size: Int = 0,
+    uppercase: Boolean = false,
+) {
     Text(
-        text,
+        if (uppercase) text.uppercase() else text,
         modifier = modifier,
-        style = MaterialTheme.typography.labelSmall,
+        style = if (size > 0) {
+            MaterialTheme.typography.labelSmall.copy(fontSize = size.sp)
+        } else {
+            MaterialTheme.typography.labelSmall
+        },
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
@@ -1741,6 +1833,9 @@ private fun SessionRow(
     session: SessionInfo,
     current: Boolean,
     cornerRadius: Int,
+    selectedAlpha: Float = 0.13f,
+    showId: Boolean = true,
+    showTime: Boolean = true,
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
@@ -1756,7 +1851,9 @@ private fun SessionRow(
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(if (current) scheme.primary.copy(alpha = 0.13f) else Color.Transparent)
+            .background(
+                if (current) scheme.primary.copy(alpha = selectedAlpha) else Color.Transparent,
+            )
             .clickable(onClick = onClick)
             .padding(start = 8.dp, end = 2.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1777,13 +1874,19 @@ private fun SessionRow(
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (current) scheme.primary else scheme.onSurface,
             )
-            Text(
-                "${session.id.take(8)} · ${DateUtils.getRelativeTimeSpanString(session.updated)}" +
-                    if (components.showSessionSize) " · ${session.size / 1024}K" else "",
-                maxLines = 1,
-                style = MaterialTheme.typography.labelSmall,
-                color = scheme.onSurfaceVariant,
-            )
+            val meta = buildList {
+                if (showId) add(session.id.take(8))
+                if (showTime) add(DateUtils.getRelativeTimeSpanString(session.updated).toString())
+                if (components.showSessionSize) add("${session.size / 1024}K")
+            }.joinToString(" · ")
+            if (meta.isNotBlank()) {
+                Text(
+                    meta,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
         }
         if (components.showSessionBadges) {
             SessionBadge(session)
@@ -2002,6 +2105,13 @@ private fun MessageList(
     streamingId: String?,
     toolMode: String,
     assistantLabel: String,
+    chatPaddingH: Int,
+    chatPaddingV: Int,
+    chatBottomPadding: Int,
+    messageSpacing: Int,
+    emptyAvatarSize: Int,
+    codeBlockRadius: Int,
+    codeBlockBorderAlpha: Float,
     types: TypeScale,
     cornerRadius: Int,
     avatarShadow: Boolean,
@@ -2057,7 +2167,7 @@ private fun MessageList(
     }
 
     if (messages.isEmpty()) {
-        EmptyState(onSuggestion)
+        EmptyState(onSuggestion, emptyAvatarSize)
         return
     }
 
@@ -2069,8 +2179,13 @@ private fun MessageList(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(
+                start = chatPaddingH.dp,
+                end = chatPaddingH.dp,
+                top = chatPaddingV.dp,
+                bottom = chatBottomPadding.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(messageSpacing.dp),
         ) {
             items(displayItems, key = { it.key }, contentType = { it.contentType }) { item ->
                 when (item) {
@@ -2080,6 +2195,8 @@ private fun MessageList(
                         toolMode = toolMode,
                         types = types,
                         cornerRadius = cornerRadius,
+                        codeBlockRadius = codeBlockRadius,
+                        codeBlockBorderAlpha = codeBlockBorderAlpha,
                         streaming = item.message.id == streamingId,
                         avatarShadow = avatarShadow,
                         bubbleShadow = bubbleShadow,
@@ -2155,7 +2272,7 @@ private val suggestions = listOf(
 )
 
 @Composable
-private fun EmptyState(onSuggestion: (String) -> Unit) {
+private fun EmptyState(onSuggestion: (String) -> Unit, avatarSize: Int) {
     val scheme = MaterialTheme.colorScheme
     val components = packComponents()
     val packSuggestions = packText(
@@ -2180,7 +2297,7 @@ private fun EmptyState(onSuggestion: (String) -> Unit) {
                             ),
                         ),
                 )
-                BrandAvatar(64.dp)
+                BrandAvatar(avatarSize.dp)
             }
             Spacer(Modifier.height(16.dp))
             Text(
@@ -2236,6 +2353,8 @@ private fun MessageRow(
     toolMode: String,
     types: TypeScale,
     cornerRadius: Int,
+    codeBlockRadius: Int,
+    codeBlockBorderAlpha: Float,
     streaming: Boolean,
     avatarShadow: Boolean,
     bubbleShadow: Boolean,
@@ -2355,6 +2474,8 @@ private fun MessageRow(
                             modifier = Modifier.fillMaxWidth(),
                             types = types,
                             cornerRadius = cornerRadius,
+                            codeBlockRadius = codeBlockRadius,
+                            codeBlockBorderAlpha = codeBlockBorderAlpha,
                         )
                     }
                 }
@@ -2824,6 +2945,14 @@ private fun Composer(
     val scheme = MaterialTheme.colorScheme
     val components = packComponents()
     val buttonSize = components.composerButtonSize.dp
+    val placeholderColor = when (layout.composerPlaceholderColor) {
+        "primary" -> scheme.primary
+        "secondary" -> scheme.secondary
+        "tertiary" -> scheme.tertiary
+        "text" -> scheme.onSurface
+        "error" -> scheme.error
+        else -> scheme.onSurfaceVariant
+    }
     val canSend = connected && value.isNotBlank()
     val shape = RoundedCornerShape(
         topStart = (cornerRadius + 8).dp,
@@ -2853,7 +2982,7 @@ private fun Composer(
                             } else {
                                 layout.composerPlaceholder
                             },
-                            color = scheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            color = placeholderColor.copy(alpha = 0.75f),
                         )
                     },
                     maxLines = layout.composerMaxLines,

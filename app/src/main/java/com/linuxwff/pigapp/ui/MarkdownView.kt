@@ -260,6 +260,8 @@ fun AssistantMarkdown(
     modifier: Modifier = Modifier,
     types: TypeScale = TypeScale(),
     cornerRadius: Int = 16,
+    codeBlockRadius: Int = -1,
+    codeBlockBorderAlpha: Float = 0.35f,
 ) {
     val segments = remember(text) { splitCodeFences(text) }
     Column(modifier) {
@@ -275,7 +277,8 @@ fun AssistantMarkdown(
                 is MarkdownSegment.Code -> CollapsibleCode(
                     language = segment.language,
                     code = segment.code,
-                    cornerRadius = cornerRadius,
+                    cornerRadius = if (codeBlockRadius >= 0) codeBlockRadius else cornerRadius,
+                    borderAlpha = codeBlockBorderAlpha,
                 )
             }
         }
@@ -283,7 +286,12 @@ fun AssistantMarkdown(
 }
 
 @Composable
-private fun CollapsibleCode(language: String, code: String, cornerRadius: Int) {
+private fun CollapsibleCode(
+    language: String,
+    code: String,
+    cornerRadius: Int,
+    borderAlpha: Float,
+) {
     var expanded by remember(code) { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
     val components = packComponents()
@@ -294,7 +302,7 @@ private fun CollapsibleCode(language: String, code: String, cornerRadius: Int) {
             .fillMaxWidth()
             .clip(shape)
             .background(scheme.background.copy(alpha = 0.6f))
-            .border(1.dp, scheme.outline.copy(alpha = 0.35f), shape),
+            .border(1.dp, scheme.outline.copy(alpha = borderAlpha), shape),
     ) {
         Row(
             Modifier

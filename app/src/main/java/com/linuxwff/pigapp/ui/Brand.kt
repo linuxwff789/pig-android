@@ -91,6 +91,7 @@ fun GradientButton(
     icon: ImageVector? = null,
     enabled: Boolean = true,
     cornerRadius: Int = 18,
+    iconSize: Int = 17,
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(cornerRadius.dp)
@@ -114,7 +115,7 @@ fun GradientButton(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         icon?.let {
-            Icon(it, contentDescription = null, modifier = Modifier.size(17.dp), tint = ink)
+            Icon(it, contentDescription = null, modifier = Modifier.size(iconSize.dp), tint = ink)
             Spacer(Modifier.width(7.dp))
         }
         Text(

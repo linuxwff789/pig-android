@@ -11,12 +11,20 @@
     "assistantLabel": "AURORA",
     "toolCards": "expanded",
     "toolGroups": false,
-    "showUsage": true
+    "showUsage": true,
+    "paddingH": 16,
+    "paddingV": 12,
+    "bottomPadding": 20,
+    "messageSpacing": 16,
+    "emptyAvatarSize": 72,
+    "codeBlockRadius": 14,
+    "codeBlockBorderAlpha": 0.5
   },
   "composer": {
     "placeholder": "向 Aurora 说点什么…",
     "maxLines": 8,
-    "sendOnEnter": true
+    "sendOnEnter": true,
+    "placeholderColor": "secondary"
   },
   "skinSwitcher": {
     "show": true,
@@ -198,5 +206,27 @@
         }
       ]
     }
+  },
+  "drawer": {
+    "background": "gradient",
+    "gradientAlpha": 0.22,
+    "cornerRadius": 26,
+    "paddingH": 18,
+    "paddingV": 22,
+    "spacing": 9,
+    "brandAvatarSize": 48,
+    "brandTagline": true,
+    "brandCardAlpha": 0.42,
+    "brandPills": true,
+    "buttonHeight": 44,
+    "buttonRadius": 14,
+    "buttonIconSize": 18,
+    "sectionLabelSize": 12,
+    "sectionLabelUppercase": false,
+    "sessionRowRadius": 16,
+    "sessionSelectedAlpha": 0.18,
+    "showSessionId": true,
+    "showSessionTime": true,
+    "searchRadius": 14
   }
 }
