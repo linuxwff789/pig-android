@@ -1,0 +1,21 @@
+{
+  "menu": "menu",
+  "send": "send",
+  "stop": "stop",
+  "copy": "check",
+  "settings": "edit",
+  "refresh": "history",
+  "add": "add",
+  "tool": "palette",
+  "more": "more",
+  "edit": "edit",
+  "delete": "delete",
+  "check": "check",
+  "search": "search",
+  "history": "history",
+  "chevronDown": "down",
+  "chevronUp": "up",
+  "skin": "folder",
+  "folder": "folder",
+  "upload": "upload"
+}

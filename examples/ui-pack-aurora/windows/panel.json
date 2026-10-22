@@ -1,0 +1,37 @@
+{
+  "appUI": 1,
+  "id": "panel",
+  "title": "Aurora inline panel",
+  "placement": "aboveComposer",
+  "width": 340,
+  "height": 0,
+  "body": {
+    "type": "column",
+    "spacing": 6,
+    "children": [
+      {
+        "type": "text",
+        "text": "内联面板",
+        "style": "heading"
+      },
+      {
+        "type": "text",
+        "text": "这个面板在输入框上方，用 pack 的 surface/outline/radius。",
+        "style": "muted"
+      },
+      {
+        "type": "row",
+        "spacing": 8,
+        "children": [
+          {
+            "type": "button",
+            "label": "关闭面板",
+            "action": "builtin:close",
+            "buttonStyle": "outline",
+            "weight": 1.0
+          }
+        ]
+      }
+    ]
+  }
+}

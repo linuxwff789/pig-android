@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "sidebar": {
+    "widthDp": 360,
+    "sections": [
+      "sessions",
+      "projects"
+    ]
+  },
+  "chat": {
+    "assistantLabel": "AURORA",
+    "toolCards": "expanded",
+    "toolGroups": false,
+    "showUsage": true
+  },
+  "composer": {
+    "placeholder": "向 Aurora 说点什么…",
+    "maxLines": 8,
+    "sendOnEnter": true
+  },
+  "skinSwitcher": {
+    "show": true,
+    "placement": "both",
+    "style": "list"
+  },
+  "packManager": {
+    "show": true,
+    "placement": "both"
+  }
+}

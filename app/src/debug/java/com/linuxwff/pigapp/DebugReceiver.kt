@@ -127,6 +127,7 @@ class DebugReceiver : BroadcastReceiver() {
                     "used=${state.contextTokens}/${state.contextWindow} " +
                     "pack=${state.activePackId.ifBlank { "builtin" }} " +
                     "packName=${state.uiPack.name} localPacks=${state.localPacks.size} " +
+                    "windows=${state.windows.size} windowError=${state.windowError} " +
                     "error=${state.error} toast=${state.toast}"
                 Log.i(TAG, summary)
                 setResultData(summary)

@@ -1,0 +1,80 @@
+{
+  "header": {
+    "title": "Aurora",
+    "online": "已连线",
+    "offline": "离线"
+  },
+  "drawer": {
+    "tagline": "Aurora · 全样式演示 pack",
+    "newSession": "开新对话",
+    "settings": "偏好",
+    "panels": "工具面板",
+    "recent": "对话记录",
+    "search": "搜索对话…",
+    "empty": "还没有对话",
+    "noMatch": "没有匹配项"
+  },
+  "status": {
+    "thinking": "想一想",
+    "working": "动手",
+    "compacting": "压缩记忆",
+    "retrying": "再试一次",
+    "switching": "切换中",
+    "restoring": "恢复中"
+  },
+  "tool": {
+    "running": "执行中…",
+    "failed": "出错",
+    "collapse": "折叠",
+    "summary": "概览",
+    "expand": "展开全部",
+    "groupHeader": "{tool} × {count}",
+    "groupCount": "{count} 次执行",
+    "groupErrors": "{count} 次出错"
+  },
+  "composer": {
+    "steerPlaceholder": "插一句…",
+    "steerHint": "点发送=插队 · 长按=排队",
+    "offline": "未连接 · 点右上角重连"
+  },
+  "empty": {
+    "title": "Aurora 演示包",
+    "hint": "这个 pack 把所有能改的样式都改了：",
+    "suggestions": "打开 Showcase 窗口|切换配色|导入另一个 pack"
+  },
+  "skin": {
+    "title": "配色"
+  },
+  "settings": {
+    "title": "偏好设置",
+    "connection": "连接",
+    "keepAlive": "后台保活",
+    "wakeLock": "唤醒锁",
+    "data": "数据",
+    "extensions": "扩展",
+    "about": "关于",
+    "done": "好了",
+    "compact": "压缩上下文",
+    "compactHint": "发送 /compact，减少上下文占用",
+    "compactAction": "压缩"
+  },
+  "pack": {
+    "title": "UI pack",
+    "manage": "UI pack 管理",
+    "builtin": "内置",
+    "builtinPack": "内置 pack",
+    "builtinHint": "来自 ~/.pig/android-ui · {files} files",
+    "localHint": "v{version} · {files} files",
+    "empty": "还没有导入的 pack",
+    "importZip": "导入 ZIP",
+    "importDir": "导入目录",
+    "hint": "内置 pack 由 Termux 推送；导入的 pack 存在 App 私有目录。",
+    "done": "好了"
+  },
+  "toast": {
+    "skinChanged": "配色已切换：{name}",
+    "packImported": "已导入：{id}",
+    "packImportFailed": "导入失败：{error}",
+    "packMissing": "pack 不存在：{id}"
+  }
+}

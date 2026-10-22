@@ -1,0 +1,103 @@
+{
+  "default": "default",
+  "skins": [
+    {
+      "id": "default",
+      "name": "Aurora",
+      "theme": {}
+    },
+    {
+      "id": "solar",
+      "name": "Solar",
+      "theme": {
+        "background": "#160B06",
+        "surface": "#24130B",
+        "surfaceVariant": "#341C10",
+        "primary": "#FFB347",
+        "secondary": "#FF6B6B",
+        "accent": "#FFE29A",
+        "text": "#FFF7ED",
+        "textMuted": "#D6B49B",
+        "outline": "#6B4630",
+        "outlineVariant": "#3D2618",
+        "bubbleStart": "#FF8A3D",
+        "bubbleEnd": "#FFE29A",
+        "onPrimary": "#2B1400",
+        "onSecondary": "#2B0A0A",
+        "onAccent": "#2B1B00"
+      }
+    },
+    {
+      "id": "ice",
+      "name": "Ice",
+      "theme": {
+        "background": "#06121B",
+        "surface": "#0B1F2E",
+        "surfaceVariant": "#123247",
+        "primary": "#7DD3FC",
+        "secondary": "#A5F3FC",
+        "accent": "#E0F2FE",
+        "text": "#F0F9FF",
+        "textMuted": "#9CC3D9",
+        "outline": "#2B5875",
+        "outlineVariant": "#163A51",
+        "bubbleStart": "#38BDF8",
+        "bubbleEnd": "#E0F2FE",
+        "onPrimary": "#03202F",
+        "onSecondary": "#03202F",
+        "onAccent": "#03202F"
+      }
+    },
+    {
+      "id": "mono",
+      "name": "Mono",
+      "theme": {
+        "background": "#0C0C0C",
+        "surface": "#171717",
+        "surfaceVariant": "#242424",
+        "primary": "#E5E5E5",
+        "secondary": "#A3A3A3",
+        "accent": "#FAFAFA",
+        "text": "#FAFAFA",
+        "textMuted": "#A3A3A3",
+        "danger": "#F87171",
+        "outline": "#3F3F46",
+        "outlineVariant": "#27272A",
+        "bubbleStart": "#525252",
+        "bubbleEnd": "#A3A3A3",
+        "onPrimary": "#0A0A0A",
+        "onSecondary": "#0A0A0A",
+        "onAccent": "#0A0A0A",
+        "avatarShadow": false,
+        "bubbleShadow": false
+      }
+    },
+    {
+      "id": "paper",
+      "name": "Paper",
+      "theme": {
+        "background": "#F7F3EA",
+        "surface": "#FFFDF8",
+        "surfaceVariant": "#EFE8DA",
+        "primary": "#B45309",
+        "secondary": "#0F766E",
+        "accent": "#C2410C",
+        "text": "#1C1917",
+        "textMuted": "#78716C",
+        "danger": "#B91C1C",
+        "onPrimary": "#FFFFFF",
+        "onSecondary": "#FFFFFF",
+        "onAccent": "#FFFFFF",
+        "outline": "#D6CCBC",
+        "outlineVariant": "#E7DFD2",
+        "bubbleStart": "#B45309",
+        "bubbleEnd": "#C2410C",
+        "bubbleStartAlpha": 0.18,
+        "bubbleEndAlpha": 0.1,
+        "bubbleBorderAlpha": 0.3,
+        "cardBorderAlpha": 0.4,
+        "chipAlpha": 0.12
+      }
+    }
+  ]
+}

@@ -1,0 +1,196 @@
+{
+  "appUI": 1,
+  "id": "showcase",
+  "title": "Aurora Showcase",
+  "placement": "overlay",
+  "width": 360,
+  "height": 640,
+  "dismissible": true,
+  "autoOpen": false,
+  "body": {
+    "type": "column",
+    "spacing": 8,
+    "scroll": true,
+    "children": [
+      {
+        "type": "text",
+        "text": "Aurora Showcase",
+        "style": "heading"
+      },
+      {
+        "type": "text",
+        "text": "这个窗口用了 UI pack 能改的全部节点样式、主题 token、透明度、圆角和图标映射。",
+        "style": "body"
+      },
+      {
+        "type": "text",
+        "text": "Muted · 次要说明文字",
+        "style": "muted"
+      },
+      {
+        "type": "text",
+        "text": "Danger · 危险操作提示",
+        "style": "danger"
+      },
+      {
+        "type": "text",
+        "text": "**Markdown** 也支持 `行内代码` 和列表：\n- 主题\n- 组件\n- 布局",
+        "style": "markdown"
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "row",
+        "spacing": 10,
+        "children": [
+          {
+            "type": "text",
+            "text": "左列 (weight 1)",
+            "weight": 1.0,
+            "style": "label"
+          },
+          {
+            "type": "text",
+            "text": "右列 (weight 1)",
+            "weight": 1.0,
+            "style": "label"
+          }
+        ]
+      },
+      {
+        "type": "spacer",
+        "size": 4
+      },
+      {
+        "type": "progress",
+        "value": 0.62
+      },
+      {
+        "type": "progress",
+        "indeterminate": true
+      },
+      {
+        "type": "code",
+        "language": "json",
+        "maxLines": 8,
+        "text": "{\n  \"theme\": \"aurora\",\n  \"cornerRadius\": 26,\n  \"bubbleRadius\": 28,\n  \"chipRadius\": 12,\n  \"composerRadius\": 30,\n  \"alphas\": [0.42, 0.24, 0.55, 0.85, 0.22]\n}"
+      },
+      {
+        "type": "textfield",
+        "id": "name",
+        "placeholder": "输入点什么…",
+        "maxLines": 2
+      },
+      {
+        "type": "select",
+        "id": "mode",
+        "value": "aurora",
+        "options": [
+          {
+            "label": "Aurora",
+            "value": "aurora"
+          },
+          {
+            "label": "Solar",
+            "value": "solar"
+          },
+          {
+            "label": "Ice",
+            "value": "ice"
+          },
+          {
+            "label": "Mono",
+            "value": "mono"
+          }
+        ]
+      },
+      {
+        "type": "toggle",
+        "id": "verbose",
+        "label": "详细输出",
+        "value": true
+      },
+      {
+        "type": "table",
+        "headers": [
+          "Token",
+          "Value"
+        ],
+        "rows": [
+          [
+            "cornerRadius",
+            "26"
+          ],
+          [
+            "bubbleRadius",
+            "28"
+          ],
+          [
+            "chipRadius",
+            "12"
+          ],
+          [
+            "composerRadius",
+            "30"
+          ]
+        ]
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "text",
+            "text": "列表项 1 · 自动分隔线",
+            "style": "body"
+          },
+          {
+            "type": "text",
+            "text": "列表项 2 · 自动分隔线",
+            "style": "body"
+          },
+          {
+            "type": "text",
+            "text": "列表项 3 · 自动分隔线",
+            "style": "body"
+          }
+        ]
+      },
+      {
+        "type": "image",
+        "src": "assets/logo.png",
+        "width": 120,
+        "height": 120,
+        "corner": 20,
+        "alt": "Aurora logo"
+      },
+      {
+        "type": "row",
+        "spacing": 8,
+        "children": [
+          {
+            "type": "button",
+            "label": "复制",
+            "action": "builtin:copy:Aurora UI pack",
+            "buttonStyle": "primary",
+            "weight": 1.0
+          },
+          {
+            "type": "button",
+            "label": "关闭",
+            "action": "builtin:close",
+            "buttonStyle": "outline",
+            "weight": 1.0
+          }
+        ]
+      },
+      {
+        "type": "button",
+        "label": "不可用按钮",
+        "action": "builtin:close",
+        "buttonStyle": "text",
+        "enabled": false
+      }
+    ]
+  }
+}

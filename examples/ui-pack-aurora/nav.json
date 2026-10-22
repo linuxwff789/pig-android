@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "id": "showcase",
+      "label": "Showcase 窗口",
+      "window": "showcase",
+      "icon": "palette"
+    },
+    {
+      "id": "panel",
+      "label": "内联面板",
+      "window": "panel",
+      "icon": "tool"
+    }
+  ]
+}
