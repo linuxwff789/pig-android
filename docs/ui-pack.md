@@ -310,7 +310,73 @@ Container keys:
 | `background` | `gradient` | `gradient`, `surface`, `transparent` |
 | `gradientAlpha` | 0.13 | only for `gradient` |
 | `divider` | false | bottom divider |
-| `rows` | [] | list of rows, each with `spacing`, `align`, `height`, `elements` |
+| `body` | null | **pixel-level** appUI node tree; when present `rows` is ignored |
+| `rows` | [] | simple row/element list (see below) |
+
+### Pixel-level header (`header.body`)
+
+For full composition, put an `appUI` node tree in `header.body`. It uses the
+same nodes as `windows/*.json` (`column`, `row`, `text`, `code`, `progress`,
+`button`, `textfield`, `select`, `toggle`, `list`, `table`, `image`, `divider`,
+`spacer`, `icon`, `avatar`, `connection`), plus `bind` / `format` and
+`visibleWhen`.
+
+```json
+"header": {
+  "height": 74,
+  "background": "gradient",
+  "divider": true,
+  "body": {
+    "type": "column",
+    "spacing": 2,
+    "children": [
+      {
+        "type": "row",
+        "spacing": 8,
+        "children": [
+          { "type": "icon", "icon": "menu", "size": 22, "action": "header:menu" },
+          { "type": "avatar", "size": 36, "action": "header:menu" },
+          {
+            "type": "column", "weight": 1, "spacing": 0,
+            "children": [
+              { "type": "text", "text": "Aurora", "style": "heading" },
+              { "type": "connection", "color": "tertiary" }
+            ]
+          },
+          { "type": "text", "bind": "stats.contextUsage", "format": "{percent}%", "style": "muted" },
+          { "type": "text", "bind": "stats", "format": "缓存 {cacheHitRate}%", "style": "muted" },
+          { "type": "icon", "icon": "stop", "size": 22, "action": "header:stop", "visibleWhen": "busy" }
+        ]
+      },
+      {
+        "type": "row", "spacing": 8,
+        "children": [
+          { "type": "text", "bind": "state.model", "format": "{provider}/{id}", "style": "muted" },
+          { "type": "spacer", "weight": 1 },
+          { "type": "icon", "icon": "settings", "size": 18, "action": "header:settings" },
+          { "type": "icon", "icon": "add", "size": 18, "action": "header:new_session" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Header actions in node trees:
+
+| `action` | Effect |
+| --- | --- |
+| `header:menu` | open drawer |
+| `header:model` | open model picker |
+| `header:reconnect` | reconnect |
+| `header:stop` / `header:abort` | abort current turn |
+| `header:settings` | open settings |
+| `header:new` / `header:new_session` | new session |
+| `pack:<name>` | run a `layout.actions` entry |
+
+`builtin:copy:*` and `ext:*` also work through the normal window action path.
+
+### Simple rows (`header.rows`)
 
 Elements:
 
@@ -348,7 +414,7 @@ Element keys:
 | `style` | `label` (default), `body`, `heading`, `mono`, `muted`, `danger` |
 | `color` | `onSurfaceVariant` (default), `primary`, `secondary`, `tertiary`, `onSurface`, `error`, `success`, `warning` |
 | `bind` + `format` | read RPC data |
-| `action` | `menu`, `model`, `reconnect`, `stop`/`abort`, `settings`, `new`/`new_session`, `pack:<name>` |
+| `action` | `menu`, `model`, `reconnect`, `stop`/`abort`, `settings`, `new`/`new_session`, `header:*`, `pack:<name>` |
 | `avatar` / `avatarSize` / `online` | brand element only |
 
 The header is rendered inside `statusBarsPadding()`, so `paddingV` is added

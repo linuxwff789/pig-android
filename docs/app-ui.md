@@ -61,8 +61,9 @@ Windows are global, not tied to a session. Switching sessions keeps them open.
 
 ## Nodes
 
-Every node supports `type`, `visible` (default true), `padding` (dp) and, inside
-a `row`/`column`, `weight` (0 = natural size). Text and code nodes also accept
+Every node supports `type`, `visible` (default true), `visibleWhen`
+(`always/busy/idle/connected/offline/streaming/compacting`), `padding` (dp) and,
+inside a `row`/`column`, `weight` (0 = natural size). Text and code nodes also accept
 `bind` + `format`: `bind` is a path into the current UI pack's RPC data (for
 example `stats.contextUsage`), and `format` is a `{key}` template.
 
@@ -90,6 +91,9 @@ Content:
 | `list` | `children` (dividers between them) |
 | `table` | `headers`, `rows`: array of string arrays |
 | `image` | `src` (`assets/...`), `width`, `height`, `corner`, `alt` |
+| `icon` | `icon` (from `icons.json`), `size`, `color`, `action`, `description` |
+| `avatar` | `size`, `action` |
+| `connection` | `text` / `label` optional; dot reflects connection state |
 
 Form fields need an `id`; it becomes the JSON key sent with the action. A
 missing `id` gets a generated `fieldN` and a warning.

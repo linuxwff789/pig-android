@@ -179,7 +179,8 @@
               "style": "muted"
             },
             {
-              "type": "spacer"
+              "type": "spacer",
+              "weight": 1.0
             },
             {
               "type": "icon",
