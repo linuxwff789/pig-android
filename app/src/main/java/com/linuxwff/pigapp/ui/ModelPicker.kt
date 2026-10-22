@@ -52,14 +52,16 @@ import com.linuxwff.pigapp.ModelInfo
 fun ModelPickerDialog(vm: AppViewModel) {
     if (!vm.showModelPicker) return
     var query by rememberSaveable { mutableStateOf("") }
+    var reasoningOnly by rememberSaveable { mutableStateOf(false) }
     val models = vm.models
-    val filtered = remember(query, models) {
-        if (query.isBlank()) {
-            models
-        } else {
-            models.filter {
-                "${it.provider}/${it.id} ${it.name}".contains(query.trim(), ignoreCase = true)
-            }
+    val filtered = remember(query, models, reasoningOnly) {
+        models.filter { model ->
+            (!reasoningOnly || model.reasoning) &&
+                (query.isBlank() ||
+                    "${model.provider}/${model.id} ${model.name}".contains(
+                        query.trim(),
+                        ignoreCase = true,
+                    ))
         }
     }
     val scheme = MaterialTheme.colorScheme
@@ -119,6 +121,17 @@ fun ModelPickerDialog(vm: AppViewModel) {
                         cursorColor = scheme.primary,
                     ),
                 )
+                Spacer(Modifier.height(6.dp))
+                FilterChip(
+                    selected = reasoningOnly,
+                    onClick = { reasoningOnly = !reasoningOnly },
+                    label = { Text(packText("model.reasoningOnly", "只看支持思考")) },
+                    shape = CircleShape,
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = scheme.primary.copy(alpha = 0.18f),
+                        selectedLabelColor = scheme.primary,
+                    ),
+                )
                 if (vm.ui.thinkingLevels.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
                     Text(
@@ -145,6 +158,24 @@ fun ModelPickerDialog(vm: AppViewModel) {
                             )
                         }
                     }
+                    if (vm.ui.thinkingLevels.size <= 1) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            packText(
+                                "model.thinkingUnsupported",
+                                "当前模型不支持思考档位；换一个支持 reasoning 的模型即可。",
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        packText("model.thinkingUnsupported", "当前模型不支持思考档位。"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
                 }
                 if (vm.modelsLoading || vm.ui.modelSwitchPending) {
                     Spacer(Modifier.height(6.dp))
@@ -228,6 +259,21 @@ private fun ModelRow(
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.tertiary,
                     )
+                }
+                if (model.reasoning) {
+                    Spacer(Modifier.width(5.dp))
+                    Box(
+                        Modifier
+                            .clip(CircleShape)
+                            .background(scheme.secondary.copy(alpha = 0.14f))
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                    ) {
+                        Text(
+                            packText("model.reasoning", "思考"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.secondary,
+                        )
+                    }
                 }
                 Spacer(Modifier.width(6.dp))
                 Text(

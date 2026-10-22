@@ -94,6 +94,9 @@
     "thinkingChanged": "思考档位：{level}"
   },
   "model": {
-    "switching": "切换中…"
+    "switching": "切换中…",
+    "reasoning": "思考",
+    "reasoningOnly": "只看支持思考",
+    "thinkingUnsupported": "当前模型不支持思考档位；换一个支持 reasoning 的模型即可。"
   }
 }
