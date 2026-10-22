@@ -420,6 +420,52 @@ Element keys:
 The header is rendered inside `statusBarsPadding()`, so `paddingV` is added
 below the system status bar.
 
+## drawer / chat appearance
+
+These keys only change visuals: sizes, spacing, colors, radii and decorative
+visibility. They do not reorder menu actions or change messaging behavior.
+
+`layout/chat.json` → `drawer`:
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `background` | `theme` | `theme`, `surface`, `gradient`, `transparent` |
+| `gradientAlpha` | 0.18 | drawer gradient strength |
+| `cornerRadius` | theme | drawer sheet radius; `-1` = theme |
+| `paddingH` / `paddingV` | 16 / 20 | drawer content padding |
+| `spacing` | 10 | space between drawer sections |
+| `brandAvatarSize` | 44 | brand avatar dp |
+| `brandTagline` | true | show the tagline |
+| `brandCardAlpha` | 0.34 | brand card gradient/opacity |
+| `brandPills` | true | show online/model/session pills |
+| `buttonHeight` | 0 | min height for drawer buttons; `0` = natural |
+| `buttonRadius` | -1 | drawer button radius; `-1` = theme |
+| `buttonIconSize` | 16 | drawer button icon dp |
+| `sectionLabelSize` | 0 | section heading size; `0` = theme label size |
+| `sectionLabelUppercase` | false | uppercase section headings |
+| `sessionRowRadius` | -1 | session row radius; `-1` = theme |
+| `sessionSelectedAlpha` | 0.13 | selected session background alpha |
+| `showSessionId` | true | show the 8-char session id |
+| `showSessionTime` | true | show the relative time |
+| `searchRadius` | -1 | search field radius; `-1` = theme/2 |
+
+`layout/chat.json` → `chat` appearance keys:
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `paddingH` / `paddingV` | 14 / 10 | transcript content padding |
+| `bottomPadding` | 16 | extra space below the last message |
+| `messageSpacing` | 14 | vertical space between messages/tools |
+| `emptyAvatarSize` | 64 | empty-state avatar dp |
+| `codeBlockRadius` | -1 | fenced code block radius; `-1` = theme/2 |
+| `codeBlockBorderAlpha` | 0.35 | fenced code block border opacity |
+
+`layout/chat.json` → `composer.placeholderColor`: `onSurfaceVariant` (default),
+`primary`, `secondary`, `tertiary`, `text`, `error`.
+
+The existing `components.json` controls remain for visibility and line counts;
+these new keys are for deeper visual tuning.
+
 ## RPC data sources, bindings and actions
 
 A pack can read PiG RPC data and run a small, safe set of RPC actions. The App
@@ -659,7 +705,10 @@ still the source of the built-in pack and of hot reloads.
     "assistantLabel": "PIG",
     "toolCards": "collapsed",
     "toolGroups": true,
-    "showUsage": true
+    "showUsage": true,
+    "paddingH": 16, "paddingV": 12, "bottomPadding": 20,
+    "messageSpacing": 16, "emptyAvatarSize": 72,
+    "codeBlockRadius": 14, "codeBlockBorderAlpha": 0.5
   },
   "composer": {
     "placeholder": "给 Pig 发消息…",
@@ -674,6 +723,16 @@ still the source of the built-in pack and of hot reloads.
   "packManager": {
     "show": true,
     "placement": "both"
+  },
+  "drawer": {
+    "background": "gradient", "gradientAlpha": 0.22, "cornerRadius": 26,
+    "paddingH": 18, "paddingV": 22, "spacing": 9,
+    "brandAvatarSize": 48, "brandTagline": true, "brandCardAlpha": 0.42,
+    "brandPills": true, "buttonHeight": 44, "buttonRadius": 14,
+    "buttonIconSize": 18, "sectionLabelSize": 12,
+    "sectionLabelUppercase": false, "sessionRowRadius": 16,
+    "sessionSelectedAlpha": 0.18, "showSessionId": true,
+    "showSessionTime": true, "searchRadius": 14
   },
   "dataSources": {
     "state": { "rpc": "get_state", "refresh": ["connect", "agent_end", "session_switch"] },
