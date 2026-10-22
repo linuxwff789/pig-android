@@ -302,8 +302,13 @@ private fun AppWindowView(window: AppWindow, vm: AppViewModel, screenWidth: Floa
 }
 
 @Composable
-private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
-    if (!node.visible) return
+internal fun UiNodeView(
+    node: UiNode,
+    windowId: String,
+    vm: AppViewModel,
+    onAction: ((String) -> Unit)? = null,
+) {
+    if (!node.visible || !nodeVisibleWhen(node.visibleWhen, vm)) return
     val pad = Modifier.padding(node.padding.dp)
     val boundText = node.bind.takeIf { it.isNotBlank() }?.let { path ->
         formatRpcValue(resolveRpcPath(vm.ui.rpcData, path), node.format, node.text)
@@ -334,9 +339,9 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
             ) {
                 node.children.forEach { child ->
                     if (child.weight > 0f) {
-                        Box(Modifier.weight(child.weight)) { UiNodeView(child, windowId, vm) }
+                        Box(Modifier.weight(child.weight)) { UiNodeView(child, windowId, vm, onAction) }
                     } else {
-                        UiNodeView(child, windowId, vm)
+                        UiNodeView(child, windowId, vm, onAction)
                     }
                 }
             }
@@ -353,9 +358,9 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
         ) {
             node.children.forEach { child ->
                 if (child.weight > 0f) {
-                    Box(Modifier.weight(child.weight)) { UiNodeView(child, windowId, vm) }
+                    Box(Modifier.weight(child.weight)) { UiNodeView(child, windowId, vm, onAction) }
                 } else {
-                    UiNodeView(child, windowId, vm)
+                    UiNodeView(child, windowId, vm, onAction)
                 }
             }
         }
@@ -379,6 +384,61 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
                     else -> TextAlign.Start
                 },
             )
+        }
+
+        "icon" -> {
+            val tint = nodeColor(node.color)
+            val size = (node.size.takeIf { it > 0 } ?: 18).dp
+            Icon(
+                packIcon(node.icon.ifBlank { "more" }, node.icon.ifBlank { "more" }),
+                contentDescription = node.description.takeIf { it.isNotBlank() },
+                modifier = pad
+                    .size(size)
+                    .then(
+                        if (node.action.isNotBlank()) {
+                            Modifier.clickable {
+                                onAction?.invoke(node.action)
+                                    ?: vm.handleWindowAction(windowId, node.action)
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
+                tint = tint,
+            )
+        }
+
+        "avatar" -> Box(
+            pad
+                .size((node.size.takeIf { it > 0 } ?: 36).dp)
+                .then(
+                    if (node.action.isNotBlank()) {
+                        Modifier.clickable {
+                            onAction?.invoke(node.action)
+                                ?: vm.handleWindowAction(windowId, node.action)
+                        }
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
+            BrandAvatar((node.size.takeIf { it > 0 } ?: 36).dp)
+        }
+
+        "connection" -> Row(
+            pad,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ConnectionDot(vm.ui.connected)
+            val label = node.text.ifBlank { node.label }
+            if (label.isNotBlank()) {
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = nodeColor(node.color),
+                )
+            }
         }
 
         "image" -> {
@@ -450,7 +510,9 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
         }
 
         "button" -> {
-            val onClick = { vm.handleWindowAction(windowId, node.action) }
+            val onClick = {
+                onAction?.invoke(node.action) ?: vm.handleWindowAction(windowId, node.action)
+            }
             when (node.buttonStyle) {
                 "outline" -> OutlinedButton(
                     onClick = onClick,
@@ -541,7 +603,7 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
                 if (index > 0) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                 }
-                UiNodeView(child, windowId, vm)
+                UiNodeView(child, windowId, vm, onAction)
             }
         }
 
@@ -605,6 +667,28 @@ private fun textStyle(style: String): TextStyle = when (style) {
 }
 
 @Composable
+private fun nodeVisibleWhen(condition: String, vm: AppViewModel): Boolean = when (condition) {
+    "busy" -> vm.ui.busy
+    "idle" -> !vm.ui.busy
+    "connected" -> vm.ui.connected
+    "offline" -> !vm.ui.connected
+    "streaming" -> vm.ui.streamingId != null
+    "compacting" -> vm.ui.status == "compacting" || vm.ui.contextCompacted
+    else -> true
+}
+
+@Composable
+private fun nodeColor(name: String): Color = when (name) {
+    "primary" -> MaterialTheme.colorScheme.primary
+    "secondary" -> MaterialTheme.colorScheme.secondary
+    "tertiary" -> MaterialTheme.colorScheme.tertiary
+    "onSurface" -> MaterialTheme.colorScheme.onSurface
+    "error" -> MaterialTheme.colorScheme.error
+    "success" -> MaterialTheme.colorScheme.tertiary
+    "warning" -> MaterialTheme.colorScheme.secondary
+    else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
 private fun textColor(style: String) = when (style) {
     "muted" -> MaterialTheme.colorScheme.onSurfaceVariant
     "danger" -> MaterialTheme.colorScheme.error

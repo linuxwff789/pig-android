@@ -505,6 +505,9 @@ object UiPackParser {
                 )
             }
         }
+        val body = json.optJSONObject("body")?.let {
+            AppUiParser.parseNode(it, warnings)
+        }
         return UiHeader(
             show = json.optBoolean("show", d.show),
             heightDp = json.optInt("height", d.heightDp).coerceIn(0, 200),
@@ -514,6 +517,7 @@ object UiPackParser {
             gradientAlpha = json.optDouble("gradientAlpha", d.gradientAlpha.toDouble())
                 .toFloat().coerceIn(0f, 1f),
             divider = json.optBoolean("divider", d.divider),
+            body = body,
             rows = rows,
         )
     }

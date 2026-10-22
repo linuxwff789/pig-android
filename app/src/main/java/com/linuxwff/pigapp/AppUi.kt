@@ -9,6 +9,8 @@ data class UiOption(val label: String, val value: String)
 data class UiNode(
     val type: String,
     val visible: Boolean = true,
+    /** always | busy | idle | connected | offline | streaming | compacting */
+    val visibleWhen: String = "always",
     val padding: Int = 0,
     val weight: Float = 0f,
     val text: String = "",
@@ -38,6 +40,12 @@ data class UiNode(
     val imageWidth: Int = 0,
     val imageHeight: Int = 0,
     val imageCorner: Int = 0,
+    /** Icon name for `icon` nodes / button icon. */
+    val icon: String = "",
+    /** Theme token for icon/text color, e.g. `primary`, `error`. */
+    val color: String = "",
+    /** Accessibility label for icon nodes. */
+    val description: String = "",
     /** JSON path into the pack's RPC data, e.g. `stats.contextUsage`. */
     val bind: String = "",
     /** Optional `{key}` template used with `bind`. */
@@ -65,7 +73,8 @@ object AppUiParser {
     private val idPattern = Regex("^[a-z0-9._-]{1,40}$")
     private val knownTypes = setOf(
         "column", "row", "divider", "spacer", "text", "code", "progress", "button",
-        "textfield", "select", "toggle", "list", "table", "image",
+        "textfield", "select", "toggle", "list", "table", "image", "icon", "avatar",
+        "connection",
     )
 
     data class Result(val window: AppWindow?, val warnings: List<String>)
@@ -111,6 +120,12 @@ object AppUiParser {
             ),
             warnings,
         )
+    }
+
+    /** Parse a standalone node tree, used by `layout/chat.json` -> `header.body`. */
+    fun parseNode(json: JSONObject, warnings: MutableList<String> = mutableListOf()): UiNode? {
+        val count = intArrayOf(0)
+        return parseNode(json, 0, count, warnings)
     }
 
     private fun parseNode(
@@ -191,6 +206,7 @@ object AppUiParser {
         return UiNode(
             type = type,
             visible = json.optBoolean("visible", true),
+            visibleWhen = json.optString("visibleWhen", "always"),
             padding = json.optInt("padding", 0).coerceIn(0, 48),
             weight = json.optDouble("weight", 0.0).toFloat().coerceIn(0f, 10f),
             text = json.optString("text", "").take(16384),
@@ -224,6 +240,9 @@ object AppUiParser {
             imageWidth = json.optInt("width", 0).coerceIn(0, 2000),
             imageHeight = json.optInt("height", 0).coerceIn(0, 2000),
             imageCorner = json.optInt("corner", 0).coerceIn(0, 40),
+            icon = json.optString("icon").trim().take(32),
+            color = json.optString("color").trim().take(24),
+            description = json.optString("description").take(128),
             bind = json.optString("bind").trim().take(120),
             format = json.optString("format").take(512),
         )

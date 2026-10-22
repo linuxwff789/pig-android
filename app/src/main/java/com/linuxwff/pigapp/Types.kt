@@ -80,6 +80,8 @@ data class UiHeader(
     val background: String = "gradient",
     val gradientAlpha: Float = 0.13f,
     val divider: Boolean = false,
+    /** Pixel-level header tree; when present it replaces `rows`. */
+    val body: UiNode? = null,
     val rows: List<UiHeaderRow> = emptyList(),
 )
 

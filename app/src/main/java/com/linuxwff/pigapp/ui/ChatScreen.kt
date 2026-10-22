@@ -269,6 +269,7 @@ fun PigApp(vm: AppViewModel) {
                         CustomPigHeader(
                             header = customHeader,
                             ui = ui,
+                            vm = vm,
                             onMenu = { scope.launch { drawerState.open() } },
                             onModel = vm::openModelPicker,
                             onReconnect = vm::reconnect,

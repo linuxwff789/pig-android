@@ -89,92 +89,113 @@
     "background": "gradient",
     "gradientAlpha": 0.24,
     "divider": true,
-    "rows": [
-      {
-        "spacing": 8,
-        "align": "start",
-        "elements": [
-          {
-            "type": "menu",
-            "size": 22
-          },
-          {
-            "type": "brand",
-            "avatar": true,
-            "avatarSize": 36,
-            "online": true
-          },
-          {
-            "type": "spacer"
-          },
-          {
-            "type": "usage",
-            "bind": "stats.contextUsage",
-            "format": "{percent}%"
-          },
-          {
-            "type": "cache",
-            "bind": "stats",
-            "format": "缓存 {cacheHitRate}%"
-          },
-          {
-            "type": "status",
-            "when": "busy",
-            "style": "muted"
-          },
-          {
-            "type": "stop",
-            "when": "busy",
-            "size": 22
-          },
-          {
-            "type": "reconnect",
-            "when": "offline",
-            "size": 22
-          }
-        ]
-      },
-      {
-        "spacing": 8,
-        "align": "start",
-        "height": 28,
-        "elements": [
-          {
-            "type": "model"
-          },
-          {
-            "type": "divider",
-            "size": 18
-          },
-          {
-            "type": "text",
-            "bind": "state.thinkingLevel",
-            "format": "思考 {value}",
-            "style": "muted"
-          },
-          {
-            "type": "text",
-            "bind": "state.pendingMessageCount",
-            "format": "待处理 {value}",
-            "style": "muted"
-          },
-          {
-            "type": "spacer"
-          },
-          {
-            "type": "icon",
-            "icon": "settings",
-            "action": "settings",
-            "size": 18
-          },
-          {
-            "type": "icon",
-            "icon": "add",
-            "action": "new_session",
-            "size": 18
-          }
-        ]
-      }
-    ]
+    "body": {
+      "type": "column",
+      "spacing": 2,
+      "children": [
+        {
+          "type": "row",
+          "spacing": 8,
+          "children": [
+            {
+              "type": "icon",
+              "icon": "menu",
+              "size": 22,
+              "action": "header:menu"
+            },
+            {
+              "type": "avatar",
+              "size": 36,
+              "action": "header:menu"
+            },
+            {
+              "type": "column",
+              "spacing": 0,
+              "weight": 1.0,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "Aurora",
+                  "style": "heading"
+                },
+                {
+                  "type": "connection",
+                  "color": "tertiary"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "bind": "stats.contextUsage",
+              "format": "{percent}%",
+              "style": "muted"
+            },
+            {
+              "type": "text",
+              "bind": "stats",
+              "format": "缓存 {cacheHitRate}%",
+              "style": "muted"
+            },
+            {
+              "type": "icon",
+              "icon": "stop",
+              "size": 22,
+              "action": "header:stop",
+              "visibleWhen": "busy"
+            },
+            {
+              "type": "icon",
+              "icon": "refresh",
+              "size": 22,
+              "action": "header:reconnect",
+              "visibleWhen": "offline"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "spacing": 8,
+          "children": [
+            {
+              "type": "text",
+              "bind": "state.model",
+              "format": "{provider}/{id}",
+              "style": "muted"
+            },
+            {
+              "type": "divider",
+              "size": 16
+            },
+            {
+              "type": "text",
+              "bind": "state.thinkingLevel",
+              "format": "思考 {value}",
+              "style": "muted"
+            },
+            {
+              "type": "text",
+              "bind": "state.pendingMessageCount",
+              "format": "待处理 {value}",
+              "style": "muted"
+            },
+            {
+              "type": "spacer"
+            },
+            {
+              "type": "icon",
+              "icon": "settings",
+              "size": 18,
+              "action": "header:settings"
+            },
+            {
+              "type": "icon",
+              "icon": "add",
+              "size": 18,
+              "action": "header:new_session"
+            }
+          ]
+        }
+      ]
+    }
   }
 }

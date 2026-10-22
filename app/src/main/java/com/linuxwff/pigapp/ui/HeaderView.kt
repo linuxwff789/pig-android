@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.linuxwff.pigapp.AppUiState
+import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.UiHeader
 import com.linuxwff.pigapp.UiHeaderElement
 import com.linuxwff.pigapp.UiHeaderRow
@@ -42,6 +43,7 @@ import com.linuxwff.pigapp.resolveRpcPath
 fun CustomPigHeader(
     header: UiHeader,
     ui: AppUiState,
+    vm: AppViewModel,
     onMenu: () -> Unit,
     onModel: () -> Unit,
     onReconnect: () -> Unit,
@@ -83,18 +85,43 @@ fun CustomPigHeader(
                 .padding(horizontal = header.paddingH.dp, vertical = header.paddingV.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            header.rows.forEach { row ->
-                HeaderRow(
-                    row = row,
-                    ui = ui,
-                    onMenu = onMenu,
-                    onModel = onModel,
-                    onReconnect = onReconnect,
-                    onStop = onStop,
-                    onSettings = onSettings,
-                    onNewSession = onNewSession,
-                    onPackAction = onPackAction,
+            val body = header.body
+            if (body != null) {
+                UiNodeView(
+                    node = body,
+                    windowId = "__header__",
+                    vm = vm,
+                    onAction = { action ->
+                        when {
+                            action.startsWith("header:") -> runHeaderAction(
+                                action.removePrefix("header:"),
+                                onMenu,
+                                onModel,
+                                onReconnect,
+                                onStop,
+                                onSettings,
+                                onNewSession,
+                                onPackAction,
+                            )
+                            action.startsWith("pack:") -> onPackAction(action.removePrefix("pack:"))
+                            else -> vm.handleWindowAction("__header__", action)
+                        }
+                    },
                 )
+            } else {
+                header.rows.forEach { row ->
+                    HeaderRow(
+                        row = row,
+                        ui = ui,
+                        onMenu = onMenu,
+                        onModel = onModel,
+                        onReconnect = onReconnect,
+                        onStop = onStop,
+                        onSettings = onSettings,
+                        onNewSession = onNewSession,
+                        onPackAction = onPackAction,
+                    )
+                }
             }
             if (header.divider) {
                 HorizontalDivider(color = scheme.outline.copy(alpha = 0.22f))
@@ -376,6 +403,16 @@ private fun runHeaderAction(
         action == "settings" -> onSettings()
         action == "new" || action == "new_session" -> onNewSession()
         action.startsWith("pack:") -> onPackAction(action.removePrefix("pack:"))
+        action.startsWith("header:") -> runHeaderAction(
+            action.removePrefix("header:"),
+            onMenu,
+            onModel,
+            onReconnect,
+            onStop,
+            onSettings,
+            onNewSession,
+            onPackAction,
+        )
     }
 }
 
