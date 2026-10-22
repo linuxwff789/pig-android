@@ -69,19 +69,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var liveFlushScheduled = false
     private val pendingToolPartials = mutableMapOf<String, String>()
 
-    private val builtinCommands = listOf(
-        UiCommand("compact", "压缩上下文"),
-        UiCommand("new", "新建会话"),
-        UiCommand("name", "重命名会话：/name 名称"),
-        UiCommand("thinking", "思考档位：/thinking off|low|medium|high"),
-        UiCommand("model", "选择模型"),
-        UiCommand("stop", "中止当前输出"),
+    private fun builtinCommands(): List<UiCommand> = listOf(
+        UiCommand("compact", str("commands.compact", "压缩上下文")),
+        UiCommand("new", str("commands.new", "新建会话")),
+        UiCommand("name", str("commands.name", "重命名会话：/name 名称")),
+        UiCommand("thinking", str("commands.thinking", "思考档位：/thinking off|low|medium|high")),
+        UiCommand("model", str("commands.model", "选择模型")),
+        UiCommand("stop", str("commands.stop", "中止当前输出")),
     )
 
     init {
         current = this
         ui = ui.copy(
-            commands = builtinCommands,
+            commands = builtinCommands(),
             avatarShadow = if (prefs.contains("avatarShadow")) {
                 prefs.getBoolean("avatarShadow", false)
             } else {
@@ -127,14 +127,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val ctx = getApplication<Application>()
         if (!RelayLauncher.hasPermission(ctx)) {
             ui = ui.copy(
-                error = "没有 Termux RUN_COMMAND 权限。请在系统设置里允许本应用调用 Termux，然后点重连。",
+                error = str(
+                    "error.noPermission",
+                    "没有 Termux RUN_COMMAND 权限。请在系统设置里允许本应用调用 Termux，然后点重连。",
+                ),
             )
             return
         }
         val launchError = RelayLauncher.launch(ctx, port, token, cwd)
         if (launchError != null) {
             ui = ui.copy(
-                error = "无法启动 pig-relay：$launchError",
+                error = str("error.relayLaunch", "无法启动 pig-relay：{error}")
+                    .replace("{error}", launchError ?: ""),
                 setup = true,
                 setupHint = launchError,
             )
@@ -171,7 +175,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (!RelayLauncher.hasPermission(ctx)) {
             ui = ui.copy(
-                error = "没有 Termux RUN_COMMAND 权限。请在系统设置里允许本应用调用 Termux，然后点重连。",
+                error = str(
+                    "error.noPermission",
+                    "没有 Termux RUN_COMMAND 权限。请在系统设置里允许本应用调用 Termux，然后点重连。",
+                ),
             )
             return
         }
@@ -241,7 +248,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(
             setup = error == null,
             setupHint = error,
-            toast = error ?: "已在 Termux 里开始安装，完成后点「重试」",
+            toast = error ?: str("toast.setupStarted", "已在 Termux 里开始安装，完成后点「重试」"),
         )
     }
 
@@ -291,7 +298,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         ui = ui.copy(
             keepAlive = enabled,
-            toast = if (enabled) "后台保活已开启" else "后台保活已关闭",
+            toast = if (enabled) {
+                str("toast.keepAliveOn", "后台保活已开启")
+            } else {
+                str("toast.keepAliveOff", "后台保活已关闭")
+            },
         )
     }
 
@@ -310,21 +321,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         KeepAliveService.setWakeLock(getApplication(), enabled)
         ui = ui.copy(
             wakeLock = enabled,
-            toast = if (enabled) "唤醒锁已开启（锁屏后 CPU 不休眠）" else "唤醒锁已关闭",
+            toast = if (enabled) {
+                str("toast.wakeOn", "唤醒锁已开启（锁屏后 CPU 不休眠）")
+            } else {
+                str("toast.wakeOff", "唤醒锁已关闭")
+            },
         )
     }
 
     fun openBatterySettings() {
         val ctx = getApplication<Application>()
         if (RelayLauncher.isIgnoringBatteryOptimizations(ctx)) {
-            ui = ui.copy(toast = "已在电池优化白名单里")
+            ui = ui.copy(toast = str("toast.batteryAllowed", "已在电池优化白名单里"))
             return
         }
         ui = ui.copy(
             toast = if (RelayLauncher.requestIgnoreBatteryOptimizations(ctx)) {
-                "请在系统弹窗里选择「允许」"
+                str("toast.batteryRequest", "请在系统弹窗里选择「允许」")
             } else {
-                "无法直接请求，请在系统设置 → 电池里手动允许"
+                str("toast.batteryManual", "无法直接请求，请在系统设置 → 电池里手动允许")
             },
         )
     }
@@ -334,7 +349,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val command = text.removePrefix("/").substringBefore(' ').trim()
         val args = text.removePrefix("/$command").trim()
         if (command.isBlank()) {
-            ui = ui.copy(toast = "命令不能为空")
+            ui = ui.copy(toast = str("toast.emptyCommand", "命令不能为空"))
             return
         }
         when (command) {
@@ -344,7 +359,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "model" -> openModelPicker()
             "name" -> {
                 if (args.isBlank()) {
-                    ui = ui.copy(toast = "用法：/name 新名称")
+                    ui = ui.copy(toast = str("toast.usageName", "用法：/name 新名称"))
                 } else {
                     append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = text))
                     client.send(
@@ -357,7 +372,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             "thinking" -> {
                 if (args.isBlank()) {
-                    ui = ui.copy(toast = "用法：/thinking off|low|medium|high")
+                    ui = ui.copy(toast = str("toast.usageThinking", "用法：/thinking off|low|medium|high"))
                 } else {
                     append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = text))
                     setThinkingLevel(args)
@@ -366,7 +381,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             else -> {
                 val known = ui.commands.any { it.name == command }
                 if (!known) {
-                    ui = ui.copy(toast = "未知命令 /$command")
+                    ui = ui.copy(
+                        toast = str("toast.unknownCommand", "未知命令 /{command}")
+                            .replace("{command}", command),
+                    )
                     return
                 }
                 append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = text))
@@ -386,7 +404,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun compact() {
         if (ui.busy) {
-            ui = ui.copy(toast = "当前还在输出，等结束再压缩")
+            ui = ui.copy(toast = str("toast.busyCompact", "当前还在输出，等结束再压缩"))
             return
         }
         append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = "/compact"))
@@ -587,7 +605,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val result = AppUiParser.parseWindow(text)
         val window = result.window
         if (window == null) {
-            ui = ui.copy(windowError = result.warnings.firstOrNull() ?: "窗口无效")
+            ui = ui.copy(
+                windowError = result.warnings.firstOrNull()
+                    ?: str("error.invalidWindow", "窗口无效"),
+            )
             return
         }
         val existing = ui.windows.any { it.id == window.id }
@@ -645,7 +666,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             action.startsWith("ext:") -> {
                 val command = action.removePrefix("ext:").trim()
                 if (command.isEmpty()) {
-                    ui = ui.copy(toast = "ext 动作缺少命令名")
+                    ui = ui.copy(toast = str("toast.extMissingCommand", "ext 动作缺少命令名"))
                     return
                 }
                 val payload = formPayload(windowId)
@@ -656,10 +677,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         .put("type", "prompt")
                         .put("message", message),
                 )
-                ui = ui.copy(toast = "已发送 /$command")
+                ui = ui.copy(
+                    toast = str("toast.commandSent", "已发送 /{command}")
+                        .replace("{command}", command),
+                )
             }
             action.isBlank() -> Unit
-            else -> ui = ui.copy(toast = "未知动作: $action")
+            else -> ui = ui.copy(
+                toast = str("toast.unknownAction", "未知动作: {action}")
+                    .replace("{action}", action),
+            )
         }
     }
 
@@ -678,7 +705,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val cached = knownWindows[id] ?: run {
-            ui = ui.copy(toast = "还没有窗口 $id")
+            ui = ui.copy(
+                toast = str("toast.noWindow", "还没有窗口 {id}")
+                    .replace("{id}", id),
+            )
             return
         }
         ui = ui.copy(windows = ui.windows + cached)
@@ -694,7 +724,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (item.command.isNotBlank()) {
             if (!ui.connected) {
-                ui = ui.copy(toast = "未连接 relay，无法刷新 ${item.label}")
+                ui = ui.copy(
+                    toast = str("toast.notConnectedRefresh", "未连接 relay，无法刷新 {label}")
+                        .replace("{label}", item.label),
+                )
                 return
             }
             client.send(
@@ -703,9 +736,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     .put("type", "prompt")
                     .put("message", "/${item.command}"),
             )
-            ui = ui.copy(toast = "已打开 ${item.label}")
+            ui = ui.copy(
+                toast = str("toast.openedWindow", "已打开 {label}")
+                    .replace("{label}", item.label),
+            )
         } else if (knownWindows[item.window] == null) {
-            ui = ui.copy(toast = "还没有 ${item.label} 窗口")
+            ui = ui.copy(
+                toast = str("toast.noWindowFor", "还没有 {label} 窗口")
+                    .replace("{label}", item.label),
+            )
         }
     }
 
@@ -875,7 +914,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 ui = ui.copy(
                     busy = false,
                     status = "",
-                    error = "pig 已退出（code ${event.optInt("code")}），正在重连…",
+                    error = str("error.relayExited", "pig 已退出（code {code}），正在重连…")
+                        .replace("{code}", event.optInt("code").toString()),
                     streamingId = null,
                     pendingMessages = 0,
                 )
@@ -966,7 +1006,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     ChatMsg(
                         id = "n${nextId++}",
                         role = Role.NOTICE,
-                        text = "上次会话已不存在，已开始新会话",
+                        text = str("toast.previousMissing", "上次会话已不存在，已开始新会话"),
                     ),
                 )
                 return
@@ -1157,7 +1197,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "get_commands" -> {
                 val array = data.optJSONArray("commands")
                 val list = buildList {
-                    addAll(builtinCommands)
+                    addAll(builtinCommands())
                     if (array != null) {
                         for (index in 0 until array.length()) {
                             val item = array.optJSONObject(index) ?: continue
@@ -1448,7 +1488,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val pack = result.pack
         if (pack == null) {
             val message = result.warnings.firstOrNull() ?: "unknown error"
-            ui = ui.copy(uiPackError = message, toast = "UI pack 未应用: $message")
+            ui = ui.copy(
+                uiPackError = message,
+                toast = str("error.packNotApplied", "UI pack 未应用: {error}")
+                    .replace("{error}", message),
+            )
             return
         }
         val changed = ui.uiPackHash.isNotEmpty() && hash != ui.uiPackHash
@@ -1471,8 +1515,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             avatarShadow = avatarShadow,
             bubbleShadow = bubbleShadow,
             uiPackError = result.warnings.firstOrNull(),
+            commands = builtinCommands() + ui.commands.filter { command ->
+                builtinCommands().none { it.name == command.name }
+            },
             toast = when {
-                changed -> "UI pack 已应用: ${pack.name} v${pack.version}"
+                changed -> str("toast.packApplied", "UI pack 已应用: {name} v{version}")
+                    .replace("{name}", pack.name)
+                    .replace("{version}", pack.version.toString())
                 result.warnings.isNotEmpty() -> result.warnings.joinToString("; ")
                 else -> ui.toast
             },
@@ -1691,5 +1740,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         @Volatile
         var current: AppViewModel? = null
             private set
+
+        /** UI-pack string lookup for services / launchers outside a composition. */
+        fun packString(key: String, fallback: String): String =
+            current?.ui?.uiPack?.strings?.get(key) ?: fallback
     }
 }

@@ -84,10 +84,13 @@ class KeepAliveService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "后台保活",
+                AppViewModel.packString("notification.channelName", "后台保活"),
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = "保持与 Termux 里 pig-relay 的连接"
+                description = AppViewModel.packString(
+                    "notification.channelDesc",
+                    "保持与 Termux 里 pig-relay 的连接",
+                )
                 setShowBadge(false)
             }
             manager.createNotificationChannel(channel)
@@ -103,8 +106,12 @@ class KeepAliveService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_pig)
-            .setContentTitle("Pig 后台运行中")
-            .setContentText("保持与 Termux 的连接，锁屏后会话继续")
+            .setContentTitle(
+                AppViewModel.packString("notification.title", "Pig 后台运行中"),
+            )
+            .setContentText(
+                AppViewModel.packString("notification.text", "保持与 Termux 的连接，锁屏后会话继续"),
+            )
             .setContentIntent(pending)
             .setOngoing(true)
             .setShowWhen(false)

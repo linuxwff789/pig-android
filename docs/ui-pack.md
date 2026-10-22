@@ -178,9 +178,21 @@ built-in Chinese defaults, so a pack can override only a few strings.
   },
   "drawer": { "newSession": "新会话", "settings": "设置", "recent": "最近会话" },
   "status": { "thinking": "思考中", "working": "工作中", "compacting": "压缩上下文" },
-  "tool": { "running": "运行中…", "failed": "失败", "collapse": "收起", "summary": "摘要", "expand": "展开" },
+  "tool": {
+    "running": "运行中…", "failed": "失败", "collapse": "收起",
+    "summary": "摘要", "expand": "展开",
+    "metrics": {
+      "lines": "{count} 行",
+      "linesBytes": "{count} 行 · {bytes}",
+      "diff": "+{added} −{removed}",
+      "exit": "exit {code} · {count} 行"
+    }
+  },
   "composer": { "steerPlaceholder": "插队指令…", "steerHint": "点发送=插队 · 长按=排队" },
-  "empty": { "title": "开始聊天", "hint": "在下面输入，或试试：", "suggestions": "问题一|问题二|问题三" }
+  "empty": { "title": "开始聊天", "hint": "在下面输入，或试试：", "suggestions": "问题一|问题二|问题三" },
+  "commands": { "compact": "压缩上下文", "new": "新建会话", "name": "重命名会话：/name 名称" },
+  "setup": { "title": "Termux 后端还没准备好", "oneClick": "一键安装", "retry": "重试" },
+  "dialog": { "cancel": "取消", "allow": "允许", "ok": "确定", "deny": "拒绝" }
 }
 ```
 
@@ -192,8 +204,19 @@ Placeholders use `{name}` and are replaced by the app:
 | `{rate}` | header prompt-cache hit rate |
 | `{count}` | pending banner, tool groups, line counts |
 | `{tool}` | tool group header |
-| `{name}` | session delete dialog |
-| `{id}` | drawer session pill |
+| `{name}` | session delete/switch dialog, pack name |
+| `{id}` | drawer session pill, settings session info, no-window toast |
+| `{file}` | settings session info |
+| `{title}` | window close accessibility label |
+| `{bytes}` | tool write metrics |
+| `{code}` | bash exit-code metric, relay exit |
+| `{added}`, `{removed}` | edit diff metrics |
+| `{label}` | drawer panel toasts |
+| `{action}` | unknown `ext:` action toast |
+| `{command}` | slash-command toasts |
+| `{mode}` | tool-mode toast |
+| `{hash}`, `{cwd}`, `{files}`, `{version}` | settings about |
+| `{error}` | relay/pack error messages |
 
 `empty.suggestions` is a `|`-separated list. Status text is keyed:
 `thinking`, `working`, `compacting`, `retrying`, `switching`, `restoring`.
@@ -202,6 +225,31 @@ Placeholders use `{name}` and are replaced by the app:
 (`cacheRead / (input + cacheRead + cacheWrite)`). Right after `/compact` PiG
 reports a null `contextUsage`; the header shows `header.compacted` until the
 next model call provides a fresh usage value.
+
+### Remaining key groups
+
+| Group | Used by |
+| --- | --- |
+| `header.*` | title, online/offline, model placeholder, usage/cache/compacted |
+| `drawer.*`, `session.*` | sidebar, session badges, rename/delete/switch dialogs |
+| `status.*`, `banner.*`, `composer.*` | status bar, banners, input area |
+| `tool.*` | tool cards, groups, metrics templates, failed/running labels |
+| `markdown.*` | code fence language/lines and 收起/展开 |
+| `model.*` | model picker |
+| `settings.*` | settings sheet and about/session info |
+| `commands.*` | built-in slash-command descriptions in the palette |
+| `setup.*` | first-run Termux setup dialog |
+| `dialog.*` | extension confirm/input/select dialogs |
+| `relay.*`, `error.*` | launcher errors, connection errors, pack errors |
+| `notification.*` | foreground-service notification (best-effort: the service may start before a pack is loaded, then falls back) |
+| `a11y.*` | menu/stop/reconnect/copy/close/window-close labels |
+| `toast.*` | short confirmations and validation errors |
+
+Every literal in these groups has a built-in Chinese fallback, so a pack can
+ship only the keys it wants to change. The command palette combines
+`commands.*` with the extension commands returned by RPC `get_commands`; newly
+installed extensions appear after `/reload-runtime` (or an agent restart) and
+the next palette refresh.
 
 ## components.json
 
@@ -286,9 +334,10 @@ Built-in names: `menu`, `send`, `stop`, `refresh`, `add`, `settings`, `build`
   The expanded card has 收起 / 摘要 / 展开 chips; long-press a chip to apply that
   mode to every tool card. `write` reports lines and bytes, `edit` reports
   added/removed lines and renders the diff with colored +/- lines.
-- `chat.showUsage` adds the context usage (percentage plus used/total tokens) to the
-  top bar; the app refreshes it on connect, session switch, model change and
-  after every turn.
+- `chat.showUsage` adds the context usage (percentage plus used/total tokens)
+  and the cumulative cache hit rate to the top bar; the app refreshes it on
+  connect, session switch, model change and after every turn. After compaction
+  the header shows `已压缩` until the next model call provides a fresh usage.
 - `composer.maxLines` is clamped to 1–12.
 - `sendOnEnter` changes the IME action to Send.
 

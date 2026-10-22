@@ -338,18 +338,25 @@ fun PigApp(vm: AppViewModel) {
             onDismissRequest = vm::cancelSwitch,
             shape = RoundedCornerShape(24.dp),
             containerColor = MaterialTheme.colorScheme.surface,
-            title = { Text("切换会话") },
+            title = { Text(packText("session.switchTitle", "切换会话")) },
             text = {
                 Text(
-                    "「$title」最近 1 分钟内被修改，可能正被另一个 pig 进程使用。" +
-                        "两个进程写同一个会话文件可能损坏它。",
+                    packText(
+                        "session.switchWarn",
+                        "「{name}」最近 1 分钟内被修改，可能正被另一个 pig 进程使用。" +
+                            "两个进程写同一个会话文件可能损坏它。",
+                    ).replace("{name}", title),
                 )
             },
             confirmButton = {
-                TextButton(onClick = vm::confirmSwitch) { Text("仍要切换") }
+                TextButton(onClick = vm::confirmSwitch) {
+                    Text(packText("session.switchConfirm", "仍要切换"))
+                }
             },
             dismissButton = {
-                TextButton(onClick = vm::cancelSwitch) { Text("取消") }
+                TextButton(onClick = vm::cancelSwitch) {
+                    Text(packText("session.cancel", "取消"))
+                }
             },
         )
     }
@@ -425,10 +432,11 @@ private fun PigHeader(
                             ConnectionDot(connected)
                             Spacer(Modifier.width(5.dp))
                             Text(
-                                packText(
-                                    if (connected) "header.online" else "header.offline",
-                                    if (connected) "在线" else packText("settings.offline", "离线"),
-                                ),
+                                if (connected) {
+                                    packText("header.online", "在线")
+                                } else {
+                                    packText("settings.offline", "离线")
+                                },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (connected) scheme.tertiary else scheme.onSurfaceVariant,
                             )
@@ -508,7 +516,7 @@ private fun PigHeader(
                 IconButton(onClick = onReconnect) {
                     Icon(
                         Icons.Default.Refresh,
-                        contentDescription = "重连",
+                        contentDescription = packText("a11y.reconnect", "重连"),
                         tint = scheme.onSurfaceVariant,
                     )
                 }
@@ -549,28 +557,34 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 BrandAvatar(30.dp)
                 Spacer(Modifier.width(10.dp))
-                Text("Termux 后端还没准备好")
+                Text(packText("setup.title", "Termux 后端还没准备好"))
             }
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Pig App 只是前端：pig 和 pig-relay 要装在 Termux 里。",
+                    packText("setup.intro", "Pig App 只是前端：pig 和 pig-relay 要装在 Termux 里。"),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 if (!termuxInstalled) {
                     Text(
-                        "1. 先从 F-Droid 安装 Termux（Play 版已停更）",
+                        packText("setup.installTermuxStep", "1. 先从 F-Droid 安装 Termux（Play 版已停更）"),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
-                        "2. 打开 Termux，运行下方命令；装完再回 App 授权并重试。",
+                        packText(
+                            "setup.openTermuxStep",
+                            "2. 打开 Termux，运行下方命令；装完再回 App 授权并重试。",
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 } else {
-                    Text("1. 在 Termux 里运行：", style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        "（第一次用 Termux 可能要先等 pkg 初始化）",
+                        packText("setup.runStep", "1. 在 Termux 里运行："),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        packText("setup.pkgHint", "（第一次用 Termux 可能要先等 pkg 初始化）"),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -590,12 +604,18 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
                     }
                 }
                 Text(
-                    "脚本会启用 allow-external-apps、安装 pig 和 pig-relay；装完打开一次 Termux。",
+                    packText(
+                        "setup.scriptHint",
+                        "脚本会启用 allow-external-apps、安装 pig 和 pig-relay；装完打开一次 Termux。",
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    "「一键安装」只在 allow-external-apps 已开启时可用；没反应就手动跑上面的命令。",
+                    packText(
+                        "setup.oneClickHint",
+                        "「一键安装」只在 allow-external-apps 已开启时可用；没反应就手动跑上面的命令。",
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -611,12 +631,14 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
         confirmButton = {
             when {
                 !termuxInstalled -> TextButton(onClick = vm::openTermuxInstallPage) {
-                    Text("安装 Termux")
+                    Text(packText("setup.installTermux", "安装 Termux"))
                 }
                 !permitted -> TextButton(onClick = vm::openAppSettings) {
-                    Text("权限设置")
+                    Text(packText("setup.permissions", "权限设置"))
                 }
-                else -> TextButton(onClick = { vm.bootstrap() }) { Text("一键安装") }
+                else -> TextButton(onClick = { vm.bootstrap() }) {
+                    Text(packText("setup.oneClick", "一键安装"))
+                }
             }
         },
         dismissButton = {
@@ -625,12 +647,14 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
                     val clipboard =
                         context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     clipboard.setPrimaryClip(ClipData.newPlainText("Pig install", command))
-                }) { Text("复制命令") }
+                }) { Text(packText("setup.copyCommand", "复制命令")) }
                 TextButton(onClick = {
                     vm.dismissSetup()
                     vm.reconnect()
-                }) { Text("重试") }
-                TextButton(onClick = vm::dismissSetup) { Text("稍后") }
+                }) { Text(packText("setup.retry", "重试")) }
+                TextButton(onClick = vm::dismissSetup) {
+                    Text(packText("setup.later", "稍后"))
+                }
             }
         },
     )
@@ -787,18 +811,28 @@ private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Un
                 HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
                 Text(packText("settings.about", "关于"), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
                 Text(
-                    "UI pack: ${ui.uiPack.name} v${ui.uiPack.version} · ${ui.uiPackFiles} files",
+                    packText("settings.packInfo", "UI pack: {name} v{version} · {files} files")
+                        .replace("{name}", ui.uiPack.name)
+                        .replace("{version}", ui.uiPack.version.toString())
+                        .replace("{files}", ui.uiPackFiles.toString()),
                     style = MaterialTheme.typography.labelSmall,
                     color = scheme.onSurfaceVariant,
                 )
                 Text(
-                    "${ui.uiPackHash.take(8).ifBlank { "no pack" }} · cwd ${vm.cwd}",
+                    packText("settings.packHash", "{hash} · cwd {cwd}")
+                        .replace(
+                            "{hash}",
+                            ui.uiPackHash.take(8).ifBlank { packText("settings.noPack", "no pack") },
+                        )
+                        .replace("{cwd}", vm.cwd),
                     style = MaterialTheme.typography.labelSmall,
                     color = scheme.onSurfaceVariant.copy(alpha = 0.8f),
                 )
                 if (ui.sessionId.isNotBlank()) {
                     Text(
-                        "会话 ${ui.sessionId.take(8)} · ${ui.sessionFile.substringAfterLast('/')}",
+                        packText("settings.sessionInfo", "会话 {id} · {file}")
+                            .replace("{id}", ui.sessionId.take(8))
+                            .replace("{file}", ui.sessionFile.substringAfterLast('/')),
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant.copy(alpha = 0.8f),
                         maxLines = 1,
@@ -904,14 +938,17 @@ private fun DrawerContent(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     InfoPill(
-                        text = packText(
-                            if (ui.connected) "header.online" else "header.offline",
-                            if (ui.connected) "在线" else packText("settings.offline", "离线"),
-                        ),
+                        text = if (ui.connected) {
+                            packText("header.online", "在线")
+                        } else {
+                            packText("settings.offline", "离线")
+                        },
                         color = if (ui.connected) scheme.tertiary else scheme.onSurfaceVariant,
                     )
                     InfoPill(
-                        text = ui.model.substringAfter('/').ifBlank { packText("header.noModel", packText("header.noModel", "无模型")) },
+                        text = ui.model.substringAfter('/').ifBlank {
+                            packText("header.noModel", "无模型")
+                        },
                         color = scheme.secondary,
                     )
                     if (ui.sessionId.isNotBlank()) {
@@ -1888,6 +1925,7 @@ private fun ToolCard(
             },
         )
     }
+    val toolStrings = LocalUiPack.current.strings
     val view = remember(
         message.toolName,
         message.toolArgs,
@@ -1895,6 +1933,7 @@ private fun ToolCard(
         message.toolDetails,
         message.running,
         message.isError,
+        toolStrings,
     ) {
         toolPresentation(
             name = message.toolName,
@@ -1903,6 +1942,7 @@ private fun ToolCard(
             detailsJson = message.toolDetails,
             isError = message.isError,
             running = message.running,
+            text = { key, fallback -> toolStrings[key] ?: fallback },
         )
     }
     val scheme = MaterialTheme.colorScheme
@@ -2521,16 +2561,26 @@ private fun PendingDialog(request: UiRequest, vm: AppViewModel) {
         },
         confirmButton = {
             when (request.method) {
-                "select" -> TextButton(onClick = { vm.answer(cancelled = true) }) { Text("取消") }
-                "confirm" -> TextButton(onClick = { vm.answer(confirmed = true) }) { Text("允许") }
-                else -> TextButton(onClick = { vm.answer(value = value) }) { Text("确定") }
+                "select" -> TextButton(onClick = { vm.answer(cancelled = true) }) {
+                    Text(packText("dialog.cancel", "取消"))
+                }
+                "confirm" -> TextButton(onClick = { vm.answer(confirmed = true) }) {
+                    Text(packText("dialog.allow", "允许"))
+                }
+                else -> TextButton(onClick = { vm.answer(value = value) }) {
+                    Text(packText("dialog.ok", "确定"))
+                }
             }
         },
         dismissButton = {
             when (request.method) {
-                "confirm" -> TextButton(onClick = { vm.answer(confirmed = false) }) { Text("拒绝") }
+                "confirm" -> TextButton(onClick = { vm.answer(confirmed = false) }) {
+                    Text(packText("dialog.deny", "拒绝"))
+                }
                 "select" -> Unit
-                else -> TextButton(onClick = { vm.answer(cancelled = true) }) { Text("取消") }
+                else -> TextButton(onClick = { vm.answer(cancelled = true) }) {
+                    Text(packText("dialog.cancel", "取消"))
+                }
             }
         },
     )

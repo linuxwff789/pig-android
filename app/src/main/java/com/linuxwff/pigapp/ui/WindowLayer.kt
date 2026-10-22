@@ -148,7 +148,8 @@ fun InlineWindows(windows: List<AppWindow>, placement: String, vm: AppViewModel)
                         ) {
                             Icon(
                                 Icons.Default.Close,
-                                contentDescription = "close ${window.title}",
+                                contentDescription = packText("a11y.closeWindow", "关闭 {title}")
+                                    .replace("{title}", window.title),
                                 modifier = Modifier.size(16.dp),
                             )
                         }
@@ -253,7 +254,8 @@ private fun AppWindowView(window: AppWindow, vm: AppViewModel, screenWidth: Floa
                     ) {
                         Icon(
                             Icons.Default.Close,
-                            contentDescription = "close ${window.title}",
+                            contentDescription = packText("a11y.closeWindow", "关闭 {title}")
+                                    .replace("{title}", window.title),
                             modifier = Modifier.size(18.dp),
                         )
                     }

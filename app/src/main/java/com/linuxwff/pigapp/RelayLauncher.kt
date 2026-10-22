@@ -26,8 +26,12 @@ object RelayLauncher {
 
     /** Runs the one-line Termux installer (pig + pig-relay + UI dirs). */
     fun bootstrap(context: Context, cwd: String): String? {
-        if (!hasPermission(context)) return "没有 Termux RUN_COMMAND 权限"
-        if (!isTermuxInstalled(context)) return "Termux 未安装"
+        if (!hasPermission(context)) {
+            return AppViewModel.packString("relay.noPermission", "没有 Termux RUN_COMMAND 权限")
+        }
+        if (!isTermuxInstalled(context)) {
+            return AppViewModel.packString("relay.termuxMissing", "Termux 未安装")
+        }
         val command = "pkg install -y curl >/dev/null 2>&1; curl -fsSL $INSTALL_SCRIPT | sh"
         val intent = Intent().apply {
             setClassName(TERMUX_PKG, "com.termux.app.RunCommandService")
@@ -40,7 +44,10 @@ object RelayLauncher {
         return runCatching {
             context.startService(intent)
             null
-        }.getOrElse { "无法启动安装命令: ${it.message}" }
+        }.getOrElse {
+            AppViewModel.packString("relay.launchFailed", "无法启动安装命令: {error}")
+                .replace("{error}", it.message ?: "")
+        }
     }
 
     fun openTermux(context: Context): Boolean = runCatching {

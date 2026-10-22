@@ -24,6 +24,7 @@ fun toolPresentation(
     detailsJson: String,
     isError: Boolean,
     running: Boolean,
+    text: (String, String) -> String = { _, fallback -> fallback },
 ): ToolPresentation {
     val tool = name ?: "tool"
     val args = runCatching { JSONObject(argsJson) }.getOrNull()
@@ -34,7 +35,7 @@ fun toolPresentation(
     if (running) {
         return ToolPresentation(
             headline = headlineFor(tool, args),
-            metrics = "运行中…",
+            metrics = text("tool.running", "运行中…"),
             summary = "",
             expanded = "",
             running = true,
@@ -47,7 +48,9 @@ fun toolPresentation(
             val content = args?.optString("content").orEmpty()
             ToolPresentation(
                 headline = path.ifBlank { tool },
-                metrics = "${lineCount(content)} 行 · ${formatBytes(content.toByteArray(Charsets.UTF_8).size)}",
+                metrics = text("tool.metrics.linesBytes", "{count} 行 · {bytes}")
+                    .replace("{count}", lineCount(content).toString())
+                    .replace("{bytes}", formatBytes(content.toByteArray(Charsets.UTF_8).size)),
                 summary = content.lineSequence().take(4).joinToString("\n"),
                 expanded = content,
                 error = isError,
@@ -58,10 +61,16 @@ fun toolPresentation(
             val path = args?.optString("path").orEmpty()
             val diff = details?.optString("diff").orEmpty()
             val (added, removed) = diffStats(diff)
-            val fallback = editStats(args)
+            val fallback = editStats(args, text)
             ToolPresentation(
                 headline = path.ifBlank { tool },
-                metrics = if (diff.isNotBlank()) "+$added −$removed" else fallback.first,
+                metrics = if (diff.isNotBlank()) {
+                    text("tool.metrics.diff", "+{added} −{removed}")
+                        .replace("{added}", added.toString())
+                        .replace("{removed}", removed.toString())
+                } else {
+                    fallback.first
+                },
                 summary = diff.lineSequence().take(8).joinToString("\n").ifBlank { fallback.second },
                 expanded = diff.ifBlank { fallback.second },
                 diff = diff,
@@ -73,7 +82,8 @@ fun toolPresentation(
             val path = args?.optString("path").orEmpty()
             ToolPresentation(
                 headline = path.ifBlank { tool },
-                metrics = "${lineCount(result)} 行",
+                metrics = text("tool.metrics.lines", "{count} 行")
+                    .replace("{count}", lineCount(result).toString()),
                 summary = result.lineSequence().take(4).joinToString("\n"),
                 expanded = result,
                 error = isError,
@@ -85,7 +95,9 @@ fun toolPresentation(
             val exit = structured?.optInt("exit_code", 0) ?: 0
             ToolPresentation(
                 headline = command.lineSequence().firstOrNull().orEmpty().ifBlank { "bash" },
-                metrics = "exit $exit · ${lineCount(result)} 行",
+                metrics = text("tool.metrics.exit", "exit {code} · {count} 行")
+                    .replace("{code}", exit.toString())
+                    .replace("{count}", lineCount(result).toString()),
                 summary = result.lineSequence()
                     .filter { it.isNotBlank() }
                     .take(4)
@@ -103,7 +115,8 @@ fun toolPresentation(
                     .filter { it.isNotBlank() }
                     .joinToString("  ")
                     .ifBlank { tool },
-                metrics = "${lineCount(result)} 行",
+                metrics = text("tool.metrics.lines", "{count} 行")
+                    .replace("{count}", lineCount(result).toString()),
                 summary = result.lineSequence().take(6).joinToString("\n"),
                 expanded = result,
                 error = isError,
@@ -112,7 +125,8 @@ fun toolPresentation(
 
         else -> ToolPresentation(
             headline = headlineFor(tool, args).ifBlank { tool },
-            metrics = "${lineCount(result)} 行",
+            metrics = text("tool.metrics.lines", "{count} 行")
+                .replace("{count}", lineCount(result).toString()),
             summary = result.lineSequence().take(4).joinToString("\n"),
             expanded = result.ifBlank { argsJson },
             error = isError,
@@ -126,7 +140,10 @@ private fun headlineFor(tool: String, args: JSONObject?): String = when (tool) {
     else -> args?.optString("path").orEmpty()
 }
 
-private fun editStats(args: JSONObject?): Pair<String, String> {
+private fun editStats(
+    args: JSONObject?,
+    text: (String, String) -> String,
+): Pair<String, String> {
     val edits = args?.optJSONArray("edits") ?: return "" to ""
     var added = 0
     var removed = 0
@@ -141,7 +158,9 @@ private fun editStats(args: JSONObject?): Pair<String, String> {
         preview.append("- ").append(oldText.lineSequence().firstOrNull().orEmpty())
         preview.append('\n').append("+ ").append(newText.lineSequence().firstOrNull().orEmpty())
     }
-    return "+$added −$removed" to preview.toString()
+    return text("tool.metrics.diff", "+{added} −{removed}")
+        .replace("{added}", added.toString())
+        .replace("{removed}", removed.toString()) to preview.toString()
 }
 
 private fun diffStats(diff: String): Pair<Int, Int> {
