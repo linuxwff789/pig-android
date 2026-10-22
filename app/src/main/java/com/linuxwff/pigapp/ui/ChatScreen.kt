@@ -245,9 +245,12 @@ fun PigApp(vm: AppViewModel) {
 @Composable
 private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
     val context = LocalContext.current
-    val command =
-        "curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh | sh"
+    val command = """
+        pkg install -y curl
+        curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh | sh
+    """.trimIndent()
     val termuxInstalled = RelayLauncher.isTermuxInstalled(context)
+    val permitted = RelayLauncher.hasPermission(context)
     AlertDialog(
         onDismissRequest = vm::dismissSetup,
         title = { Text("Termux 后端还没准备好") },
@@ -258,27 +261,45 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 if (!termuxInstalled) {
-                    Text("1. 先安装 Termux（F-Droid 版）", style = MaterialTheme.typography.bodyMedium)
-                } else {
-                    Text("1. 在 Termux 里运行下面这行命令：", style = MaterialTheme.typography.bodyMedium)
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(8.dp),
-                    ) {
-                        SelectionContainer {
-                            Text(
-                                command,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(8.dp),
-                            )
-                        }
-                    }
                     Text(
-                        "2. 设置 allow-external-apps = true，并打开一次 Termux",
+                        "1. 先从 F-Droid 安装 Termux（Play 版已停更）",
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    Text(
+                        "2. 打开 Termux，运行下方命令；装完再回 App 授权并重试。",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                } else {
+                    Text("1. 在 Termux 里运行：", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "（第一次用 Termux 可能要先等 pkg 初始化）",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    SelectionContainer {
+                        Text(
+                            command,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(8.dp),
+                        )
+                    }
+                }
+                Text(
+                    "脚本会启用 allow-external-apps、安装 pig 和 pig-relay；装完打开一次 Termux。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "「一键安装」只在 allow-external-apps 已开启时可用；没反应就手动跑上面的命令。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 ui.setupHint?.let {
                     Text(
                         it,
@@ -289,10 +310,14 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
             }
         },
         confirmButton = {
-            if (termuxInstalled) {
-                TextButton(onClick = { vm.bootstrap() }) { Text("一键安装") }
-            } else {
-                TextButton(onClick = { vm.openTermuxInstallPage() }) { Text("安装 Termux") }
+            when {
+                !termuxInstalled -> TextButton(onClick = vm::openTermuxInstallPage) {
+                    Text("安装 Termux")
+                }
+                !permitted -> TextButton(onClick = vm::openAppSettings) {
+                    Text("权限设置")
+                }
+                else -> TextButton(onClick = { vm.bootstrap() }) { Text("一键安装") }
             }
         },
         dismissButton = {

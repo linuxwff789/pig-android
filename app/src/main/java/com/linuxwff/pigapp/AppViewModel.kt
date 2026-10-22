@@ -128,6 +128,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         RelayLauncher.openTermuxInstallPage(getApplication())
     }
 
+    fun openAppSettings() {
+        RelayLauncher.openAppSettings(getApplication())
+    }
+
     fun sendPrompt(raw: String) {
         val text = raw.trim()
         if (text.isEmpty()) return

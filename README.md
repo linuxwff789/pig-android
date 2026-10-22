@@ -45,9 +45,11 @@ into arbitrary windows; the overlay/sheet/inline placements, the `windows/` file
 
 ## Fresh Termux install
 
-The APK is only the front-end. On a clean Termux, run:
+The APK is only the front-end. Install Termux from F-Droid (the Play version is
+no longer maintained), open it once, then run:
 
 ```bash
+pkg install -y curl
 curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh | sh
 ```
 
@@ -57,11 +59,14 @@ The script installs `pig` with the official installer, downloads
 
 Then:
 
-1. Set `allow-external-apps = true` in `~/.termux/termux.properties`
-   (uncomment the line) and open the Termux app once so the property reloads.
-2. Install/open the Pig app and grant `com.termux.permission.RUN_COMMAND`.
-3. If the app shows the setup dialog, run the command or tap 一键安装, wait for
-   Termux to finish, then tap 重试.
+The script enables `allow-external-apps` (with a backup), installs `pig` via the
+official installer, downloads `pig-relay`, and creates `~/.pig/android-ui`.
+Open the Termux app once so the property reloads, then install/open the Pig app
+and grant `com.termux.permission.RUN_COMMAND`.
+
+If the app shows the setup dialog, the same two lines are displayed with a copy
+button. 一键安装 only works when `allow-external-apps` is already enabled; if it
+does nothing, paste the two lines into Termux manually.
 
 See [docs/install.md](docs/install.md) for the manual route and troubleshooting.
 

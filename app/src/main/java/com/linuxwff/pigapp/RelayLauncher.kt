@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 
@@ -25,7 +26,7 @@ object RelayLauncher {
     fun bootstrap(context: Context, cwd: String): String? {
         if (!hasPermission(context)) return "没有 Termux RUN_COMMAND 权限"
         if (!isTermuxInstalled(context)) return "Termux 未安装"
-        val command = "curl -fsSL $INSTALL_SCRIPT | sh"
+        val command = "pkg install -y curl >/dev/null 2>&1; curl -fsSL $INSTALL_SCRIPT | sh"
         val intent = Intent().apply {
             setClassName(TERMUX_PKG, "com.termux.app.RunCommandService")
             action = "com.termux.RUN_COMMAND"
@@ -48,6 +49,17 @@ object RelayLauncher {
         )
         true
     }.getOrDefault(false)
+
+    fun openAppSettings(context: Context) {
+        runCatching {
+            context.startActivity(
+                Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:${context.packageName}"),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
 
     fun openTermuxInstallPage(context: Context) {
         runCatching {
