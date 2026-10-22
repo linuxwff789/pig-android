@@ -68,9 +68,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var liveFlushScheduled = false
     private val pendingToolPartials = mutableMapOf<String, String>()
 
+    private val builtinCommands = listOf(
+        UiCommand("compact", "压缩上下文"),
+        UiCommand("new", "新建会话"),
+        UiCommand("name", "重命名会话：/name 名称"),
+        UiCommand("thinking", "思考档位：/thinking off|low|medium|high"),
+        UiCommand("model", "选择模型"),
+        UiCommand("stop", "中止当前输出"),
+    )
+
     init {
         current = this
         ui = ui.copy(
+            commands = builtinCommands,
             avatarShadow = if (prefs.contains("avatarShadow")) {
                 prefs.getBoolean("avatarShadow", false)
             } else {
@@ -318,6 +328,67 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /** Handle `/name args`: built-ins map to RPC commands, extensions go through prompt. */
+    private fun runSlashCommand(text: String) {
+        val command = text.removePrefix("/").substringBefore(' ').trim()
+        val args = text.removePrefix("/$command").trim()
+        if (command.isBlank()) {
+            ui = ui.copy(toast = "命令不能为空")
+            return
+        }
+        when (command) {
+            "compact", "compress" -> compact()
+            "new", "new_session" -> newSession()
+            "stop", "abort" -> abort()
+            "model" -> openModelPicker()
+            "name" -> {
+                if (args.isBlank()) {
+                    ui = ui.copy(toast = "用法：/name 新名称")
+                } else {
+                    append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = text))
+                    client.send(
+                        JSONObject()
+                            .put("id", "rename-${nextId++}")
+                            .put("type", "set_session_name")
+                            .put("name", args.take(80)),
+                    )
+                }
+            }
+            "thinking" -> {
+                if (args.isBlank()) {
+                    ui = ui.copy(toast = "用法：/thinking off|low|medium|high")
+                } else {
+                    append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = text))
+                    setThinkingLevel(args)
+                }
+            }
+            else -> {
+                val known = ui.commands.any { it.name == command }
+                if (!known) {
+                    ui = ui.copy(toast = "未知命令 /$command")
+                    return
+                }
+                append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = text))
+                client.send(
+                    JSONObject()
+                        .put("id", "cmd-${nextId++}")
+                        .put("type", "prompt")
+                        .put("message", text),
+                )
+            }
+        }
+    }
+
+    fun compact() {
+        if (ui.busy) {
+            ui = ui.copy(toast = "当前还在输出，等结束再压缩")
+            return
+        }
+        append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = "/compact"))
+        ui = ui.copy(status = "compacting")
+        client.send(JSONObject().put("id", "compact-${nextId++}").put("type", "compact"))
+    }
+
     /**
      * steer=true injects the message into the running turn (PiG `steer`);
      * steer=false queues it after the turn (`followUp`).
@@ -325,6 +396,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun sendPrompt(raw: String, steer: Boolean = true) {
         val text = raw.trim()
         if (text.isEmpty()) return
+        if (text.startsWith("/")) {
+            runSlashCommand(text)
+            return
+        }
         val wasBusy = ui.busy
         append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = text))
         currentAssistant = null
@@ -400,6 +475,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun requestStats() {
         client.send(JSONObject().put("id", "stats-${nextId++}").put("type", "get_session_stats"))
+    }
+
+    private fun requestCommands() {
+        client.send(JSONObject().put("id", "commands-${nextId++}").put("type", "get_commands"))
     }
 
     private fun requestState() {
@@ -769,6 +848,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 requestMessages()
                 requestStats()
                 requestSessions()
+                requestCommands()
                 client.send(JSONObject().put("type", "relay_ui"))
             }
             "relay_pong" -> lastPongAt = System.currentTimeMillis()
@@ -1020,6 +1100,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             "get_messages" -> data.optJSONArray("messages")?.let { renderHistory(it) }
+            "get_commands" -> {
+                val array = data.optJSONArray("commands")
+                val list = buildList {
+                    addAll(builtinCommands)
+                    if (array != null) {
+                        for (index in 0 until array.length()) {
+                            val item = array.optJSONObject(index) ?: continue
+                            val name = item.optString("name").trim()
+                            if (name.isBlank()) continue
+                            add(UiCommand(name, item.optString("description").take(200)))
+                        }
+                    }
+                }.distinctBy { it.name }
+                ui = ui.copy(commands = list)
+            }
             "get_available_models" -> {
                 val array = data.optJSONArray("models")
                 val list = buildList {

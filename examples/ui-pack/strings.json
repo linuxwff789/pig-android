@@ -114,7 +114,10 @@
     "clear": "清空",
     "extensions": "扩展",
     "about": "关于",
-    "done": "完成"
+    "done": "完成",
+    "compact": "压缩上下文",
+    "compactHint": "发送 /compact，减少上下文占用",
+    "compactAction": "压缩"
   },
   "model": {
     "title": "选择模型",

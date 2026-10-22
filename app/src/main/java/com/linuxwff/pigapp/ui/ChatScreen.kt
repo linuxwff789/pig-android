@@ -155,6 +155,24 @@ fun PigApp(vm: AppViewModel) {
     }
     var showSettings by remember { mutableStateOf(false) }
     val components = packComponents()
+    val commandQuery = remember(draft) {
+        val trimmed = draft.trimStart()
+        if (!trimmed.startsWith("/")) return@remember null
+        val rest = trimmed.removePrefix("/")
+        if (rest.contains(' ')) null else rest
+    }
+    val commandMatches = remember(commandQuery, ui.commands) {
+        if (commandQuery == null) {
+            emptyList()
+        } else {
+            ui.commands
+                .filter {
+                    it.name.contains(commandQuery, true) ||
+                        it.description.contains(commandQuery, true)
+                }
+                .take(8)
+        }
+    }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -233,6 +251,11 @@ fun PigApp(vm: AppViewModel) {
                     ) {
                         InlineWindows(ui.windows, "aboveComposer", vm)
                         WidgetPane(ui.widgets, "aboveEditor", vm)
+                        if (commandQuery != null && commandMatches.isNotEmpty()) {
+                            CommandPalette(commandMatches) { command ->
+                                draft = "/${command.name} "
+                            }
+                        }
                         if (ui.pendingMessages > 0 && components.showPendingBanner) {
                             PendingBanner(ui.pendingMessages)
                         }
@@ -693,6 +716,22 @@ private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Un
                     }
                     TextButton(onClick = vm::clearLocal) {
                         Text(packText("settings.clear", "清空"), color = scheme.error)
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            packText("settings.compact", "压缩上下文"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            packText("settings.compactHint", "发送 /compact，减少上下文占用"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = vm::compact) {
+                        Text(packText("settings.compactAction", "压缩"))
                     }
                 }
 
@@ -2134,6 +2173,54 @@ private fun DiffBlock(diff: String, cornerRadius: Int, maxLines: Int = 200) {
             fontSize = 11.sp,
             softWrap = false,
         )
+    }
+}
+
+@Composable
+private fun CommandPalette(
+    commands: List<com.linuxwff.pigapp.UiCommand>,
+    onPick: (com.linuxwff.pigapp.UiCommand) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        color = scheme.surface,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, scheme.outline.copy(alpha = 0.5f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 2.dp),
+    ) {
+        Column(
+            Modifier
+                .heightIn(max = 220.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            commands.forEach { command ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onPick(command) }
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "/${command.name}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.primary,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        command.description,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
     }
 }
 

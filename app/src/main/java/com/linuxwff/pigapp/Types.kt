@@ -44,6 +44,8 @@ data class NavItem(
     val placement: String = "drawer",
 )
 
+data class UiCommand(val name: String, val description: String = "")
+
 data class ModelInfo(
     val provider: String,
     val id: String,
@@ -109,4 +111,6 @@ data class AppUiState(
     val streamingId: String? = null,
     /** Steering/follow-up messages still queued in pig. */
     val pendingMessages: Int = 0,
+    /** Slash commands (built-ins + registered extension commands). */
+    val commands: List<UiCommand> = emptyList(),
 )

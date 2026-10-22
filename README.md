@@ -155,6 +155,20 @@ The app is designed to survive screen locks, Doze and process death:
   deltas. If `get_state` says the pig is streaming on the saved session, the app
   skips `switch_session` and binds the partial assistant bubble instead.
 
+## Slash commands
+
+The composer recognises `/name args`:
+
+- `/compact` (also `/compress` as an alias) sends the RPC `compact` command.
+- `/new`, `/name <name>`, `/thinking <level>`, `/model`, `/stop` map to app/RPC actions.
+- Registered extension commands are listed by the RPC `get_commands` call and are
+  sent as a `prompt`; PiG runs them without calling the model.
+- Typing `/` opens a command palette with the built-in and extension commands;
+  tapping a row fills `/name `. Unknown commands are rejected with a toast
+  instead of being sent to the model.
+
+`compact` is also available from **设置 → 数据 → 压缩上下文**.
+
 ## Keep-alive
 
 - `KeepAliveService` is a `specialUse` foreground service started by
