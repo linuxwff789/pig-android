@@ -72,9 +72,14 @@ fun ModelPickerDialog(vm: AppViewModel) {
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("选择模型", style = MaterialTheme.typography.titleLarge)
+                    Text(packText("model.title", "选择模型"), style = MaterialTheme.typography.titleLarge)
                     Text(
-                        if (vm.modelsLoading) "正在加载模型…" else "${filtered.size} 个可用",
+                        if (vm.modelsLoading) {
+                            packText("model.loading", "正在加载模型…")
+                        } else {
+                            packText("model.count", "{count} 个可用")
+                                .replace("{count}", filtered.size.toString())
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant,
                     )
@@ -93,7 +98,7 @@ fun ModelPickerDialog(vm: AppViewModel) {
                     value = query,
                     onValueChange = { query = it },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("搜索 provider 或模型") },
+                    placeholder = { Text(packText("model.search", "搜索 provider 或模型")) },
                     singleLine = true,
                     shape = RoundedCornerShape(16.dp),
                     leadingIcon = {
@@ -115,7 +120,8 @@ fun ModelPickerDialog(vm: AppViewModel) {
                 if (vm.ui.thinkingLevels.size > 1) {
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "思考档位 · ${vm.ui.thinkingLevel}",
+                        packText("model.thinking", "思考档位 · {level}")
+                            .replace("{level}", vm.ui.thinkingLevel),
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant,
                     )
@@ -154,7 +160,7 @@ fun ModelPickerDialog(vm: AppViewModel) {
                     if (filtered.isEmpty() && !vm.modelsLoading) {
                         item {
                             Text(
-                                "没有匹配的模型",
+                                packText("model.empty", "没有匹配的模型"),
                                 modifier = Modifier.padding(vertical = 10.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = scheme.onSurfaceVariant,
@@ -173,10 +179,14 @@ fun ModelPickerDialog(vm: AppViewModel) {
             }
         },
         confirmButton = {
-            TextButton(onClick = vm::closeModelPicker) { Text("关闭") }
+            TextButton(onClick = vm::closeModelPicker) {
+                Text(packText("a11y.close", "关闭"))
+            }
         },
         dismissButton = {
-            TextButton(onClick = vm::requestModels) { Text("刷新") }
+            TextButton(onClick = vm::requestModels) {
+                Text(packText("a11y.refresh", "刷新"))
+            }
         },
     )
 }

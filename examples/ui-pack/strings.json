@@ -85,7 +85,8 @@
     "copy": "复制",
     "steer": "插队",
     "send": "发送",
-    "close": "关闭"
+    "close": "关闭",
+    "refresh": "刷新"
   },
   "settings": {
     "title": "设置",
@@ -114,5 +115,28 @@
     "extensions": "扩展",
     "about": "关于",
     "done": "完成"
+  },
+  "model": {
+    "title": "选择模型",
+    "loading": "正在加载模型…",
+    "count": "{count} 个可用",
+    "search": "搜索 provider 或模型",
+    "thinking": "思考档位 · {level}",
+    "empty": "没有匹配的模型"
+  },
+  "toast": {
+    "copied": "已复制",
+    "restored": "已恢复上次会话",
+    "attached": "已接上正在运行的会话",
+    "renamed": "会话已重命名",
+    "deleted": "会话已删除",
+    "sessionError": "会话操作失败",
+    "currentNoDelete": "当前会话不能删除，先切换或新建会话",
+    "keepAliveOn": "后台保活已开启",
+    "keepAliveOff": "后台保活已关闭",
+    "wakeOn": "唤醒锁已开启（锁屏后 CPU 不休眠）",
+    "wakeOff": "唤醒锁已关闭",
+    "sameSession": "已经是当前会话",
+    "toolModeAll": "已应用到全部工具：{mode}"
   }
 }

@@ -256,11 +256,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setToolMode(mode: String) {
         if (mode !in setOf("collapsed", "summary", "expanded")) return
         val label = when (mode) {
-            "collapsed" -> "收起"
-            "expanded" -> "展开"
-            else -> "摘要"
+            "collapsed" -> str("tool.collapse", "收起")
+            "expanded" -> str("tool.expand", "展开")
+            else -> str("tool.summary", "摘要")
         }
-        ui = ui.copy(toolMode = mode, toast = "已应用到全部工具：$label")
+        ui = ui.copy(toolMode = mode, toast = str("toast.toolModeAll", "已应用到全部工具：{mode}").replace("{mode}", label))
     }
 
     fun copyText(text: String) {
@@ -268,7 +268,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val manager = getApplication<Application>()
             .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         manager.setPrimaryClip(ClipData.newPlainText("Pig", text))
-        ui = ui.copy(toast = "已复制")
+        ui = ui.copy(toast = str("toast.copied", "已复制"))
     }
 
     fun setKeepAlive(enabled: Boolean) {
@@ -395,6 +395,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Ask pig for the current context usage; refreshed on connect, session switch and after each turn. */
+    private fun str(key: String, fallback: String): String =
+        ui.uiPack.strings.get(key, fallback)
+
     private fun requestStats() {
         client.send(JSONObject().put("id", "stats-${nextId++}").put("type", "get_session_stats"))
     }
@@ -413,7 +416,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun switchSession(path: String) {
         if (path == ui.sessionFile) {
-            ui = ui.copy(toast = "已经是当前会话")
+            ui = ui.copy(toast = str("toast.sameSession", "已经是当前会话"))
             return
         }
         doSwitch(path)
@@ -477,7 +480,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteSession(session: SessionInfo) {
         if (session.path == ui.sessionFile) {
-            ui = ui.copy(toast = "当前会话不能删除，先切换或新建会话")
+            ui = ui.copy(toast = str("toast.currentNoDelete", "当前会话不能删除，先切换或新建会话"))
             return
         }
         client.send(
@@ -549,7 +552,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val clipboard = getApplication<Application>()
                     .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("Pig", value))
-                ui = ui.copy(toast = "已复制")
+                ui = ui.copy(toast = str("toast.copied", "已复制"))
             }
             action.startsWith("ext:") -> {
                 val command = action.removePrefix("ext:").trim()
@@ -800,7 +803,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val name = event.optString("name")
                 ui = ui.copy(
                     sessions = ui.sessions.map { if (it.path == path) it.copy(name = name) else it },
-                    toast = "会话已重命名",
+                    toast = str("toast.renamed", "会话已重命名"),
                 )
                 requestSessions()
             }
@@ -809,12 +812,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 if (savedSession() == path) prefs.edit().remove("lastSessionFile").apply()
                 ui = ui.copy(
                     sessions = ui.sessions.filterNot { it.path == path },
-                    toast = "会话已删除",
+                    toast = str("toast.deleted", "会话已删除"),
                 )
                 requestSessions()
             }
             "relay_session_error" ->
-                ui = ui.copy(toast = event.optString("message", "会话操作失败"))
+                ui = ui.copy(toast = event.optString("message", str("toast.sessionError", "会话操作失败")))
             "response" -> handleResponse(event)
             "agent_start" -> ui = ui.copy(busy = true, status = "thinking")
             "turn_start" -> ui = ui.copy(status = "working")
@@ -950,7 +953,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         if (streaming) {
                             // The pig is still producing on another session;
                             // attach to the live turn instead of switching.
-                            toast = "已接上正在运行的会话"
+                            toast = str("toast.attached", "已接上正在运行的会话")
                         } else {
                             restorePending = true
                             desiredSessionPath = saved
@@ -964,7 +967,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             return
                         }
                     } else if (saved != null && sessionFile == saved) {
-                        toast = "已恢复上次会话"
+                        toast = str("toast.restored", "已恢复上次会话")
                     }
                 }
 
@@ -972,7 +975,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     restorePending = false
                     desiredSessionPath = null
                     status = ""
-                    toast = "已恢复上次会话"
+                    toast = str("toast.restored", "已恢复上次会话")
                 }
                 if (!restorePending && sessionFile.isNotBlank()) {
                     rememberSession(sessionFile)
