@@ -123,6 +123,24 @@ Relay flags:
 | `--ui-dir` | `~/.pig/android-ui` | UI pack directory |
 | `--pig` | `pig` | pig binary |
 
+## Reconnect and session restore
+
+The app is designed to survive screen locks, Doze and process death:
+
+- `MainActivity.onResume` reconnects (and relaunches `pig-relay` through Termux)
+  whenever the socket is down. While disconnected, `startAutoReconnect` keeps
+  retrying with backoff as long as the app is in the foreground.
+- Every 4 s the client sends `relay_ping`; if no `relay_pong` arrives for 12 s
+  the socket is considered dead (frozen process, killed relay) and is dropped,
+  then the reconnect loop takes over. A short `onPause` does not tear down a
+  live connection.
+- The active session file is stored in the app's `pig` SharedPreferences
+  (`lastSessionFile`). The relay always starts a fresh `pig`, so after the
+  handshake the app sends `switch_session` for that file and reloads its
+  transcript. If the session can no longer be opened the app falls back to a
+  new session.
+- `relay_exit` (pig crashed or was killed) also triggers the reconnect loop.
+
 ## Layout
 
 ```

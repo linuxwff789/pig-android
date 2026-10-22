@@ -52,7 +52,9 @@ class RelayClient(
         if (job?.isActive == true) return
         job = scope.launch {
             var lastError: Exception? = null
-            repeat(24) { attempt ->
+            var attempt = 0
+            var everConnected = false
+            while (isActive) {
                 try {
                     val s = Socket()
                     s.connect(InetSocketAddress(host, port), 1500)
@@ -62,6 +64,8 @@ class RelayClient(
                     sendNow(JSONObject().put("type", "relay_auth").put("token", token))
                     val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
                     _connected.value = true
+                    everConnected = true
+                    attempt = 0
                     while (isActive) {
                         val line = reader.readLine() ?: break
                         if (line.isBlank()) continue
@@ -76,17 +80,29 @@ class RelayClient(
                     socket = null
                     writer = null
                 }
-                if (attempt < 23) delay(500)
-            }
-            lastError?.let {
-                eventChannel.trySend(
-                    JSONObject()
-                        .put("type", "relay_client_error")
-                        .put("message", it.message ?: it.javaClass.simpleName),
-                )
+                attempt++
+                // Show the setup hint only when the relay never came up; a
+                // dropped connection after a successful handshake is retried
+                // silently by the ViewModel's auto-reconnect loop.
+                if (attempt == 24 && !everConnected) {
+                    val error = lastError
+                    eventChannel.trySend(
+                        JSONObject()
+                            .put("type", "relay_client_error")
+                            .put("message", error?.message ?: error?.javaClass?.simpleName ?: "connect failed"),
+                    )
+                }
+                val backoff = when {
+                    attempt < 10 -> 500L
+                    attempt < 40 -> 1500L
+                    else -> 3000L
+                }
+                delay(backoff)
             }
         }
     }
+
+    val isConnecting: Boolean get() = job?.isActive == true
 
     fun send(obj: JSONObject) {
         scope.launch { sendNow(obj) }

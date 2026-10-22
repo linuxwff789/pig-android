@@ -15,8 +15,8 @@ class MainActivity : ComponentActivity() {
 
     private val requestRunCommand =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-            // connect() reports the missing permission when it is still denied.
-            vm.connect()
+            // onForeground reports the missing permission when it is still denied.
+            vm.onForeground()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,10 +30,20 @@ class MainActivity : ComponentActivity() {
                 PigApp(vm)
             }
         }
-        if (RelayLauncher.hasPermission(this)) {
-            vm.connect()
-        } else {
+        if (!RelayLauncher.hasPermission(this)) {
             requestRunCommand.launch("com.termux.permission.RUN_COMMAND")
         }
+        // The actual connection is started from onResume() (also covers locks,
+        // process freezes and returning from the background).
+    }
+
+    override fun onResume() {
+        super.onResume()
+        vm.onForeground()
+    }
+
+    override fun onPause() {
+        vm.onBackground()
+        super.onPause()
     }
 }

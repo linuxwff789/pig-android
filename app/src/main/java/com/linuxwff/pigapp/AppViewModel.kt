@@ -55,14 +55,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var currentAssistant: String? = null
     private val toolMsgIds = mutableMapOf<String, String>()
 
+    private var foreground = false
+    private var autoReconnectJob: kotlinx.coroutines.Job? = null
+    private var lastPongAt = 0L
+    private var desiredSessionPath: String? = null
+    private var restorePending = false
+
     init {
         current = this
         viewModelScope.launch {
-            client.connected.collect { connected -> ui = ui.copy(connected = connected) }
+            client.connected.collect { connected ->
+                ui = ui.copy(connected = connected)
+                if (connected) lastPongAt = System.currentTimeMillis()
+            }
         }
         viewModelScope.launch {
             client.events.collect { event ->
                 handle(event)
+            }
+        }
+        // Loopback TCP has no keepalive: after the phone sleeps or the process
+        // is frozen the socket can look alive while the relay is gone. Ping
+        // periodically and drop the connection when the pongs stop.
+        viewModelScope.launch {
+            while (true) {
+                delay(4_000)
+                if (!client.connected.value) continue
+                val now = System.currentTimeMillis()
+                if (lastPongAt > 0 && now - lastPongAt > 12_000) {
+                    lastPongAt = 0
+                    client.close()
+                    if (foreground) startAutoReconnect()
+                    continue
+                }
+                client.send(JSONObject().put("type", "relay_ping").put("id", "ping-${nextId++}"))
             }
         }
     }
@@ -98,6 +124,59 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+    }
+
+    /** Called from Activity.onResume: resume the relay/session after a lock or process freeze. */
+    fun onForeground() {
+        foreground = true
+        val ctx = getApplication<Application>()
+        if (!RelayLauncher.hasPermission(ctx)) {
+            ui = ui.copy(
+                error = "没有 Termux RUN_COMMAND 权限。请在系统设置里允许本应用调用 Termux，然后点重连。",
+            )
+            return
+        }
+        if (client.connected.value) {
+            lastPongAt = System.currentTimeMillis()
+            client.send(JSONObject().put("type", "relay_ping").put("id", "ping-${nextId++}"))
+            return
+        }
+        startAutoReconnect()
+    }
+
+    /** Called from Activity.onPause: stop retrying while the app is in the background. */
+    fun onBackground() {
+        foreground = false
+        autoReconnectJob?.cancel()
+        autoReconnectJob = null
+    }
+
+    private fun startAutoReconnect() {
+        if (autoReconnectJob?.isActive == true) return
+        autoReconnectJob = viewModelScope.launch {
+            var nextLaunch = 0L
+            while (foreground && !client.connected.value) {
+                val ctx = getApplication<Application>()
+                if (!RelayLauncher.hasPermission(ctx)) break
+                if (!client.isConnecting) connect()
+                val now = System.currentTimeMillis()
+                if (now >= nextLaunch) {
+                    // The relay may have been killed with the app process; keep
+                    // asking Termux to run it until the socket comes back.
+                    RelayLauncher.launch(ctx, port, token, cwd)
+                    nextLaunch = now + 8_000
+                }
+                delay(1_000)
+            }
+        }
+    }
+
+    private fun savedSession(): String? =
+        prefs.getString("lastSessionFile", null)?.takeIf { it.isNotBlank() }
+
+    private fun rememberSession(path: String) {
+        if (path.isBlank()) return
+        if (savedSession() != path) prefs.edit().putString("lastSessionFile", path).apply()
     }
 
     fun reconnect() {
@@ -221,6 +300,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun doSwitch(path: String) {
+        desiredSessionPath = path
+        restorePending = false
         ui = ui.copy(status = "switching", messages = emptyList())
         client.send(
             JSONObject()
@@ -500,10 +581,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         when (val type = event.optString("type")) {
             "relay_hello" -> {
                 ui = ui.copy(error = null, setup = false, setupHint = null)
-                client.send(JSONObject().put("id", "state-1").put("type", "get_state"))
-                requestStats()
+                lastPongAt = System.currentTimeMillis()
+                val saved = savedSession()
+                if (saved != null) {
+                    // The app UID cannot stat Termux's private home, so let pig
+                    // validate the path: a failure falls back to a new session.
+                    // The relay always spawns a fresh pig process; reattach it to
+                    // the session that was open before the app was killed.
+                    restorePending = true
+                    desiredSessionPath = saved
+                    ui = ui.copy(status = "restoring")
+                    client.send(
+                        JSONObject()
+                            .put("id", "switch-${nextId++}")
+                            .put("type", "switch_session")
+                            .put("sessionPath", saved),
+                    )
+                } else {
+                    client.send(JSONObject().put("id", "state-1").put("type", "get_state"))
+                    requestStats()
+                }
                 requestSessions()
             }
+            "relay_pong" -> lastPongAt = System.currentTimeMillis()
             "relay_client_error" -> {
                 val message = event.optString("message")
                 ui = ui.copy(error = message, setup = true, setupHint = message)
@@ -512,11 +612,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val message = event.optString("message", "relay error")
                 ui = ui.copy(error = message, setup = true, setupHint = message)
             }
-            "relay_exit" -> ui = ui.copy(
-                busy = false,
-                status = "",
-                error = "pig 已退出（code ${event.optInt("code")}）",
-            )
+            "relay_exit" -> {
+                ui = ui.copy(
+                    busy = false,
+                    status = "",
+                    error = "pig 已退出（code ${event.optInt("code")}），正在重连…",
+                )
+                lastPongAt = 0
+                client.close()
+                if (foreground) startAutoReconnect()
+            }
             "relay_ui_pack" -> handleUiPack(event)
             "relay_sessions" -> handleSessions(event)
             "response" -> handleResponse(event)
@@ -549,6 +654,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun handleResponse(event: JSONObject) {
         if (!event.optBoolean("success", true)) {
+            val command = event.optString("command")
+            if (command == "switch_session" && restorePending) {
+                // The remembered session was deleted; fall back to a fresh one.
+                restorePending = false
+                desiredSessionPath = null
+                prefs.edit().remove("lastSessionFile").apply()
+                ui = ui.copy(status = "")
+                client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
+                requestStats()
+                append(
+                    ChatMsg(
+                        id = "n${nextId++}",
+                        role = Role.NOTICE,
+                        text = "上次会话已不存在，已开始新会话",
+                    ),
+                )
+                return
+            }
+            if (command == "switch_session") {
+                desiredSessionPath = null
+                ui = ui.copy(status = "")
+            }
             append(
                 ChatMsg(
                     id = "n${nextId++}",
@@ -566,6 +693,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (command == "switch_session" || command == "new_session") {
+            if (command == "new_session") {
+                // A new session supersedes the remembered one; the next
+                // get_state response remembers its file instead.
+                prefs.edit().remove("lastSessionFile").apply()
+                desiredSessionPath = null
+                restorePending = false
+            }
             ui = ui.copy(messages = emptyList(), status = "")
             client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
             client.send(JSONObject().put("id", "msgs-${nextId++}").put("type", "get_messages"))
@@ -582,19 +716,41 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     model?.optString("id")?.takeIf { it.isNotBlank() },
                 ).joinToString("/")
                 val sessionId = data.optString("sessionId", "")
+                val sessionFile = data.optString("sessionFile", ui.sessionFile)
                 val switched = sessionId.isNotBlank() &&
                     ui.sessionId.isNotBlank() &&
                     sessionId != ui.sessionId
                 if (switched) currentAssistant = null
+                var status = ui.status
+                var toast = ui.toast
+                if (sessionFile.isNotBlank()) {
+                    if (restorePending) {
+                        val restored = sessionFile == desiredSessionPath
+                        restorePending = false
+                        desiredSessionPath = null
+                        rememberSession(sessionFile)
+                        status = ""
+                        if (restored) toast = "已恢复上次会话"
+                    } else {
+                        // Any state response carries the file that pig is using;
+                        // keeping it lets a later process death reopen the same
+                        // session. During restore the initial state is skipped,
+                        // so this cannot clobber the remembered path.
+                        rememberSession(sessionFile)
+                        if (sessionFile == desiredSessionPath) desiredSessionPath = null
+                    }
+                }
                 ui = ui.copy(
                     model = label,
                     sessionId = sessionId,
-                    sessionFile = data.optString("sessionFile", ui.sessionFile),
+                    sessionFile = sessionFile,
                     busy = data.optBoolean("isStreaming", ui.busy),
                     messages = if (switched) emptyList() else ui.messages,
                     contextWindow = model?.optInt("contextWindow", ui.contextWindow)
                         ?: ui.contextWindow,
                     thinkingLevel = data.optString("thinkingLevel", ui.thinkingLevel),
+                    status = status,
+                    toast = toast,
                 )
             }
             "get_session_stats" -> {
