@@ -93,4 +93,6 @@ data class AppUiState(
     val keepAlive: Boolean = true,
     /** Empty = use the UI pack's chat.toolCards; otherwise collapsed/summary/expanded. */
     val toolMode: String = "",
+    /** True for a history session served from disk (no pig process running). */
+    val readOnly: Boolean = false,
 )

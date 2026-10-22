@@ -61,7 +61,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var desiredSessionPath: String? = null
     private var restorePending = false
     private var restoreChecked = false
-    private var deferredSwitchPath: String? = null
     private var liveText: String? = null
     private val pendingToolPartials = mutableMapOf<String, String>()
 
@@ -281,7 +280,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (text.isEmpty()) return
         append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = text))
         currentAssistant = null
-        deferredSwitchPath = null
+        ui = ui.copy(readOnly = false)
         val command = JSONObject()
             .put("id", "p${nextId++}")
             .put("type", "prompt")
@@ -347,18 +346,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun switchSession(path: String) {
         if (path == ui.sessionFile) {
-            if (deferredSwitchPath != null) {
-                deferredSwitchPath = null
-                ui = ui.copy(toast = "已取消切换")
-            } else {
-                ui = ui.copy(toast = "已经是当前会话")
-            }
-            return
-        }
-        val session = ui.sessions.firstOrNull { it.path == path }
-        val recent = session != null && System.currentTimeMillis() - session.updated < 60_000
-        if (recent) {
-            ui = ui.copy(pendingSwitch = session)
+            ui = ui.copy(toast = "已经是当前会话")
             return
         }
         doSwitch(path)
@@ -376,19 +364,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun doSwitch(path: String) {
         if (path == ui.sessionFile) return
-        if (ui.busy) {
-            // One pig can only own one session at a time; switching now would
-            // abort/queue behind the running turn. Keep streaming and switch
-            // once the turn settles (tap 当前会话 again to cancel).
-            deferredSwitchPath = path
-            ui = ui.copy(toast = "当前会话还在输出，结束后会切换")
-            return
-        }
-        deferredSwitchPath = null
         desiredSessionPath = path
         restorePending = false
-        // Keep the current transcript visible until the new one arrives.
         ui = ui.copy(status = "switching")
+        // The relay parks the current pig and attaches/reads the target
+        // session, so switching during a running turn is safe.
         client.send(
             JSONObject()
                 .put("id", "switch-${nextId++}")
@@ -399,7 +379,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun newSession() {
         currentAssistant = null
-        deferredSwitchPath = null
+        ui = ui.copy(readOnly = false)
         client.send(JSONObject().put("type", "new_session"))
     }
 
@@ -709,7 +689,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 restoreChecked = false
                 restorePending = false
                 desiredSessionPath = null
-                deferredSwitchPath = null
                 liveText = null
                 pendingToolPartials.clear()
                 // The relay may have kept the previous pig alive (mid-turn
@@ -773,10 +752,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 liveText = null
                 pendingToolPartials.clear()
                 requestStats()
-                deferredSwitchPath?.let { path ->
-                    deferredSwitchPath = null
-                    doSwitch(path)
-                }
             }
             "message_start" -> handleMessageStart(event.optJSONObject("message"))
             "message_update" -> handleMessageUpdate(event)
@@ -821,7 +796,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (command == "switch_session") {
                 desiredSessionPath = null
-                deferredSwitchPath = null
                 ui = ui.copy(status = "")
                 // Never leave the transcript empty after a failed switch:
                 // reload whatever the pig is still working on.
@@ -877,6 +851,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val sessionId = data.optString("sessionId", "")
                 val sessionFile = data.optString("sessionFile", ui.sessionFile)
                 val streaming = data.optBoolean("isStreaming", false)
+                val live = data.optBoolean("live", true)
                 val switched = sessionId.isNotBlank() &&
                     ui.sessionId.isNotBlank() &&
                     sessionId != ui.sessionId
@@ -887,7 +862,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 if (!restoreChecked) {
                     restoreChecked = true
                     val saved = savedSession()
-                    if (saved != null && sessionFile.isNotBlank() && sessionFile != saved) {
+                    if (saved != null && (sessionFile.isBlank() || sessionFile != saved)) {
                         if (streaming) {
                             // The pig is still producing on another session;
                             // attach to the live turn instead of switching.
@@ -920,14 +895,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     if (sessionFile == desiredSessionPath) desiredSessionPath = null
                 }
 
+                if (!live) {
+                    status = "历史会话 · 发送消息后启动"
+                }
                 ui = ui.copy(
                     model = label,
                     sessionId = sessionId,
                     sessionFile = sessionFile,
                     busy = streaming,
+                    readOnly = !live,
                     messages = if (switched) emptyList() else ui.messages,
-                    contextWindow = model?.optInt("contextWindow", ui.contextWindow)
-                        ?: ui.contextWindow,
+                    contextWindow = if (live) {
+                        model?.optInt("contextWindow", ui.contextWindow) ?: ui.contextWindow
+                    } else {
+                        0
+                    },
+                    contextPercent = if (live) ui.contextPercent else null,
+                    contextTokens = if (live) ui.contextTokens else 0,
                     thinkingLevel = data.optString("thinkingLevel", ui.thinkingLevel),
                     status = status,
                     toast = toast,
@@ -935,6 +919,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 if (streaming) bindResumedAssistant()
             }
             "get_session_stats" -> {
+                if (ui.readOnly) return
                 val usage = data.optJSONObject("contextUsage")
                 if (usage != null) {
                     ui = ui.copy(
