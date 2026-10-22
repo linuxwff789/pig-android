@@ -133,6 +133,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Called from Activity.onResume: resume the relay/session after a lock or process freeze. */
     fun onForeground() {
         foreground = true
+        val text = liveText
+        val id = currentAssistant
+        if (text != null && id != null) {
+            update(id) { it.copy(text = text) }
+        }
         val ctx = getApplication<Application>()
         if (prefs.getBoolean("keepalive", true)) {
             KeepAliveService.start(ctx)
@@ -1276,6 +1281,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * each one is what made scrolling drop frames. Coalesce to ~20 fps.
      */
     private fun scheduleLiveFlush() {
+        // Compose is not drawing while the app is in the background; rebuilding
+        // the message list every 50ms only allocates. liveText keeps growing and
+        // onForeground flushes it once.
+        if (!foreground) return
         if (liveFlushScheduled) return
         liveFlushScheduled = true
         viewModelScope.launch {
