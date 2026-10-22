@@ -21,6 +21,7 @@ import java.io.File
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_EVENT --es json '{"type":"extension_ui_request","method":"setWidget",...}'
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_SET_MODEL --es provider deepseek --es model deepseek-flash
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_THINKING --es level high
+ *   am broadcast -a com.linuxwff.pigapp.DEBUG_PACK --es id <packId|"">
  *
  * Exported without a permission on purpose; this class is only compiled into
  * debug builds (app/src/debug).
@@ -86,6 +87,12 @@ class DebugReceiver : BroadcastReceiver() {
                 Log.i(TAG, "set model: $provider/$model")
                 vm.selectModelById(provider, model)
             }
+            "com.linuxwff.pigapp.DEBUG_PACK" -> {
+                val id = intent.getStringExtra("id") ?: ""
+                Log.i(TAG, "select pack: '$id'")
+                vm.refreshLocalPacks()
+                vm.selectPack(id)
+            }
             "com.linuxwff.pigapp.DEBUG_THINKING" -> {
                 val level = intent.getStringExtra("level") ?: ""
                 Log.i(TAG, "thinking: $level")
@@ -118,6 +125,8 @@ class DebugReceiver : BroadcastReceiver() {
                     "model=${state.model} sessionId=${state.sessionId} " +
                     "messages=${state.messages.size} context=${state.contextPercent}% " +
                     "used=${state.contextTokens}/${state.contextWindow} " +
+                    "pack=${state.activePackId.ifBlank { "builtin" }} " +
+                    "packName=${state.uiPack.name} localPacks=${state.localPacks.size} " +
                     "error=${state.error} toast=${state.toast}"
                 Log.i(TAG, summary)
                 setResultData(summary)
