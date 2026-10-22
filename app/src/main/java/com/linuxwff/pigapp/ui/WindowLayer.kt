@@ -689,6 +689,7 @@ private fun nodeColor(name: String): Color = when (name) {
     else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
+@Composable
 private fun textColor(style: String) = when (style) {
     "muted" -> MaterialTheme.colorScheme.onSurfaceVariant
     "danger" -> MaterialTheme.colorScheme.error
