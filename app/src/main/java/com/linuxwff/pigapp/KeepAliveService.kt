@@ -9,29 +9,72 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 
 /**
- * Small foreground service whose only job is to keep the process (and with it
- * the loopback socket to pig-relay) alive while the screen is off or the app is
- * in the background. The relay itself lives in Termux; this service prevents
- * Android from caching/killing the client side.
+ * Foreground service that keeps the process (and with it the loopback socket to
+ * pig-relay) alive while the screen is off. Like Termux's `termux-wake-lock`,
+ * it can also hold a partial wake lock so the CPU is not suspended during a
+ * long turn; the user can turn that off from the drawer.
  */
 class KeepAliveService : Service() {
+    private var wakeLock: PowerManager.WakeLock? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         startForeground(NOTIFICATION_ID, buildNotification())
+        applyWakeLock(prefsEnabled())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            ACTION_SET_WAKE_LOCK -> {
+                val enabled = intent.getBooleanExtra(EXTRA_ENABLED, prefsEnabled())
+                applyWakeLock(enabled)
+            }
         }
         return START_STICKY
+    }
+
+    override fun onDestroy() {
+        releaseWakeLock()
+        super.onDestroy()
+    }
+
+    private fun prefsEnabled(): Boolean =
+        getSharedPreferences("pig", MODE_PRIVATE).getBoolean(PREF_WAKE_LOCK, true)
+
+    private fun applyWakeLock(enabled: Boolean) {
+        if (!enabled) {
+            releaseWakeLock()
+            return
+        }
+        if (wakeLock?.isHeld == true) return
+        runCatching {
+            val manager = getSystemService(PowerManager::class.java)
+            wakeLock = manager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "Pig::RelayConnection",
+            ).apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        }
+    }
+
+    private fun releaseWakeLock() {
+        runCatching {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        }
+        wakeLock = null
     }
 
     private fun buildNotification(): Notification {
@@ -72,12 +115,30 @@ class KeepAliveService : Service() {
         private const val CHANNEL_ID = "pig_keepalive"
         private const val NOTIFICATION_ID = 101
         private const val ACTION_STOP = "com.linuxwff.pigapp.KEEPALIVE_STOP"
+        private const val ACTION_SET_WAKE_LOCK = "com.linuxwff.pigapp.SET_WAKE_LOCK"
+        private const val EXTRA_ENABLED = "enabled"
+        private const val PREF_WAKE_LOCK = "wakelock"
 
         fun start(context: Context) {
             runCatching {
                 ContextCompat.startForegroundService(
                     context,
                     Intent(context, KeepAliveService::class.java),
+                )
+            }
+        }
+
+        /** Turn the CPU wake lock on/off at runtime (also persists the choice). */
+        fun setWakeLock(context: Context, enabled: Boolean) {
+            context.getSharedPreferences("pig", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(PREF_WAKE_LOCK, enabled)
+                .apply()
+            runCatching {
+                context.startService(
+                    Intent(context, KeepAliveService::class.java)
+                        .setAction(ACTION_SET_WAKE_LOCK)
+                        .putExtra(EXTRA_ENABLED, enabled),
                 )
             }
         }

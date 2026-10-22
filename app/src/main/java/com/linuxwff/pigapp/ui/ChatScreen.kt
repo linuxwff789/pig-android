@@ -56,6 +56,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
@@ -599,6 +600,15 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
             Icon(Icons.Default.Settings, null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
             Text("后台保活 / 电池白名单")
+        }
+        OutlinedButton(
+            onClick = { vm.setWakeLock(!ui.wakeLock) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(corner.dp),
+        ) {
+            Icon(Icons.Default.Lock, null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(if (ui.wakeLock) "唤醒锁：开（锁屏继续跑）" else "唤醒锁：关")
         }
 
         if (ui.uiPack.nav.isNotEmpty()) {

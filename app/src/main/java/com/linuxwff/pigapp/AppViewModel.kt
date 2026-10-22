@@ -211,6 +211,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         RelayLauncher.openAppSettings(getApplication())
     }
 
+    fun setWakeLock(enabled: Boolean) {
+        prefs.edit().putBoolean("wakelock", enabled).apply()
+        KeepAliveService.setWakeLock(getApplication(), enabled)
+        ui = ui.copy(
+            wakeLock = enabled,
+            toast = if (enabled) "唤醒锁已开启（锁屏后 CPU 不休眠）" else "唤醒锁已关闭",
+        )
+    }
+
     fun openBatterySettings() {
         val ctx = getApplication<Application>()
         if (RelayLauncher.isIgnoringBatteryOptimizations(ctx)) {

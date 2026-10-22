@@ -87,4 +87,5 @@ data class AppUiState(
     val assetCount: Int = 0,
     val setup: Boolean = false,
     val setupHint: String? = null,
+    val wakeLock: Boolean = true,
 )

@@ -150,6 +150,13 @@ The app is designed to survive screen locks, Doze and process death:
   `MainActivity`. It keeps the process (and the loopback socket) alive while the
   screen is off; Android 14+/15 no longer caches the app aggressively. The
   persistent notification opens the app when tapped.
+- Like `termux-wake-lock`, the service holds a `PARTIAL_WAKE_LOCK`
+  (`Pig::RelayConnection`) by default so the CPU is not suspended during long
+  turns. Toggle it in the drawer (**唤醒锁**); the choice is stored in the `pig`
+  SharedPreferences (`wakelock`).
+- `MainActivity` is `singleTask`: repeated launches (icon, notification,
+  `am start`) reuse the existing instance instead of creating a second
+  ViewModel/RelayClient and a duplicate relay connection.
 - On the first relay launch each process the app runs `termux-wake-lock` via
   `RUN_COMMAND`, so Termux does not get frozen during long turns.
 - The drawer has **后台保活 / 电池白名单**, which requests
