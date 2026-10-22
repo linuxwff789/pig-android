@@ -87,6 +87,7 @@ Content:
 | `toggle` | `id`, `label`, `value` (bool) |
 | `list` | `children` (dividers between them) |
 | `table` | `headers`, `rows`: array of string arrays |
+| `image` | `src` (`assets/...`), `width`, `height`, `corner`, `alt` |
 
 Form fields need an `id`; it becomes the JSON key sent with the action. A
 missing `id` gets a generated `fieldN` and a warning.
@@ -112,6 +113,16 @@ warning; they never crash the window.
 
 `ext:` is deliberately deferred until a test extension command proves the
 command-name rules (the `/skill:` namespace shows that colons are special).
+
+## Assets
+
+Binary files under `assets/` are pushed with the pack as base64
+(`relay_ui_pack.assets`) together with a per-file sha256
+(`relay_ui_pack.assetHashes`). The app decodes them off the main thread and
+caches by `path@sha256`. Files are limited to 512 KiB each; edits to an image
+change the pack hash, so the image hot-reloads like the JSON files.
+
+`src` must start with `assets/` and must not contain `..`.
 
 ## Limits and validation
 

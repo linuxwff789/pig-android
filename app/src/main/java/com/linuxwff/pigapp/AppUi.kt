@@ -33,6 +33,11 @@ data class UiNode(
     val checked: Boolean = false,
     val headers: List<String> = emptyList(),
     val rows: List<List<String>> = emptyList(),
+    val src: String = "",
+    val alt: String = "",
+    val imageWidth: Int = 0,
+    val imageHeight: Int = 0,
+    val imageCorner: Int = 0,
 )
 
 data class AppWindow(
@@ -56,7 +61,7 @@ object AppUiParser {
     private val idPattern = Regex("^[a-z0-9._-]{1,40}$")
     private val knownTypes = setOf(
         "column", "row", "divider", "spacer", "text", "code", "progress", "button",
-        "textfield", "select", "toggle", "list", "table",
+        "textfield", "select", "toggle", "list", "table", "image",
     )
 
     data class Result(val window: AppWindow?, val warnings: List<String>)
@@ -159,6 +164,14 @@ object AppUiParser {
                 }
             }
         }
+        val rawSrc = json.optString("src", "").take(256)
+        val src = if (rawSrc.startsWith("assets/") && !rawSrc.contains("..")) {
+            rawSrc
+        } else {
+            if (rawSrc.isNotBlank()) warnings.add("image.src 必须是 assets/ 下的相对路径")
+            ""
+        }
+
         val headers = mutableListOf<String>()
         json.optJSONArray("headers")?.let { array ->
             for (index in 0 until array.length()) headers.add(array.optString(index))
@@ -202,6 +215,11 @@ object AppUiParser {
             checked = checked,
             headers = headers,
             rows = rows,
+            src = src,
+            alt = json.optString("alt", "").take(128),
+            imageWidth = json.optInt("width", 0).coerceIn(0, 2000),
+            imageHeight = json.optInt("height", 0).coerceIn(0, 2000),
+            imageCorner = json.optInt("corner", 0).coerceIn(0, 40),
         )
     }
 }

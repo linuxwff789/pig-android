@@ -1,0 +1,26 @@
+{
+  "appUI": 1,
+  "id": "image",
+  "title": "Image test",
+  "autoOpen": false,
+  "width": 300,
+  "height": 0,
+  "body": {
+    "type": "column",
+    "spacing": 8,
+    "children": [
+      {
+        "type": "text",
+        "text": "Pack image",
+        "style": "heading"
+      },
+      {
+        "type": "image",
+        "src": "assets/logo.png",
+        "width": 120,
+        "height": 120,
+        "alt": "Pig logo"
+      }
+    ]
+  }
+}

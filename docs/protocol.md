@@ -58,7 +58,7 @@ The relay scans `--ui-dir` every 800 ms. Hidden files, symlinks, binary files an
 files larger than 512 KiB are skipped. When the content hash changes it pushes:
 
 ```json
-{"type":"relay_ui_pack","hash":"<sha256>","files":{"manifest.json":"…","theme/colors.json":"…"}}
+{"type":"relay_ui_pack","hash":"<sha256>","files":{"manifest.json":"…","theme/colors.json":"…"},"assets":{"assets/logo.png":"<base64>"},"assetHashes":{"assets/logo.png":"<sha256>"}}
 ```
 
 `files` maps slash-separated relative paths to text. The hash covers sorted

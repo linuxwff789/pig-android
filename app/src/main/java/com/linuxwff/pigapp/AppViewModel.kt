@@ -4,14 +4,20 @@ import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.util.Base64
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.util.UUID
 
@@ -32,6 +38,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val windowPositions = mutableStateMapOf<String, WindowPos>()
     private val dismissedWindows = mutableMapOf<String, String>() // pack path -> window id
     private val knownWindows = mutableMapOf<String, AppWindow>() // window id -> last parsed definition
+    private var packAssets: Map<String, String> = emptyMap()
+    private var packAssetHashes: Map<String, String> = emptyMap()
+    private val imageCache = mutableStateMapOf<String, ImageBitmap>()
+    private val imageLoading = mutableSetOf<String>()
     private val formValues = mutableStateMapOf<String, String>() // "windowId/fieldId" -> value
 
     var models by mutableStateOf<List<ModelInfo>>(emptyList())
@@ -381,6 +391,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(widgets = next)
     }
 
+    fun assetHash(path: String): String = packAssetHashes[path] ?: ""
+
+    fun cachedImage(path: String, hash: String): ImageBitmap? = imageCache["$path@$hash"]
+
+    fun loadImage(path: String, hash: String) {
+        if (path.isBlank()) return
+        val key = "$path@$hash"
+        if (imageCache.containsKey(key) || !imageLoading.add(key)) return
+        val encoded = packAssets[path]
+        if (encoded == null) {
+            imageLoading.remove(key)
+            return
+        }
+        viewModelScope.launch {
+            val image = withContext(Dispatchers.Default) {
+                runCatching {
+                    val bytes = Base64.decode(encoded, Base64.DEFAULT)
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                }.getOrNull()
+            }
+            imageLoading.remove(key)
+            if (image != null) imageCache[key] = image
+        }
+    }
+
     fun formValue(windowId: String, fieldId: String, fallback: String): String =
         formValues["$windowId/$fieldId"] ?: fallback
 
@@ -723,6 +758,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 put(key, filesObject.optString(key, ""))
             }
         }
+        val assetsObject = event.optJSONObject("assets") ?: JSONObject()
+        val assets = buildMap {
+            val keys = assetsObject.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                put(key, assetsObject.optString(key, ""))
+            }
+        }
+        val hashesObject = event.optJSONObject("assetHashes") ?: JSONObject()
+        val hashes = buildMap {
+            val keys = hashesObject.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                put(key, hashesObject.optString(key, ""))
+            }
+        }
+        packAssets = assets
+        packAssetHashes = hashes
+        val validImages = hashes.map { (path, hash) -> "$path@$hash" }.toSet()
+        imageCache.keys.toList().forEach { if (it !in validImages) imageCache.remove(it) }
+        imageLoading.retainAll(validImages)
+
         reconcileWindows(files, UiPackParser.navWindowIds(files))
 
         val hash = event.optString("hash")
@@ -738,6 +795,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             uiPack = pack,
             uiPackHash = hash,
             uiPackFiles = files.size,
+            assetCount = assets.size,
             uiPackError = result.warnings.firstOrNull(),
             toast = when {
                 changed -> "UI pack 已应用: ${pack.name} v${pack.version}"

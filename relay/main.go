@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -261,12 +262,18 @@ func (s *session) handleClientLine(line []byte) {
 	case "relay_sessions":
 		_ = s.out.send(frame{"type": "relay_sessions", "id": head.ID, "sessions": listSessions(s.sessionsDir)})
 	case "relay_ui":
-		files, hash, err := scanUI(s.uiDir)
+		files, assets, assetHashes, hash, err := scanUI(s.uiDir)
 		if err != nil {
 			_ = s.out.send(frame{"type": "relay_error", "message": "ui pack: " + err.Error()})
 			return
 		}
-		_ = s.out.send(frame{"type": "relay_ui_pack", "hash": hash, "files": files})
+		_ = s.out.send(frame{
+			"type":        "relay_ui_pack",
+			"hash":        hash,
+			"files":       files,
+			"assets":      assets,
+			"assetHashes": assetHashes,
+		})
 	case "relay_stop":
 		s.shutdown()
 	default:
@@ -282,12 +289,18 @@ func (s *session) watchUI() {
 			return
 		case <-time.After(800 * time.Millisecond):
 		}
-		files, hash, err := scanUI(s.uiDir)
+		files, assets, assetHashes, hash, err := scanUI(s.uiDir)
 		if err != nil || hash == last {
 			continue
 		}
 		last = hash
-		_ = s.out.send(frame{"type": "relay_ui_pack", "hash": hash, "files": files})
+		_ = s.out.send(frame{
+			"type":        "relay_ui_pack",
+			"hash":        hash,
+			"files":       files,
+			"assets":      assets,
+			"assetHashes": assetHashes,
+		})
 	}
 }
 
@@ -434,19 +447,22 @@ func listProjects(root string) []map[string]string {
 }
 
 // scanUI reads a UI pack directory into {relative path: text content}.
-func scanUI(dir string) (map[string]string, string, error) {
+func scanUI(dir string) (map[string]string, map[string]string, map[string]string, string, error) {
 	files := map[string]string{}
+	assets := map[string]string{}
+	assetHashes := map[string]string{}
 	if dir == "" {
-		return files, "", nil
+		return files, assets, assetHashes, "", nil
 	}
 	info, err := os.Stat(dir)
 	if err != nil || !info.IsDir() {
-		return files, "", nil
+		return files, assets, assetHashes, "", nil
 	}
 
 	type entry struct {
-		rel  string
-		data []byte
+		rel   string
+		data  []byte
+		asset bool
 	}
 	var entries []entry
 
@@ -469,30 +485,41 @@ func scanUI(dir string) (map[string]string, string, error) {
 			return nil
 		}
 		data, err := os.ReadFile(path)
-		if err != nil || isBinary(data) {
+		if err != nil {
 			return nil
 		}
 		rel, err := filepath.Rel(dir, path)
 		if err != nil {
 			return nil
 		}
-		entries = append(entries, entry{rel: filepath.ToSlash(rel), data: data})
+		rel = filepath.ToSlash(rel)
+		asset := strings.HasPrefix(rel, "assets/")
+		if !asset && isBinary(data) {
+			return nil
+		}
+		entries = append(entries, entry{rel: rel, data: data, asset: asset})
 		return nil
 	})
 	if err != nil {
-		return files, "", err
+		return files, assets, assetHashes, "", err
 	}
 
 	sort.Slice(entries, func(i, j int) bool { return entries[i].rel < entries[j].rel })
 	h := sha256.New()
 	for _, e := range entries {
-		files[e.rel] = string(e.data)
+		if e.asset {
+			sum := sha256.Sum256(e.data)
+			assetHashes[e.rel] = hex.EncodeToString(sum[:])
+			assets[e.rel] = base64.StdEncoding.EncodeToString(e.data)
+		} else {
+			files[e.rel] = string(e.data)
+		}
 		h.Write([]byte(e.rel))
 		h.Write([]byte{0})
 		h.Write(e.data)
 		h.Write([]byte{0})
 	}
-	return files, hex.EncodeToString(h.Sum(nil)), nil
+	return files, assets, assetHashes, hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func isBinary(data []byte) bool {

@@ -1,5 +1,6 @@
 package com.linuxwff.pigapp.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -41,11 +42,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -337,6 +340,51 @@ private fun UiNodeView(node: UiNode, windowId: String, vm: AppViewModel) {
                     else -> TextAlign.Start
                 },
             )
+        }
+
+        "image" -> {
+            val corner = if (node.imageCorner > 0) {
+                node.imageCorner
+            } else {
+                (vm.ui.uiPack.theme.cornerRadius / 2).coerceAtLeast(4)
+            }
+            val shape = RoundedCornerShape(corner.dp)
+            val hash = vm.assetHash(node.src)
+            val bitmap = vm.cachedImage(node.src, hash)
+            LaunchedEffect(node.src, hash) { vm.loadImage(node.src, hash) }
+            val sizeModifier = when {
+                node.imageWidth > 0 && node.imageHeight > 0 ->
+                    Modifier.size(node.imageWidth.dp, node.imageHeight.dp)
+                node.imageWidth > 0 -> Modifier.width(node.imageWidth.dp)
+                node.imageHeight > 0 -> Modifier.height(node.imageHeight.dp)
+                else -> Modifier.width(200.dp)
+            }
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = node.alt.ifBlank { null },
+                    modifier = pad.then(sizeModifier).clip(shape),
+                    contentScale = ContentScale.Fit,
+                )
+            } else {
+                Box(
+                    pad
+                        .then(sizeModifier)
+                        .clip(shape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        node.alt.ifBlank {
+                            if (node.src.isBlank()) "no image" else node.src.substringAfterLast('/')
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
 
         "code" -> Box(

@@ -83,4 +83,5 @@ data class AppUiState(
     val contextWindow: Int = 0,
     val thinkingLevel: String = "off",
     val thinkingLevels: List<String> = emptyList(),
+    val assetCount: Int = 0,
 )

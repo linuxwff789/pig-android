@@ -68,6 +68,15 @@ Sizes are in sp and clamped to 8–40; `lineHeight` is clamped to 1.0–2.5.
 These values feed `PigTheme`'s `Typography` and the markdown renderer, so they
 hot-reload with the rest of the pack.
 
+## assets/
+
+Binary files under `assets/` are sent as base64 in the pack (512 KiB per file)
+for `image` nodes:
+
+```json
+{"type":"image","src":"assets/logo.png","width":120,"height":120,"alt":"Pig logo"}
+```
+
 ## nav.json
 
 Optional drawer entries. The relay pushes it with the rest of the pack.
