@@ -88,4 +88,5 @@ data class AppUiState(
     val setup: Boolean = false,
     val setupHint: String? = null,
     val wakeLock: Boolean = true,
+    val keepAlive: Boolean = true,
 )

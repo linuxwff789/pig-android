@@ -26,6 +26,7 @@ class KeepAliveService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        running = true
         startForeground(NOTIFICATION_ID, buildNotification())
         applyWakeLock(prefsEnabled())
     }
@@ -45,6 +46,7 @@ class KeepAliveService : Service() {
     }
 
     override fun onDestroy() {
+        running = false
         releaseWakeLock()
         super.onDestroy()
     }
@@ -119,6 +121,9 @@ class KeepAliveService : Service() {
         private const val EXTRA_ENABLED = "enabled"
         private const val PREF_WAKE_LOCK = "wakelock"
 
+        @Volatile
+        private var running = false
+
         fun start(context: Context) {
             runCatching {
                 ContextCompat.startForegroundService(
@@ -134,6 +139,9 @@ class KeepAliveService : Service() {
                 .edit()
                 .putBoolean(PREF_WAKE_LOCK, enabled)
                 .apply()
+            // Only talk to a running service; starting it just to release a
+            // wake lock would also turn on the foreground service.
+            if (!running) return
             runCatching {
                 context.startService(
                     Intent(context, KeepAliveService::class.java)

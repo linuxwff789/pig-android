@@ -133,6 +133,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun onForeground() {
         foreground = true
         val ctx = getApplication<Application>()
+        if (prefs.getBoolean("keepalive", true)) {
+            KeepAliveService.start(ctx)
+        } else {
+            KeepAliveService.stop(ctx)
+        }
         if (!RelayLauncher.hasPermission(ctx)) {
             ui = ui.copy(
                 error = "没有 Termux RUN_COMMAND 权限。请在系统设置里允许本应用调用 Termux，然后点重连。",
@@ -212,6 +217,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openAppSettings() {
         RelayLauncher.openAppSettings(getApplication())
+    }
+
+    fun setKeepAlive(enabled: Boolean) {
+        prefs.edit().putBoolean("keepalive", enabled).apply()
+        if (enabled) {
+            KeepAliveService.start(getApplication())
+        } else {
+            KeepAliveService.stop(getApplication())
+        }
+        ui = ui.copy(
+            keepAlive = enabled,
+            toast = if (enabled) "后台保活已开启" else "后台保活已关闭",
+        )
     }
 
     fun setWakeLock(enabled: Boolean) {

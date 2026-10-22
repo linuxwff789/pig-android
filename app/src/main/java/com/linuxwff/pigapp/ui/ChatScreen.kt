@@ -56,7 +56,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
@@ -85,6 +84,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
@@ -93,6 +93,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -110,6 +111,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.linuxwff.pigapp.AppUiState
 import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.ChatMsg
@@ -127,6 +131,7 @@ import kotlinx.coroutines.launch
 fun PigApp(vm: AppViewModel) {
     val ui = vm.ui
     var draft by rememberSaveable { mutableStateOf("") }
+    var showSettings by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -156,7 +161,15 @@ fun PigApp(vm: AppViewModel) {
                     modifier = Modifier.width(ui.uiPack.layout.sidebarWidthDp.dp),
                     drawerContainerColor = MaterialTheme.colorScheme.background,
                 ) {
-                    DrawerContent(vm, ui) { scope.launch { drawerState.close() } }
+                    DrawerContent(
+                        vm = vm,
+                        ui = ui,
+                        onClose = { scope.launch { drawerState.close() } },
+                        onSettings = {
+                            scope.launch { drawerState.close() }
+                            showSettings = true
+                        },
+                    )
                 }
             },
         ) {
@@ -226,6 +239,9 @@ fun PigApp(vm: AppViewModel) {
         }
         WindowLayer(ui.windows, vm)
         SheetWindows(ui.windows, vm)
+        if (showSettings) {
+            SettingsDialog(vm, ui) { showSettings = false }
+        }
     }
 
     ui.pendingSwitch?.let { session ->
@@ -493,7 +509,93 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
 }
 
 @Composable
-private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit) {
+private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    var batteryOk by remember { mutableStateOf(RelayLauncher.isIgnoringBatteryOptimizations(context)) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                batteryOk = RelayLauncher.isIgnoringBatteryOptimizations(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(ui.uiPack.theme.cornerRadius.dp),
+        containerColor = scheme.surface,
+        title = { Text("设置") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                SettingToggle(
+                    title = "后台保活",
+                    subtitle = "前台服务，锁屏后保持与 Termux 的连接",
+                    checked = ui.keepAlive,
+                    onCheckedChange = vm::setKeepAlive,
+                )
+                SettingToggle(
+                    title = "唤醒锁",
+                    subtitle = "像 termux-wake-lock 一样让 CPU 不休眠",
+                    checked = ui.wakeLock,
+                    onCheckedChange = vm::setWakeLock,
+                )
+                HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("电池优化", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            if (batteryOk) "已允许后台运行" else "未加入白名单，系统可能随时清理",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (batteryOk) scheme.tertiary else scheme.error,
+                        )
+                    }
+                    TextButton(onClick = vm::openBatterySettings) {
+                        Text(if (batteryOk) "查看" else "去设置")
+                    }
+                }
+                Text(
+                    "Termux 端的 termux-wake-lock 由 App 在连接时自动获取。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("完成") }
+        },
+    )
+}
+
+@Composable
+private fun SettingToggle(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun DrawerContent(
+    vm: AppViewModel,
+    ui: AppUiState,
+    onClose: () -> Unit,
+    onSettings: () -> Unit,
+) {
     val scheme = MaterialTheme.colorScheme
     val corner = ui.uiPack.theme.cornerRadius
     var sessionQuery by remember { mutableStateOf("") }
@@ -591,24 +693,15 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
         }
         OutlinedButton(
             onClick = {
-                vm.openBatterySettings()
                 onClose()
+                onSettings()
             },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(corner.dp),
         ) {
             Icon(Icons.Default.Settings, null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
-            Text("后台保活 / 电池白名单")
-        }
-        OutlinedButton(
-            onClick = { vm.setWakeLock(!ui.wakeLock) },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(corner.dp),
-        ) {
-            Icon(Icons.Default.Lock, null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(if (ui.wakeLock) "唤醒锁：开（锁屏继续跑）" else "唤醒锁：关")
+            Text("设置")
         }
 
         if (ui.uiPack.nav.isNotEmpty()) {

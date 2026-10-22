@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
         ) {
             requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        KeepAliveService.start(this)
+        // The keep-alive service is started from onResume() based on the setting.
         // The actual connection is started from onResume() (also covers locks,
         // process freezes and returning from the background).
     }
