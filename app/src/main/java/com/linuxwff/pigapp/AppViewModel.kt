@@ -925,7 +925,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         while (keys.hasNext()) {
             val key = keys.next()
             var value = params.optString(key)
-            Regex("\\{\\{form\\.([a-zA-Z0-9_-]+)}}").findAll(value).forEach { match ->
+            Regex("\\{\\{form\\.([a-zA-Z0-9_-]+)\\}\\}").findAll(value).forEach { match ->
                 val field = match.groupValues[1]
                 val form = if (windowId != null) {
                     formValues["$windowId/$field"].orEmpty()
@@ -934,7 +934,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 value = value.replace(match.value, form)
             }
-            Regex("\\{\\{state\\.([a-zA-Z0-9_.]+)}}").findAll(value).forEach { match ->
+            Regex("\\{\\{state\\.([a-zA-Z0-9_.]+)\\}\\}").findAll(value).forEach { match ->
                 val path = "state.${match.groupValues[1]}"
                 val resolved = resolveRpcPath(ui.rpcData, path)?.toString().orEmpty()
                 value = value.replace(match.value, resolved)

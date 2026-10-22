@@ -33,7 +33,7 @@ fun formatRpcValue(value: Any?, format: String, fallback: String = ""): String? 
     if (format.isBlank()) return displayRpcValue(value)
     var out = format
     if (value is JSONObject || value is JSONArray) {
-        val regex = Regex("\\{([a-zA-Z0-9_.]+)}")
+        val regex = Regex("\\{([a-zA-Z0-9_.]+)\\}")
         out = regex.replace(out) { match ->
             val path = match.groupValues[1]
             val resolved = resolveAny(value, path)
