@@ -529,7 +529,32 @@ private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Un
         containerColor = scheme.surface,
         title = { Text("设置") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Text("连接", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (ui.connected) "已连接" else "离线",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (ui.connected) scheme.onSurface else scheme.error,
+                        )
+                        Text(
+                            ui.model.ifBlank { "无模型" },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    TextButton(onClick = vm::reconnect) { Text("重连 relay") }
+                }
+
+                HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
                 SettingToggle(
                     title = "后台保活",
                     subtitle = "前台服务，锁屏后保持与 Termux 的连接",
@@ -542,7 +567,6 @@ private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Un
                     checked = ui.wakeLock,
                     onCheckedChange = vm::setWakeLock,
                 )
-                HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("电池优化", style = MaterialTheme.typography.bodyMedium)
@@ -561,6 +585,47 @@ private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Un
                     style = MaterialTheme.typography.labelSmall,
                     color = scheme.onSurfaceVariant,
                 )
+
+                HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
+                Text("数据", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("清空本地记录", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "只清空当前 App 显示的 transcript，不影响会话文件",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = vm::clearLocal) {
+                        Text("清空", color = scheme.error)
+                    }
+                }
+
+                HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
+                Text("关于", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                Text(
+                    "UI pack: ${ui.uiPack.name} v${ui.uiPack.version} · ${ui.uiPackFiles} files",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+                Text(
+                    "${ui.uiPackHash.take(8).ifBlank { "no pack" }} · cwd ${vm.cwd}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant.copy(alpha = 0.8f),
+                )
+                if (ui.sessionId.isNotBlank()) {
+                    Text(
+                        "会话 ${ui.sessionId.take(8)} · ${ui.sessionFile.substringAfterLast('/')}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                ui.uiPackError?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = scheme.error)
+                }
             }
         },
         confirmButton = {
@@ -681,18 +746,6 @@ private fun DrawerContent(
         }
         OutlinedButton(
             onClick = {
-                vm.connect()
-                onClose()
-            },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(corner.dp),
-        ) {
-            Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("启动 / 重连 relay")
-        }
-        OutlinedButton(
-            onClick = {
                 onClose()
                 onSettings()
             },
@@ -805,39 +858,6 @@ private fun DrawerContent(
             }
         }
 
-        TextButton(
-            onClick = {
-                vm.clearLocal()
-                onClose()
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("清空本地记录", style = MaterialTheme.typography.labelSmall)
-        }
-
-        Surface(
-            color = scheme.surface.copy(alpha = 0.6f),
-            shape = RoundedCornerShape((corner / 2).coerceAtLeast(8).dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                Text(
-                    "UI pack: ${ui.uiPack.name} v${ui.uiPack.version} · ${ui.uiPackFiles} files",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = scheme.onSurfaceVariant,
-                )
-                Text(
-                    "${ui.uiPackHash.take(8).ifBlank { "no pack" }} · cwd ${vm.cwd}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = scheme.onSurfaceVariant.copy(alpha = 0.8f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                ui.uiPackError?.let {
-                    Text(it, style = MaterialTheme.typography.labelSmall, color = scheme.error)
-                }
-            }
-        }
         Spacer(Modifier.height(10.dp))
 
         renameTarget?.let { target ->
