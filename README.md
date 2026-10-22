@@ -40,7 +40,8 @@ an API key. All agent work happens in the original `pig` binary.
 - Model picker: tap the model name in the top bar to search the available
   models (context size, thinking, image support) and switch with `set_model`.
   The same dialog exposes the thinking-level chips when the model supports
-  more than `off`.
+  more than `off`, and every row's `ctx` value is editable so a wrong provider
+  `contextWindow` can be pinned by hand.
 - GitHub Actions builds a debug APK on every push.
 
 M1 is in: the app parses the pushed pack and applies `theme/colors.json` and
@@ -170,10 +171,16 @@ and placeholders.
 ## Model picker
 
 The picker shows models with a `思考` badge when they declare reasoning support
-and has a `只看支持思考` filter. Thinking levels are model-specific; a
-non-reasoning model only reports `off`. After a switch the picker stays open,
-shows `切换中…`, then refreshes the available thinking levels so they can be
-changed immediately.
+(the badge is informational only — some providers omit the flag, so there is no
+reasoning filter). Thinking levels are model-specific; a non-reasoning model
+only reports `off`. After a switch the picker stays open, shows `切换中…`, then
+refreshes the available thinking levels so they can be changed immediately.
+
+Tap the `ctx` line on any row to pin the context window. Providers often
+report a wrong or missing `contextWindow`; the override accepts plain tokens or
+`128K` / `1M`, is stored per `provider/model`, and immediately recomputes the
+header percentage (`used / override`). `恢复自动` removes it and falls back to
+the value reported by the provider.
 
 ## Context and cache
 
