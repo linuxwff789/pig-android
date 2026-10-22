@@ -15,5 +15,7 @@
   "history": "history",
   "chevronDown": "down",
   "chevronUp": "up",
-  "skin": "palette"
+  "skin": "palette",
+  "folder": "folder",
+  "upload": "upload"
 }

@@ -46,6 +46,15 @@ data class NavItem(
 
 data class UiCommand(val name: String, val description: String = "")
 
+/** A pack imported into the app's private `ui-packs/` directory. */
+data class LocalPackInfo(
+    val id: String,
+    val name: String,
+    val version: Int,
+    val files: Int,
+    val importedAt: Long = 0L,
+)
+
 data class ModelInfo(
     val provider: String,
     val id: String,
@@ -82,6 +91,12 @@ data class AppUiState(
     val uiPackError: String? = null,
     /** Selected `skins.json` id; empty means the base theme. */
     val skinId: String = "",
+    /** Imported packs in the app's private directory. */
+    val localPacks: List<LocalPackInfo> = emptyList(),
+    /** Active local pack id; empty means the pack pushed by the relay. */
+    val activePackId: String = "",
+    /** Name of the pack the relay is currently pushing (the built-in entry). */
+    val relayPackName: String = "",
     val contextPercent: Double? = null,
     val contextTokens: Int = 0,
     /** Right after /compact PiG reports null usage until the next model call. */

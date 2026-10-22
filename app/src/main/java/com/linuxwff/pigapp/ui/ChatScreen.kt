@@ -5,6 +5,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -155,6 +157,7 @@ fun PigApp(vm: AppViewModel) {
         }
     }
     var showSettings by remember { mutableStateOf(false) }
+    var showPackManager by remember { mutableStateOf(false) }
     val components = packComponents()
     val commandQuery = remember(draft) {
         val trimmed = draft.trimStart()
@@ -221,6 +224,10 @@ fun PigApp(vm: AppViewModel) {
                             onSettings = {
                                 scope.launch { drawerState.close() }
                                 showSettings = true
+                            },
+                            onOpenPacks = {
+                                scope.launch { drawerState.close() }
+                                showPackManager = true
                             },
                         )
                     }
@@ -326,7 +333,13 @@ fun PigApp(vm: AppViewModel) {
         WindowLayer(ui.windows, vm)
         SheetWindows(ui.windows, vm)
         if (showSettings) {
-            SettingsDialog(vm, ui) { showSettings = false }
+            SettingsDialog(vm, ui, onOpenPacks = {
+                showSettings = false
+                showPackManager = true
+            }) { showSettings = false }
+        }
+        if (showPackManager) {
+            PackManagerDialog(vm, ui) { showPackManager = false }
         }
     }
 
@@ -662,7 +675,12 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
 }
 
 @Composable
-private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Unit) {
+private fun SettingsDialog(
+    vm: AppViewModel,
+    ui: AppUiState,
+    onOpenPacks: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     val scheme = MaterialTheme.colorScheme
     val context = LocalContext.current
     var batteryOk by remember { mutableStateOf(RelayLauncher.isIgnoringBatteryOptimizations(context)) }
@@ -811,6 +829,51 @@ private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Un
                     )
                 }
 
+                if (ui.uiPack.layout.showPackManager &&
+                    ui.uiPack.layout.packManagerPlacement in setOf("settings", "both")
+                ) {
+                    HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            packIcon("folder", "folder"),
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = scheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            packText("pack.title", "UI pack"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = onOpenPacks,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(
+                            (ui.uiPack.theme.cornerRadius / 2).coerceAtLeast(8).dp,
+                        ),
+                    ) {
+                        Text(
+                            packText("pack.manage", "UI pack 管理"),
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            if (ui.activePackId.isBlank()) {
+                                packText("pack.builtin", "内置")
+                            } else {
+                                ui.uiPack.name
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+
                 val settingsNav = ui.uiPack.nav.filter { it.placement == "settings" }
                 if (settingsNav.isNotEmpty()) {
                     HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
@@ -905,6 +968,7 @@ private fun DrawerContent(
     ui: AppUiState,
     onClose: () -> Unit,
     onSettings: () -> Unit,
+    onOpenPacks: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val corner = ui.uiPack.theme.cornerRadius
@@ -1030,6 +1094,39 @@ private fun DrawerContent(
                 cornerRadius = corner,
                 onPick = vm::selectSkin,
             )
+        }
+
+        if (ui.uiPack.layout.showPackManager &&
+            ui.uiPack.layout.packManagerPlacement in setOf("drawer", "both")
+        ) {
+            OutlinedButton(
+                onClick = {
+                    onClose()
+                    onOpenPacks()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(corner.dp),
+            ) {
+                Icon(packIcon("folder", "folder"), null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    packText("pack.manage", "UI pack 管理"),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    if (ui.activePackId.isBlank()) {
+                        packText("pack.builtin", "内置")
+                    } else {
+                        ui.uiPack.name
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
         val drawerNav = ui.uiPack.nav.filter { it.placement != "settings" }
@@ -1218,6 +1315,181 @@ private fun DrawerContent(
                     }
                 },
             )
+        }
+    }
+}
+
+@Composable
+private fun PackManagerDialog(
+    vm: AppViewModel,
+    ui: AppUiState,
+    onDismiss: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val corner = ui.uiPack.theme.cornerRadius
+    val zipPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> uri?.let(vm::importPackZip) }
+    val dirPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri -> uri?.let(vm::importPackTree) }
+    LaunchedEffect(Unit) { vm.refreshLocalPacks() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        containerColor = scheme.surface,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    packIcon("folder", "folder"),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = scheme.primary,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(packText("pack.manage", "UI pack 管理"))
+            }
+        },
+        text = {
+            Column(
+                Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    packText("pack.hint", "内置 pack 由 Termux 的 ~/.pig/android-ui 推送；导入的 pack 存在 App 私有目录。"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+                PackRow(
+                    title = ui.relayPackName.ifBlank {
+                        packText("pack.builtinPack", "内置 pack")
+                    },
+                    subtitle = packText("pack.builtinHint", "来自 ~/.pig/android-ui · {files} files")
+                        .replace("{files}", ui.uiPackFiles.toString()),
+                    selected = ui.activePackId.isBlank(),
+                    cornerRadius = corner,
+                ) { vm.selectPack("") }
+
+                if (ui.localPacks.isEmpty()) {
+                    Text(
+                        packText("pack.empty", "还没有导入的 pack"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                } else {
+                    ui.localPacks.forEach { pack ->
+                        PackRow(
+                            title = pack.name,
+                            subtitle = packText("pack.localHint", "v{version} · {files} files")
+                                .replace("{version}", pack.version.toString())
+                                .replace("{files}", pack.files.toString()),
+                            selected = pack.id == ui.activePackId,
+                            cornerRadius = corner,
+                        ) { vm.selectPack(pack.id) }
+                    }
+                }
+
+                HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            runCatching {
+                                zipPicker.launch(arrayOf("application/zip", "application/octet-stream"))
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape((corner / 2).coerceAtLeast(8).dp),
+                    ) {
+                        Icon(
+                            packIcon("upload", "upload"),
+                            contentDescription = null,
+                            modifier = Modifier.size(15.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            packText("pack.importZip", "导入 ZIP"),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = { runCatching { dirPicker.launch(null) } },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape((corner / 2).coerceAtLeast(8).dp),
+                    ) {
+                        Icon(
+                            packIcon("folder", "folder"),
+                            contentDescription = null,
+                            modifier = Modifier.size(15.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            packText("pack.importDir", "导入目录"),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(packText("pack.done", "完成"))
+            }
+        },
+    )
+}
+
+@Composable
+private fun PackRow(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    cornerRadius: Int,
+    onPick: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        color = if (selected) scheme.primary.copy(alpha = 0.10f) else scheme.surface,
+        shape = RoundedCornerShape((cornerRadius / 2).coerceAtLeast(8).dp),
+        border = BorderStroke(
+            1.dp,
+            if (selected) scheme.primary else scheme.outline.copy(alpha = 0.5f),
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onPick),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (selected) {
+                Icon(
+                    packIcon("check", "check"),
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = scheme.primary,
+                )
+            }
         }
     }
 }

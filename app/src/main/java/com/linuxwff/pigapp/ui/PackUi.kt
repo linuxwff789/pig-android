@@ -13,7 +13,9 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
@@ -39,6 +41,8 @@ fun packIconVector(name: String): ImageVector? = when (name.lowercase()) {
     "edit" -> Icons.Default.Edit
     "more" -> Icons.Default.MoreVert
     "palette" -> Icons.Default.Palette
+    "folder" -> Icons.Default.FolderOpen
+    "upload" -> Icons.Default.Upload
     "search" -> Icons.Default.Search
     "copy" -> Icons.Default.ContentCopy
     "history" -> Icons.Default.History

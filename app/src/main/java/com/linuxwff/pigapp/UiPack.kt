@@ -110,6 +110,9 @@ data class UiLayout(
     val showSkinSwitcher: Boolean = true,
     val skinSwitcherPlacement: String = "drawer",
     val skinSwitcherStyle: String = "chips",
+    /** UI pack manager (built-in relay pack + imported local packs). */
+    val showPackManager: Boolean = true,
+    val packManagerPlacement: String = "both",
 )
 
 data class UiPack(
@@ -339,6 +342,7 @@ object UiPackParser {
         val chat = json.optJSONObject("chat")
         val composer = json.optJSONObject("composer")
         val skinSwitcher = json.optJSONObject("skinSwitcher")
+        val packManager = json.optJSONObject("packManager")
         val modes = setOf("collapsible", "expanded", "collapsed")
         val mode = chat?.optString("toolCards", d.toolCards) ?: d.toolCards
         if (mode !in modes) warnings.add("chat.toolCards=$mode 无效")
@@ -350,6 +354,9 @@ object UiPackParser {
         val skinStyle = skinSwitcher?.optString("style", d.skinSwitcherStyle)
             ?: d.skinSwitcherStyle
         if (skinStyle !in styles) warnings.add("skinSwitcher.style=$skinStyle 无效")
+        val packPlacement = packManager?.optString("placement", d.packManagerPlacement)
+            ?: d.packManagerPlacement
+        if (packPlacement !in placements) warnings.add("packManager.placement=$packPlacement 无效")
 
         return UiLayout(
             sidebarWidthDp = (sidebar?.optInt("widthDp", d.sidebarWidthDp)
@@ -368,6 +375,10 @@ object UiPackParser {
                 ?: d.showSkinSwitcher,
             skinSwitcherPlacement = placement.takeIf { it in placements } ?: d.skinSwitcherPlacement,
             skinSwitcherStyle = skinStyle.takeIf { it in styles } ?: d.skinSwitcherStyle,
+            showPackManager = packManager?.optBoolean("show", d.showPackManager)
+                ?: d.showPackManager,
+            packManagerPlacement = packPlacement.takeIf { it in placements }
+                ?: d.packManagerPlacement,
         )
     }
 

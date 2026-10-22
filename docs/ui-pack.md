@@ -247,6 +247,8 @@ next model call provides a fresh usage value.
 | `a11y.*` | menu/stop/reconnect/copy/close/window-close labels |
 | `brand.emoji` | avatar glyph (default 🐷) |
 | `skin.title`, `toast.skinChanged` | skin switcher heading / confirmation |
+| `pack.*` | pack manager dialog, built-in/local rows, import buttons |
+| `toast.packImported`, `toast.packImportFailed`, `toast.packMissing` | pack manager feedback |
 | `toast.*` | short confirmations and validation errors |
 
 Every literal in these groups has a built-in Chinese fallback, so a pack can
@@ -304,7 +306,8 @@ component default; unknown keys are ignored.
 
 Built-in names: `menu`, `send`, `stop`, `refresh`, `add`, `settings`, `build`
 (alias `tool`), `check`, `delete`, `edit`, `more`, `search`, `copy`, `history`,
-`down`, `up`, `close`, `warning`, `palette` (skin switcher).
+`down`, `up`, `close`, `warning`, `palette` (skin switcher), `folder`
+(pack manager / import directory), `upload` (import ZIP).
 
 ## skins.json
 
@@ -350,6 +353,43 @@ inherit the base theme.
 - Switch at runtime from the drawer/settings; the whole app recolors instantly,
   including already-open pack windows.
 
+## Pack manager (importing packs)
+
+Apart from the pack the relay pushes from `~/.pig/android-ui/`, the app can
+hold several imported packs in its **private** directory:
+
+```
+/data/data/com.linuxwff.pigapp/files/ui-packs/<id>/
+  manifest.json
+  theme/colors.json
+  ...
+```
+
+Open **UI pack 管理** from the drawer or settings (see `packManager` below).
+
+- **内置 pack** — the live pack pushed by `relay_ui_pack` from
+  `~/.pig/android-ui/`. Tapping it switches back after using an imported pack.
+- **Import ZIP** — pick any `.zip` containing a pack (`manifest.json` at the
+  root or inside a single top-level folder).
+- **Import directory** — pick a folder with the system tree chooser.
+
+Import rules:
+
+- Only files, no symlinks; each file must be ≤ 512 KB; the archive must contain
+  `manifest.json`.
+- Entries with `..`, absolute paths or a leading dot are skipped.
+- The pack id is a slug of `manifest.name`; a numeric suffix is added when the
+  id already exists.
+- The selection is persisted (`activePackId`) and restored on the next start;
+  an imported pack takes precedence over relay pushes until you switch back to
+  the built-in pack.
+- Switching a pack re-applies its theme, layout, strings, windows and assets.
+  The `skins.json` selection is kept per pack (unknown skin ids fall back to the
+  pack's `default`).
+
+The relay's `~/.pig/android-ui/` directory is untouched by the manager; it is
+still the source of the built-in pack and of hot reloads.
+
 ## layout/chat.json
 
 ```json
@@ -370,6 +410,10 @@ inherit the base theme.
     "show": true,
     "placement": "drawer",
     "style": "chips"
+  },
+  "packManager": {
+    "show": true,
+    "placement": "both"
   }
 }
 ```
@@ -399,6 +443,8 @@ inherit the base theme.
 - `skinSwitcher.placement`: `drawer` (default), `settings`, or `both`.
 - `skinSwitcher.style`: `chips` (horizontal swatches, default) or `list`
   (full-width rows with a check mark).
+- `packManager.show` hides the **UI pack manager** entry.
+- `packManager.placement`: `drawer`, `settings`, or `both` (default).
 
 Unknown keys are ignored. Invalid JSON in a file produces a warning, keeps the
 previous good value for that file's fields and still applies the rest of the

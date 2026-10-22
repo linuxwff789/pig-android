@@ -5,6 +5,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.net.Uri
+import android.provider.DocumentsContract
 import android.util.Base64
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -19,7 +21,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.File
 import java.util.UUID
+import java.util.zip.ZipInputStream
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("pig", Context.MODE_PRIVATE)
@@ -39,6 +43,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val dismissedWindows = mutableMapOf<String, String>() // pack path -> window id
     private val knownWindows = mutableMapOf<String, AppWindow>() // window id -> last parsed definition
     private var basePack: UiPack? = null
+    private var relayFiles: Map<String, String> = emptyMap()
+    private var relayAssets: Map<String, String> = emptyMap()
+    private var relayHashes: Map<String, String> = emptyMap()
+    private var relayHash: String = ""
     private var packAssets: Map<String, String> = emptyMap()
     private var packAssetHashes: Map<String, String> = emptyMap()
     private val imageCache = mutableStateMapOf<String, ImageBitmap>()
@@ -97,7 +105,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 true
             },
             skinId = prefs.getString("skinId", "").orEmpty(),
+            activePackId = prefs.getString("activePackId", "").orEmpty(),
         )
+        refreshLocalPacks()
+        // Restore an imported pack without waiting for the relay push.
+        ui.activePackId.takeIf { it.isNotBlank() }?.let { id ->
+            val dir = File(packsDir, id)
+            if (dir.isDirectory) {
+                val loaded = runCatching { readPackDir(dir) }.getOrNull()
+                if (loaded != null && loaded.first.isNotEmpty()) {
+                    applyPack(loaded.first, loaded.second, loaded.third, "local:$id", announce = false)
+                }
+            }
+        }
         viewModelScope.launch {
             client.connected.collect { connected ->
                 ui = ui.copy(connected = connected)
@@ -319,6 +339,239 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setBubbleShadow(enabled: Boolean) {
         prefs.edit().putBoolean("bubbleShadow", enabled).apply()
         ui = ui.copy(bubbleShadow = enabled)
+    }
+
+    private val packsDir: File
+        get() = File(getApplication<Application>().filesDir, "ui-packs")
+
+    /** Rescan `files/ui-packs/` and refresh the manager list. */
+    fun refreshLocalPacks() {
+        val dir = packsDir
+        if (!dir.isDirectory) {
+            ui = ui.copy(localPacks = emptyList())
+            return
+        }
+        val packs = dir.listFiles()
+            ?.filter { it.isDirectory }
+            ?.mapNotNull { pack ->
+                val manifest = runCatching {
+                    JSONObject(File(pack, "manifest.json").readText())
+                }.getOrNull() ?: return@mapNotNull null
+                var count = 0
+                pack.walkTopDown().forEach { if (it.isFile) count++ }
+                LocalPackInfo(
+                    id = pack.name,
+                    name = manifest.optString("name").ifBlank { pack.name },
+                    version = manifest.optInt("version", 1),
+                    files = count,
+                    importedAt = pack.lastModified(),
+                )
+            }
+            ?.sortedBy { it.name.lowercase() }
+            ?: emptyList()
+        ui = ui.copy(localPacks = packs)
+        val active = prefs.getString("activePackId", "").orEmpty()
+        if (active.isNotBlank() && packs.none { it.id == active }) {
+            selectPack("")
+        }
+    }
+
+    /** Switch the active pack: `""` = relay pack, otherwise an imported pack id. */
+    fun selectPack(id: String) {
+        if (id == ui.activePackId) return
+        prefs.edit().putString("activePackId", id).apply()
+        if (id.isBlank()) {
+            ui = ui.copy(activePackId = "")
+            if (relayFiles.isNotEmpty()) {
+                applyPack(relayFiles, relayAssets, relayHashes, relayHash, announce = true)
+            }
+            return
+        }
+        val dir = File(packsDir, id)
+        val files = runCatching { readPackDir(dir) }.getOrNull()
+        if (files == null) {
+            ui = ui.copy(toast = str("toast.packMissing", "皮肤包不存在：{id}").replace("{id}", id))
+            refreshLocalPacks()
+            return
+        }
+        ui = ui.copy(activePackId = id)
+        applyPack(files.first, files.second, files.third, "local:$id", announce = true)
+    }
+
+    /** Import a `.zip` exported from a UI pack directory. */
+    fun importPackZip(uri: Uri) {
+        val ctx = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                val staging = File(ctx.cacheDir, "pack-import-${System.nanoTime()}")
+                staging.mkdirs()
+                ctx.contentResolver.openInputStream(uri)?.use { input ->
+                    ZipInputStream(input.buffered()).use { zip ->
+                        var entry = zip.nextEntry
+                        while (entry != null) {
+                            val name = entry.name.replace('\\', '/')
+                            if (!entry.isDirectory && name.isNotBlank() &&
+                                !name.startsWith("/") && !name.split('/').contains("..")
+                            ) {
+                                val target = File(staging, name)
+                                target.parentFile?.mkdirs()
+                                target.outputStream().use { zip.copyTo(it) }
+                            }
+                            zip.closeEntry()
+                            entry = zip.nextEntry
+                        }
+                    }
+                } ?: error("无法读取文件")
+                // Some exports wrap everything in one top-level directory.
+                var root = staging
+                val kids = staging.listFiles().orEmpty()
+                if (kids.size == 1 && kids[0].isDirectory &&
+                    !File(kids[0], "manifest.json").exists()
+                ) {
+                    root = kids[0]
+                } else if (kids.size == 1 && kids[0].isDirectory) {
+                    root = kids[0]
+                }
+                require(File(root, "manifest.json").isFile) { "压缩包里没有 manifest.json" }
+                installPack(root)
+            }
+            withContext(Dispatchers.Main) {
+                result.onSuccess { id ->
+                    refreshLocalPacks()
+                    selectPack(id)
+                    ui = ui.copy(
+                        toast = str("toast.packImported", "已导入皮肤包：{id}").replace("{id}", id),
+                    )
+                }.onFailure {
+                    ui = ui.copy(
+                        toast = str("toast.packImportFailed", "导入失败：{error}")
+                            .replace("{error}", it.message ?: ""),
+                    )
+                }
+            }
+        }
+    }
+
+    /** Import a directory picked with the system folder chooser. */
+    fun importPackTree(uri: Uri) {
+        val ctx = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                val staging = File(ctx.cacheDir, "pack-import-${System.nanoTime()}")
+                staging.mkdirs()
+                copyDocumentTree(ctx, uri, staging)
+                var root = staging
+                val kids = staging.listFiles().orEmpty()
+                if (kids.size == 1 && kids[0].isDirectory) root = kids[0]
+                require(File(root, "manifest.json").isFile) { "目录里没有 manifest.json" }
+                installPack(root)
+            }
+            withContext(Dispatchers.Main) {
+                result.onSuccess { id ->
+                    refreshLocalPacks()
+                    selectPack(id)
+                    ui = ui.copy(
+                        toast = str("toast.packImported", "已导入皮肤包：{id}").replace("{id}", id),
+                    )
+                }.onFailure {
+                    ui = ui.copy(
+                        toast = str("toast.packImportFailed", "导入失败：{error}")
+                            .replace("{error}", it.message ?: ""),
+                    )
+                }
+            }
+        }
+    }
+
+    /** Copy a staging pack into `files/ui-packs/<slug>` and return the id. */
+    private fun installPack(root: File): String {
+        val manifest = runCatching {
+            JSONObject(File(root, "manifest.json").readText())
+        }.getOrNull()
+        val base = slug(manifest?.optString("name").orEmpty().ifBlank { root.name })
+        var id = base
+        var counter = 2
+        while (File(packsDir, id).exists()) {
+            id = "$base-$counter"
+            counter++
+        }
+        val target = File(packsDir, id)
+        target.mkdirs()
+        root.copyRecursively(target, overwrite = true)
+        root.deleteRecursively()
+        return id
+    }
+
+    private fun slug(raw: String): String {
+        val cleaned = raw.trim().lowercase()
+            .replace(Regex("[^a-z0-9\\u4e00-\\u9fa5._-]+"), "-")
+            .trim('-', '.', '_')
+        return cleaned.ifBlank { "pack-${System.currentTimeMillis()}" }.take(48)
+    }
+
+    /** Read a pack directory: text files + base64 assets + asset hashes. */
+    private fun readPackDir(dir: File): Triple<Map<String, String>, Map<String, String>, Map<String, String>> {
+        val files = mutableMapOf<String, String>()
+        val assets = mutableMapOf<String, String>()
+        val hashes = mutableMapOf<String, String>()
+        if (!dir.isDirectory) return Triple(files, assets, hashes)
+        dir.walkTopDown().forEach { file ->
+            if (!file.isFile) return@forEach
+            val rel = file.relativeTo(dir).path.replace('\\', '/')
+            if (rel.split('/').any { it.startsWith(".") }) return@forEach
+            if (file.length() > 512 * 1024) return@forEach
+            val bytes = runCatching { file.readBytes() }.getOrNull() ?: return@forEach
+            if (rel.startsWith("assets/")) {
+                assets[rel] = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                hashes[rel] = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(bytes)
+                    .joinToString("") { "%02x".format(it) }
+            } else {
+                val text = bytes.toString(Charsets.UTF_8)
+                if (text.indexOf('\u0000') < 0) files[rel] = text
+            }
+        }
+        return Triple(files, assets, hashes)
+    }
+
+    /** Recursively copy a SAF document tree into `target`. */
+    private fun copyDocumentTree(ctx: Context, treeUri: Uri, target: File) {
+        val resolver = ctx.contentResolver
+        val rootId = DocumentsContract.getTreeDocumentId(treeUri)
+        val rootUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId)
+        fun walk(docUri: Uri, dir: File) {
+            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, DocumentsContract.getDocumentId(docUri))
+            resolver.query(
+                childrenUri,
+                arrayOf(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                ),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getString(0)
+                    val name = cursor.getString(1) ?: continue
+                    val mime = cursor.getString(2).orEmpty()
+                    val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, id)
+                    if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                        val sub = File(dir, name)
+                        sub.mkdirs()
+                        walk(childUri, sub)
+                    } else {
+                        runCatching {
+                            resolver.openInputStream(childUri)?.use { input ->
+                                File(dir, name).outputStream().use { input.copyTo(it) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        walk(rootUri, target)
     }
 
     /** Switch to a `skins.json` entry; null/unknown ids are ignored. */
@@ -1504,6 +1757,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 put(key, hashesObject.optString(key, ""))
             }
         }
+        val hash = event.optString("hash")
+        relayFiles = files
+        relayAssets = assets
+        relayHashes = hashes
+        relayHash = hash
+        val relayName = runCatching {
+            JSONObject(files["manifest.json"].orEmpty()).optString("name")
+        }.getOrNull().orEmpty()
+        ui = ui.copy(relayPackName = relayName.ifBlank { ui.relayPackName })
+        // An imported pack takes precedence until the user switches back.
+        if (ui.activePackId.isNotBlank()) return
+        applyPack(files, assets, hashes, hash, announce = true)
+    }
+
+    /** Parse and apply a pack (relay push or an imported local pack). */
+    private fun applyPack(
+        files: Map<String, String>,
+        assets: Map<String, String>,
+        hashes: Map<String, String>,
+        hash: String,
+        announce: Boolean,
+    ) {
         packAssets = assets
         packAssetHashes = hashes
         val validImages = hashes.map { (path, hash) -> "$path@$hash" }.toSet()
@@ -1512,7 +1787,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         reconcileWindows(files, UiPackParser.navWindowIds(files))
 
-        val hash = event.optString("hash")
         val result = UiPackParser.parse(files)
         val pack = result.pack
         if (pack == null) {
@@ -1557,7 +1831,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 builtinCommands(resolvedPack).none { it.name == command.name }
             },
             toast = when {
-                changed -> str("toast.packApplied", "UI pack 已应用: {name} v{version}")
+                announce && changed -> str("toast.packApplied", "UI pack 已应用: {name} v{version}")
                     .replace("{name}", pack.name)
                     .replace("{version}", pack.version.toString())
                 result.warnings.isNotEmpty() -> result.warnings.joinToString("; ")

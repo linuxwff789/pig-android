@@ -161,8 +161,11 @@ The app is designed to survive screen locks, Doze and process death:
 visibility/sizes, icons, nav entries, windows, assets and **all app-owned
 strings** — including setup, dialogs, tool metrics, notification text and
 launcher errors. Add `skins.json` for named theme variants and the drawer /
-settings skin switcher (`layout/chat.json` → `skinSwitcher`). See
-`docs/ui-pack.md` for the key groups and placeholders.
+settings skin switcher (`layout/chat.json` → `skinSwitcher`). A **UI pack
+manager** in the drawer/settings imports packs from ZIP or a folder into the
+app's private storage and switches between them and the relay pack
+(`layout/chat.json` → `packManager`). See `docs/ui-pack.md` for the key groups
+and placeholders.
 
 ## Context and cache
 

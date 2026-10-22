@@ -21,5 +21,9 @@
     "show": true,
     "placement": "drawer",
     "style": "chips"
+  },
+  "packManager": {
+    "show": true,
+    "placement": "both"
   }
 }
