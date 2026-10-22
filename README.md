@@ -176,6 +176,14 @@ reasoning filter). Thinking levels are model-specific; a non-reasoning model
 only reports `off`. After a switch the picker stays open, shows `切换中…`, then
 refreshes the available thinking levels so they can be changed immediately.
 
+`/v1/models` proxies rarely expose capability metadata, so every model of an
+auto-discovered provider arrives with `reasoning: false` and only reports
+`off`. Add `reasoning: true` plus a `thinkingLevelMap` under
+`providers.<id>.modelOverrides.<model>` in `~/.pig/agent/models.json` to opt it
+in (`~/bin/pig-eu-reasoning-sync` does this for the `eu` provider). Map only the
+levels the upstream accepts — mapping a level to `null` **removes** it, including
+`off`. The change is picked up when a pig process starts.
+
 Tap the `ctx` line on any row to pin the context window. Providers often
 report a wrong or missing `contextWindow`; the override accepts plain tokens or
 `128K` / `1M`, is stored per `provider/model`, and immediately recomputes the
@@ -206,6 +214,27 @@ The composer recognises `/name args`:
   restart the agent), then reopen the palette.
 
 `compact` is also available from **设置 → 数据 → 压缩上下文**.
+
+## Session behaviour and tuning
+
+**设置 → 会话行为** drives the runtime switches PiG exposes over RPC:
+
+- **自动压缩上下文** → `set_auto_compaction` (`compaction.enabled`, persisted by
+  PiG). Triggered when the context exceeds `contextWindow − reserveTokens`;
+  turning it off leaves `/compact` as the only way to compact.
+- **自动重试** → `set_auto_retry` (session-scoped, not reported back by
+  `get_state`, so the app tracks it locally and resets it on session switch).
+- **打断消息 / 追问消息** → `set_steering_mode` / `set_follow_up_mode`
+  (`one-at-a-time` or `all`).
+
+**设置 → 压缩与重试** edits values that only live in
+`~/.pig/agent/settings.json` (`compaction.reserveTokens`,
+`compaction.keepRecentTokens`, `retry.maxRetries`, `cacheWarming`). The app has
+no RPC for these, so it asks the relay — `relay_settings` reads the file and
+merges an allow-listed patch, keeping a `settings.json.bak-*-pre-app` backup.
+Older relays reply `relay_settings_error`; the section then shows a hint instead
+of pretending to save. Pig reads these values at process start, so they apply to
+newly spawned sessions.
 
 ## Keep-alive
 

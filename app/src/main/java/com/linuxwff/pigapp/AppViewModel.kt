@@ -812,6 +812,80 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /** `compaction.enabled`; PiG persists it to settings.json. */
+    fun setAutoCompaction(enabled: Boolean) {
+        ui = ui.copy(autoCompaction = enabled)
+        client.send(
+            JSONObject()
+                .put("id", "autocompact-${nextId++}")
+                .put("type", "set_auto_compaction")
+                .put("enabled", enabled),
+        )
+        ui = ui.copy(
+            toast = if (enabled) {
+                str("toast.autoCompactionOn", "已开启自动压缩")
+            } else {
+                str("toast.autoCompactionOff", "已关闭自动压缩，需要时用 /compact")
+            },
+        )
+    }
+
+    /** Session-scoped retry toggle; PiG does not expose its state back. */
+    fun setAutoRetry(enabled: Boolean) {
+        ui = ui.copy(autoRetry = enabled)
+        client.send(
+            JSONObject()
+                .put("id", "autoretry-${nextId++}")
+                .put("type", "set_auto_retry")
+                .put("enabled", enabled),
+        )
+        ui = ui.copy(
+            toast = if (enabled) {
+                str("toast.autoRetryOn", "已开启自动重试")
+            } else {
+                str("toast.autoRetryOff", "已关闭自动重试")
+            },
+        )
+    }
+
+    fun setQueueMode(followUp: Boolean, mode: String) {
+        if (mode != "all" && mode != "one-at-a-time") return
+        ui = if (followUp) ui.copy(followUpMode = mode) else ui.copy(steeringMode = mode)
+        client.send(
+            JSONObject()
+                .put("id", "queue-${nextId++}")
+                .put("type", if (followUp) "set_follow_up_mode" else "set_steering_mode")
+                .put("mode", mode),
+        )
+    }
+
+    fun requestRelaySettings() {
+        client.send(JSONObject().put("id", "settings-${nextId++}").put("type", "relay_settings"))
+    }
+
+    /** Writes allow-listed keys into ~/.pig/agent/settings.json via the relay. */
+    fun updateRelaySettings(vararg patch: Pair<String, Any>) {
+        val set = JSONObject()
+        patch.forEach { (key, value) -> set.put(key, value) }
+        client.send(
+            JSONObject()
+                .put("id", "settings-set-${nextId++}")
+                .put("type", "relay_settings")
+                .put("set", set),
+        )
+        ui = ui.copy(
+            compactionReserveTokens = (patch.toMap()["compaction.reserveTokens"] as? Int)
+                ?: ui.compactionReserveTokens,
+            compactionKeepRecentTokens =
+                (patch.toMap()["compaction.keepRecentTokens"] as? Int)
+                    ?: ui.compactionKeepRecentTokens,
+            cacheWarming = (patch.toMap()["cacheWarming"] as? String) ?: ui.cacheWarming,
+            retryMaxRetries = (patch.toMap()["retry.maxRetries"] as? Int)
+                ?: ui.retryMaxRetries,
+            toast = str("toast.settingsSaved", "设置已保存，新会话生效"),
+        )
+    }
+
     fun requestSessions() {
         ui = ui.copy(sessionsLoading = true)
         client.send(JSONObject().put("id", "sessions-${nextId++}").put("type", "relay_sessions"))
@@ -1484,6 +1558,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 requestMessages()
                 requestStats()
                 requestSessions()
+                requestRelaySettings()
                 refreshCommands(true)
                 refreshDataSources("connect")
                 client.send(JSONObject().put("type", "relay_ui"))
@@ -1515,6 +1590,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 if (foreground) startAutoReconnect()
             }
             "relay_ui_pack" -> handleUiPack(event)
+            "relay_settings" -> {
+                val settings = event.optJSONObject("settings") ?: JSONObject()
+                val compaction = settings.optJSONObject("compaction") ?: JSONObject()
+                val retry = settings.optJSONObject("retry") ?: JSONObject()
+                ui = ui.copy(
+                    settingsRemote = true,
+                    compactionReserveTokens = compaction.optInt("reserveTokens", 0),
+                    compactionKeepRecentTokens = compaction.optInt("keepRecentTokens", 0),
+                    cacheWarming = settings.optString("cacheWarming", ""),
+                    retryMaxRetries = retry.optInt("maxRetries", 0),
+                )
+            }
+            "relay_settings_error" -> {
+                ui = ui.copy(
+                    settingsRemote = false,
+                    toast = str("toast.settingsUnsupported", "relay 版本过旧，无法读写 settings.json"),
+                )
+            }
             "relay_sessions" -> handleSessions(event)
             "relay_session_renamed" -> {
                 val path = event.optString("path")
@@ -1766,6 +1859,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     contextTokens = if (live) ui.contextTokens else 0,
                     thinkingLevel = data.optString("thinkingLevel", ui.thinkingLevel),
                     pendingMessages = data.optInt("pendingMessageCount", ui.pendingMessages),
+                    autoCompaction = data.optBoolean(
+                        "autoCompactionEnabled",
+                        ui.autoCompaction,
+                    ),
+                    // Retry is session-scoped and not reported by get_state.
+                    autoRetry = if (switched) true else ui.autoRetry,
+                    steeringMode = data.optString("steeringMode", ui.steeringMode),
+                    followUpMode = data.optString("followUpMode", ui.followUpMode),
                     status = status,
                     toast = toast,
                 )

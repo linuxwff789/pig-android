@@ -72,6 +72,8 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -118,6 +120,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -887,6 +890,111 @@ private fun SettingsDialog(
                 )
 
                 HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
+                Text(
+                    packText("settings.session", "会话行为"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+                SettingToggle(
+                    title = packText("settings.autoCompaction", "自动压缩上下文"),
+                    subtitle = packText(
+                        "settings.autoCompactionHint",
+                        "上下文接近窗口上限时自动总结旧消息；关闭后需要手动 /compact",
+                    ),
+                    checked = ui.autoCompaction,
+                    onCheckedChange = vm::setAutoCompaction,
+                )
+                SettingToggle(
+                    title = packText("settings.autoRetry", "自动重试"),
+                    subtitle = packText(
+                        "settings.autoRetryHint",
+                        "请求失败时按退避策略重试，仅对当前会话生效",
+                    ),
+                    checked = ui.autoRetry,
+                    onCheckedChange = vm::setAutoRetry,
+                )
+                QueueModeRow(
+                    title = packText("settings.steering", "打断消息"),
+                    hint = packText(
+                        "settings.steeringHint",
+                        "运行中发送的消息：逐条等当前步骤结束，或一次性全部塞入",
+                    ),
+                    value = ui.steeringMode,
+                    onPick = { vm.setQueueMode(followUp = false, mode = it) },
+                )
+                QueueModeRow(
+                    title = packText("settings.followUp", "追问消息"),
+                    hint = packText(
+                        "settings.followUpHint",
+                        "本轮结束后再处理的排队消息的发送方式",
+                    ),
+                    value = ui.followUpMode,
+                    onPick = { vm.setQueueMode(followUp = true, mode = it) },
+                )
+
+                HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
+                Text(
+                    packText("settings.tuning", "压缩与重试"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+                if (!ui.settingsRemote) {
+                    Text(
+                        packText(
+                            "settings.tuningUnsupported",
+                            "这些数值写在 ~/.pig/agent/settings.json，需要新版 relay 才能读写",
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                }
+                SettingNumberRow(
+                    title = packText("settings.reserveTokens", "压缩预留 tokens"),
+                    hint = packText(
+                        "settings.reserveTokensHint",
+                        "上下文用到「窗口 − 预留」时触发自动压缩，默认 16384",
+                    ),
+                    value = ui.compactionReserveTokens,
+                    enabled = ui.settingsRemote,
+                    onSet = { vm.updateRelaySettings("compaction.reserveTokens" to it) },
+                )
+                SettingNumberRow(
+                    title = packText("settings.keepRecentTokens", "压缩后保留最近 tokens"),
+                    hint = packText(
+                        "settings.keepRecentTokensHint",
+                        "摘要时原样保留的最近上下文，默认 20000",
+                    ),
+                    value = ui.compactionKeepRecentTokens,
+                    enabled = ui.settingsRemote,
+                    onSet = { vm.updateRelaySettings("compaction.keepRecentTokens" to it) },
+                )
+                SettingNumberRow(
+                    title = packText("settings.retryMax", "自动重试次数"),
+                    hint = packText("settings.retryMaxHint", "默认 3 次，退避基数 2s"),
+                    value = ui.retryMaxRetries,
+                    enabled = ui.settingsRemote,
+                    onSet = { vm.updateRelaySettings("retry.maxRetries" to it) },
+                )
+                QueueModeRow(
+                    title = packText("settings.cacheWarming", "缓存保温"),
+                    hint = packText(
+                        "settings.cacheWarmingHint",
+                        "空闲时提前刷新 prompt 缓存：off 关闭 · idle 仅在空闲时 · streaming 也在输出时",
+                    ),
+                    value = ui.cacheWarming,
+                    onPick = if (ui.settingsRemote) {
+                        { vm.updateRelaySettings("cacheWarming" to it) }
+                    } else {
+                        {}
+                    },
+                    options = listOf(
+                        "off" to packText("settings.warmingOff", "关闭"),
+                        "idle" to packText("settings.warmingIdle", "空闲"),
+                        "streaming" to packText("settings.warmingStreaming", "始终"),
+                    ),
+                )
+
+                HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
                 Text(packText("settings.data", "数据"), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -1057,6 +1165,101 @@ private fun SettingsDialog(
             TextButton(onClick = onDismiss) { Text(packText("settings.done", "完成")) }
         },
     )
+}
+
+@Composable
+private fun QueueModeRow(
+    title: String,
+    hint: String,
+    value: String,
+    onPick: (String) -> Unit,
+    options: List<Pair<String, String>>? = null,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val chips = options ?: listOf(
+        "one-at-a-time" to packText("settings.queueOne", "逐条"),
+        "all" to packText("settings.queueAll", "全部"),
+    )
+    Column {
+        Text(title, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            hint,
+            style = MaterialTheme.typography.labelSmall,
+            color = scheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            chips.forEach { (mode, label) ->
+                FilterChip(
+                    selected = value == mode,
+                    onClick = { onPick(mode) },
+                    label = { Text(label) },
+                    shape = CircleShape,
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = scheme.primary.copy(alpha = 0.18f),
+                        selectedLabelColor = scheme.primary,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingNumberRow(
+    title: String,
+    hint: String,
+    value: Int,
+    enabled: Boolean,
+    onSet: (Int) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    var editing by remember { mutableStateOf(false) }
+    var text by remember(value) { mutableStateOf(if (value > 0) value.toString() else "") }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                hint,
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+            )
+        }
+        TextButton(onClick = { if (enabled) editing = true }, enabled = enabled) {
+            Text(
+                if (value > 0) formatTokens(value) else "—",
+                color = if (enabled) scheme.primary else scheme.onSurfaceVariant,
+            )
+        }
+    }
+    if (editing) {
+        AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text(title) },
+            text = {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    text.toIntOrNull()?.takeIf { it > 0 }?.let(onSet)
+                    editing = false
+                }) { Text(packText("dialog.save", "保存")) }
+            },
+            dismissButton = {
+                TextButton(onClick = { editing = false }) {
+                    Text(packText("dialog.cancel", "取消"))
+                }
+            },
+        )
+    }
 }
 
 @Composable

@@ -36,6 +36,8 @@ Control frames:
 | `relay_session_rename` | `id`, `path`, `name` | `relay_session_renamed` (`path`, `name`) |
 | `relay_session_delete` | `id`, `path` | `relay_session_deleted` (`path`) |
 | `relay_ui` | | `relay_ui_pack` snapshot |
+| `relay_settings` | `id`, optional `set` object | `relay_settings` (`settings`, `editable`) |
+| `relay_settings` | `set` only merges allow-listed keys | `relay_settings_error` (`message`) |
 | `relay_restart` | | kills and respawns pig (`relay_restarted`) |
 | `relay_stop` | | closes the connection |
 
@@ -53,12 +55,32 @@ Control frames:
 | `relay_session_deleted` | delete succeeded |
 | `relay_session_error` | rename/delete failed (`message`) |
 | `relay_ui_pack` | UI pack snapshot |
+| `relay_settings` | parsed `~/.pig/agent/settings.json` plus the writable key list |
+| `relay_settings_error` | settings read/write failed (`message`) |
 | `relay_resume` | in-flight assistant text replayed after a reconnect |
 | `relay_tool` | running tool progress replayed after a reconnect |
 | `relay_restarted` | pig was respawned |
 
 Everything else is a pig RPC frame (`response`, `message_update`,
 `extension_ui_request`, ...).
+
+## Settings
+
+`relay_settings` without `set` returns the raw `~/.pig/agent/settings.json`
+object (empty object when the file is missing) together with `editable`, the
+sorted list of keys the app may write. With `set`, only allow-listed dotted
+paths are merged into the file; unknown keys and invalid types/enums are
+silently dropped so a stale app can never corrupt unrelated settings. Writes
+are atomic (`tmp` + rename) and keep a
+`settings.json.bak-<timestamp>-pre-app` backup.
+
+Writable keys: `compaction.enabled`, `compaction.reserveTokens`,
+`compaction.keepRecentTokens`, `cacheWarming`, `hideThinkingBlock`,
+`retry.enabled`, `retry.maxRetries`, `retry.baseDelayMs`,
+`retry.maxAgentDelayMs`, `defaultThinkingLevel`, `thinkingBudgets.*`.
+
+These values are read by pig when a process starts, so a change applies to
+newly spawned sessions; the running pig keeps its loaded values.
 
 ## UI packs
 

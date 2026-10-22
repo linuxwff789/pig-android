@@ -263,6 +263,24 @@ data class AppUiState(
     val contextOverrides: Map<String, Int> = emptyMap(),
     val thinkingLevel: String = "off",
     val thinkingLevels: List<String> = emptyList(),
+    /** PiG persists this one in settings.json (`compaction.enabled`). */
+    val autoCompaction: Boolean = true,
+    /** Session-scoped; PiG does not report it back, so the app tracks it. */
+    val autoRetry: Boolean = true,
+    /** `one-at-a-time` or `all`, applied to queued steering messages. */
+    val steeringMode: String = "one-at-a-time",
+    /** `one-at-a-time` or `all`, applied to queued follow-up messages. */
+    val followUpMode: String = "one-at-a-time",
+    /** True once the relay answered `relay_settings`; older relays do not. */
+    val settingsRemote: Boolean = false,
+    /** `compaction.reserveTokens` from settings.json (0 = unknown). */
+    val compactionReserveTokens: Int = 0,
+    /** `compaction.keepRecentTokens` from settings.json (0 = unknown). */
+    val compactionKeepRecentTokens: Int = 0,
+    /** `cacheWarming`: off / streaming / idle. */
+    val cacheWarming: String = "",
+    /** `retry.maxRetries` from settings.json. */
+    val retryMaxRetries: Int = 0,
     val assetCount: Int = 0,
     val setup: Boolean = false,
     val setupHint: String? = null,

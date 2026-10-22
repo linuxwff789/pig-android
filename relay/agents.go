@@ -5,9 +5,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -39,11 +42,12 @@ type msgCacheEntry struct {
 }
 
 type session struct {
-	token       string
-	cwd         string
-	uiDir       string
-	sessionsDir string
-	pigBin      string
+	token        string
+	cwd          string
+	uiDir        string
+	sessionsDir  string
+	settingsPath string
+	pigBin       string
 
 	mu      sync.Mutex
 	conn    net.Conn
@@ -69,14 +73,15 @@ type session struct {
 
 func newSession(token, cwd, uiDir, sessionsDir, pigBin string) *session {
 	return &session{
-		token:       token,
-		cwd:         cwd,
-		uiDir:       uiDir,
-		sessionsDir: sessionsDir,
-		pigBin:      pigBin,
-		agents:      map[string]*agentProc{},
-		msgCache:    map[string]msgCacheEntry{},
-		stopped:     make(chan struct{}),
+		token:        token,
+		cwd:          cwd,
+		uiDir:        uiDir,
+		sessionsDir:  sessionsDir,
+		settingsPath: filepath.Join(filepath.Dir(sessionsDir), "settings.json"),
+		pigBin:       pigBin,
+		agents:       map[string]*agentProc{},
+		msgCache:     map[string]msgCacheEntry{},
+		stopped:      make(chan struct{}),
 	}
 }
 
@@ -784,13 +789,14 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 
 func (s *session) handleClientLine(line []byte) {
 	var head struct {
-		Type        string `json:"type"`
-		ID          any    `json:"id"`
-		Token       string `json:"token"`
-		Root        string `json:"root"`
-		Path        string `json:"path"`
-		Name        string `json:"name"`
-		SessionPath string `json:"sessionPath"`
+		Type        string         `json:"type"`
+		ID          any            `json:"id"`
+		Token       string         `json:"token"`
+		Root        string         `json:"root"`
+		Path        string         `json:"path"`
+		Name        string         `json:"name"`
+		SessionPath string         `json:"sessionPath"`
+		Set         map[string]any `json:"set"`
 	}
 	if err := json.Unmarshal(line, &head); err != nil {
 		_ = s.send(frame{"type": "relay_error", "message": "invalid json: " + err.Error()})
@@ -867,6 +873,8 @@ func (s *session) handleClientLine(line []byte) {
 		} else {
 			_ = s.send(frame{"type": "relay_session_deleted", "id": head.ID, "path": head.Path})
 		}
+	case "relay_settings":
+		handleSettings(s, head.ID, head.Set)
 	case "relay_ui":
 		files, assets, assetHashes, hash, err := scanUI(s.uiDir)
 		if err != nil {
@@ -912,4 +920,158 @@ func (s *session) watchUI() {
 			"assets": assets, "assetHashes": assetHashes,
 		})
 	}
+}
+
+// settingsKey describes one settings.json key the app may read and write.
+type settingsKey struct {
+	kind string // "bool", "int", "enum"
+	enum []string
+	min  int
+}
+
+var editableSettings = map[string]settingsKey{
+	"compaction.enabled":          {kind: "bool"},
+	"compaction.reserveTokens":    {kind: "int", min: 1024},
+	"compaction.keepRecentTokens": {kind: "int", min: 1024},
+	"cacheWarming":                {kind: "enum", enum: []string{"off", "streaming", "idle"}},
+	"hideThinkingBlock":           {kind: "bool"},
+	"retry.enabled":               {kind: "bool"},
+	"retry.maxRetries":            {kind: "int", min: 0},
+	"retry.baseDelayMs":           {kind: "int", min: 0},
+	"retry.maxAgentDelayMs":       {kind: "int", min: 0},
+	"defaultThinkingLevel": {kind: "enum", enum: []string{
+		"off", "minimal", "low", "medium", "high", "xhigh", "max",
+	}},
+	"thinkingBudgets.minimal": {kind: "int", min: 0},
+	"thinkingBudgets.low":     {kind: "int", min: 0},
+	"thinkingBudgets.medium":  {kind: "int", min: 0},
+	"thinkingBudgets.high":    {kind: "int", min: 0},
+}
+
+// handleSettings reads settings.json, or merges the allow-listed keys from the
+// frame's `set` object and writes it back. Unknown keys are preserved.
+func handleSettings(s *session, id any, set map[string]any) {
+	root, err := readSettingsFile(s.settingsPath)
+	if err != nil {
+		_ = s.send(frame{"type": "relay_settings_error", "id": id, "message": err.Error()})
+		return
+	}
+	if set != nil {
+		for path, raw := range set {
+			key, ok := editableSettings[path]
+			if !ok {
+				continue
+			}
+			value, ok := coerceSetting(key, raw)
+			if !ok {
+				continue
+			}
+			setPath(root, path, value)
+		}
+		if err := writeSettingsFile(s.settingsPath, root); err != nil {
+			_ = s.send(frame{"type": "relay_settings_error", "id": id, "message": err.Error()})
+			return
+		}
+	}
+	_ = s.send(frame{
+		"type":     "relay_settings",
+		"id":       id,
+		"settings": root,
+		"editable": editableSettingsList(),
+	})
+}
+
+func editableSettingsList() []string {
+	list := make([]string, 0, len(editableSettings))
+	for key := range editableSettings {
+		list = append(list, key)
+	}
+	sort.Strings(list)
+	return list
+}
+
+func readSettingsFile(path string) (map[string]interface{}, error) {
+	root := map[string]interface{}{}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return root, nil
+		}
+		return nil, err
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return root, nil
+	}
+	if err := json.Unmarshal(data, &root); err != nil {
+		return nil, fmt.Errorf("settings.json: %w", err)
+	}
+	return root, nil
+}
+
+func writeSettingsFile(path string, root map[string]interface{}) error {
+	data, err := json.MarshalIndent(root, "", "  ")
+	if err != nil {
+		return err
+	}
+	if existing, err := os.ReadFile(path); err == nil {
+		backup := path + ".bak-" + time.Now().Format("20060102-150405") + "-pre-app"
+		if err := os.WriteFile(backup, existing, 0o600); err != nil {
+			return err
+		}
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// coerceSetting accepts the JSON shapes the app sends (numbers arrive as
+// float64) and rejects values of the wrong type or outside the allow-list.
+func coerceSetting(key settingsKey, raw interface{}) (interface{}, bool) {
+	switch key.kind {
+	case "bool":
+		value, ok := raw.(bool)
+		return value, ok
+	case "int":
+		number, ok := raw.(float64)
+		if !ok {
+			if n, ok2 := raw.(int); ok2 {
+				number, ok = float64(n), true
+			}
+		}
+		if !ok {
+			return nil, false
+		}
+		value := int(number)
+		if value < key.min {
+			return nil, false
+		}
+		return value, true
+	case "enum":
+		value, ok := raw.(string)
+		if !ok {
+			return nil, false
+		}
+		for _, allowed := range key.enum {
+			if value == allowed {
+				return value, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func setPath(root map[string]interface{}, path string, value interface{}) {
+	parts := strings.Split(path, ".")
+	node := root
+	for _, part := range parts[:len(parts)-1] {
+		next, ok := node[part].(map[string]interface{})
+		if !ok {
+			next = map[string]interface{}{}
+			node[part] = next
+		}
+		node = next
+	}
+	node[parts[len(parts)-1]] = value
 }
