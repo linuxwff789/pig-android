@@ -36,20 +36,41 @@ missing file falls back to the built-in defaults and reports a warning.
 
 ## theme/colors.json
 
-| Key | Default | Used for |
-| --- | --- | --- |
-| `background` | `#0E1014` | app background |
-| `surface` | `#161A22` | composer, drawer |
-| `surfaceVariant` | `#1E2430` | tool cards |
-| `primary` | `#8B7CFF` | labels, buttons, user bubble |
-| `secondary` | `#4CD7F6` | tool icons, connected state |
-| `text` | `#E6E8EF` | body text |
-| `textMuted` | `#A8B0C0` | hints, status |
-| `danger` | `#FF6B6B` | errors |
-| `cornerRadius` | `16` | reserved (0–40) |
+| Key | Type | Default | Used for |
+| --- | --- | --- | --- |
+| `background` | color | `#0A0C12` | app background |
+| `surface` | color | `#12151E` | composer, cards, drawer sheet |
+| `surfaceVariant` | color | `#1A1F2B` | tool cards, chips, read-only banner |
+| `primary` | color | `#A78BFA` | labels, buttons, current session |
+| `secondary` | color | `#7DD3FC` | tool icons, steering/pending status |
+| `accent` | color | `#22D3EE` | end of the brand gradient (avatar, send button) |
+| `text` | color | `#ECEEF5` | body text |
+| `textMuted` | color | `#98A2B8` | hints, metadata |
+| `danger` | color | `#FB7185` | errors, stop button |
+| `cornerRadius` | int 0–40 | `18` | cards, bubbles, sheets |
+| `avatarShadow` | bool | `false` | default glow behind per-message avatars |
+| `bubbleShadow` | bool | `true` | default shadow under user message bubbles |
 
-Colors accept `#RRGGBB` and `#AARRGGBB`. An invalid color is reported and that
-one field falls back to its default; the rest of the pack still applies.
+Colors accept `#RGB`, `#RRGGBB` and `#AARRGGBB` (the parser also tolerates a
+missing `#`). An invalid value is reported as a warning and that one field falls
+back to its default; the rest of the pack still applies.
+
+### Theme hot reload and precedence
+
+The whole pack is replaced on every hash change. There is no partial merge
+between packs: a key omitted in the new file goes back to the built-in default.
+
+`avatarShadow` and `bubbleShadow` are **defaults**, not hard overrides:
+
+- if the user has never touched the matching switch in **设置**, the pack value is
+  used and changing `theme/colors.json` hot-reloads it;
+- once the user toggles 消息头像阴影 / 气泡阴影, the choice is stored in the app's
+  `pig` SharedPreferences (`avatarShadow`, `bubbleShadow`) and wins over the pack;
+- the user can therefore ship a theme with shadows on/off, while an individual
+  user can still opt out without editing the pack.
+
+The same precedence applies after an app restart: the pack supplies the default,
+the stored preference (if present) overrides it.
 
 ## theme/typography.json
 
@@ -116,7 +137,8 @@ Optional drawer entries. The relay pushes it with the rest of the pack.
   "sidebar": { "widthDp": 300 },
   "chat": {
     "assistantLabel": "PIG",
-    "toolCards": "collapsible",
+    "toolCards": "collapsed",
+    "toolGroups": true,
     "showUsage": true
   },
   "composer": {
@@ -128,10 +150,19 @@ Optional drawer entries. The relay pushes it with the rest of the pack.
 ```
 
 - `sidebar.widthDp` is clamped to 240–560.
-- `chat.toolCards`: initial tool-card mode — `collapsible`/`collapsed` start in
-  summary, `expanded` shows the full output. The card always has 收起 / 摘要 /
-  展开 chips; `write` reports lines and bytes, `edit` reports added/removed
-  lines and renders the diff with colored +/- lines.
+- `chat.toolGroups`: when `true` (default), consecutive tool cards with the same
+  tool name are folded into one group header (`bash × 5`). The group is collapsed
+  by default; expanding it shows the individual cards, which are themselves
+  collapsed according to `toolCards` — this gives two collapse layers and keeps
+  long tool runs cheap to render. Set it to `false` to render every tool card
+  directly.
+- `chat.toolCards`: initial tool-card mode:
+  - `collapsed` (default) — a single row with the tool name; tap to open 摘要;
+  - `collapsible` — start in 摘要 (headline, metrics, first lines);
+  - `expanded` — full output.
+  The expanded card has 收起 / 摘要 / 展开 chips; long-press a chip to apply that
+  mode to every tool card. `write` reports lines and bytes, `edit` reports
+  added/removed lines and renders the diff with colored +/- lines.
 - `chat.showUsage` adds the context usage (percentage plus used/total tokens) to the
   top bar; the app refreshes it on connect, session switch, model change and
   after every turn.

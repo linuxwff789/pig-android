@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
@@ -633,6 +634,12 @@ private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Un
                     checked = ui.avatarShadow,
                     onCheckedChange = vm::setAvatarShadow,
                 )
+                SettingToggle(
+                    title = "气泡阴影",
+                    subtitle = "用户消息气泡的投影，默认跟随 UI pack",
+                    checked = ui.bubbleShadow,
+                    onCheckedChange = vm::setBubbleShadow,
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("电池优化", style = MaterialTheme.typography.bodyMedium)
@@ -1187,6 +1194,133 @@ private fun SessionRow(
     }
 }
 
+private sealed interface ChatListItem {
+    val key: String
+    val contentType: String
+
+    data class Single(val message: ChatMsg) : ChatListItem {
+        override val key: String = message.id
+        override val contentType: String = message.role.name
+    }
+
+    data class ToolGroup(val tools: List<ChatMsg>) : ChatListItem {
+        // Keep the key stable while more same-name tools are appended.
+        override val key: String = "group:${tools.first().id}"
+        override val contentType: String = "tool-group"
+    }
+}
+
+private fun buildChatListItems(messages: List<ChatMsg>, group: Boolean): List<ChatListItem> {
+    if (!group) return messages.map { ChatListItem.Single(it) }
+    val out = mutableListOf<ChatListItem>()
+    var index = 0
+    while (index < messages.size) {
+        val message = messages[index]
+        val name = message.toolName
+        if (message.role == Role.TOOL && !name.isNullOrBlank()) {
+            var end = index + 1
+            while (end < messages.size &&
+                messages[end].role == Role.TOOL &&
+                messages[end].toolName == name
+            ) {
+                end++
+            }
+            if (end - index >= 2) {
+                out.add(ChatListItem.ToolGroup(messages.subList(index, end).toList()))
+                index = end
+                continue
+            }
+        }
+        out.add(ChatListItem.Single(message))
+        index++
+    }
+    return out
+}
+
+@Composable
+private fun ToolGroupCard(
+    tools: List<ChatMsg>,
+    toolMode: String,
+    cornerRadius: Int,
+    onToolModeAll: (String) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val name = tools.first().toolName ?: "tool"
+    val running = tools.any { it.running }
+    val errors = tools.count { it.isError }
+    var expanded by remember(tools.first().id) { mutableStateOf(false) }
+    val shape = RoundedCornerShape(cornerRadius.dp)
+    Surface(
+        color = scheme.surface,
+        shape = shape,
+        border = BorderStroke(1.dp, scheme.outline.copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(10.dp)) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 2.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier
+                        .size(22.dp)
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(scheme.secondary.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Build,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = scheme.secondary,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("$name × ${tools.size}", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        buildString {
+                            append("${tools.size} 次调用")
+                            if (errors > 0) append(" · $errors 失败")
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                }
+                if (running) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    if (expanded) "收起" else "展开",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.primary,
+                )
+                Icon(
+                    if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = scheme.primary,
+                )
+            }
+            if (expanded) {
+                Spacer(Modifier.height(6.dp))
+                tools.forEachIndexed { index, tool ->
+                    if (index > 0) Spacer(Modifier.height(6.dp))
+                    ToolCard(tool, toolMode, cornerRadius, onToolModeAll)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun MessageList(
     messages: List<ChatMsg>,
@@ -1197,6 +1331,8 @@ private fun MessageList(
     types: TypeScale,
     cornerRadius: Int,
     avatarShadow: Boolean,
+    bubbleShadow: Boolean,
+    toolGroups: Boolean,
     modifier: Modifier = Modifier,
     onSuggestion: (String) -> Unit,
     onCopy: (String) -> Unit,
@@ -1251,6 +1387,10 @@ private fun MessageList(
         return
     }
 
+    val displayItems = remember(messages, toolGroups) {
+        buildChatListItems(messages, toolGroups)
+    }
+
     Box(modifier.fillMaxWidth()) {
         LazyColumn(
             state = listState,
@@ -1258,18 +1398,27 @@ private fun MessageList(
             contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            items(messages, key = { it.id }, contentType = { it.role }) { message ->
-                MessageRow(
-                    message = message,
-                    assistantLabel = assistantLabel,
-                    toolMode = toolMode,
-                    types = types,
-                    cornerRadius = cornerRadius,
-                    streaming = message.id == streamingId,
-                    avatarShadow = avatarShadow,
-                    onCopy = onCopy,
-                    onToolModeAll = onToolModeAll,
-                )
+            items(displayItems, key = { it.key }, contentType = { it.contentType }) { item ->
+                when (item) {
+                    is ChatListItem.Single -> MessageRow(
+                        message = item.message,
+                        assistantLabel = assistantLabel,
+                        toolMode = toolMode,
+                        types = types,
+                        cornerRadius = cornerRadius,
+                        streaming = item.message.id == streamingId,
+                        avatarShadow = avatarShadow,
+                        bubbleShadow = bubbleShadow,
+                        onCopy = onCopy,
+                        onToolModeAll = onToolModeAll,
+                    )
+                    is ChatListItem.ToolGroup -> ToolGroupCard(
+                        tools = item.tools,
+                        toolMode = toolMode,
+                        cornerRadius = cornerRadius,
+                        onToolModeAll = onToolModeAll,
+                    )
+                }
             }
             if (showTyping) {
                 item(key = "typing") {
@@ -1408,6 +1557,7 @@ private fun MessageRow(
     cornerRadius: Int,
     streaming: Boolean,
     avatarShadow: Boolean,
+    bubbleShadow: Boolean,
     onCopy: (String) -> Unit,
     onToolModeAll: (String) -> Unit,
 ) {
@@ -1425,7 +1575,18 @@ private fun MessageRow(
                 Box(
                     Modifier
                         .widthIn(max = 520.dp)
-                        .shadow(8.dp, shape, ambientColor = scheme.primary, spotColor = scheme.primary)
+                        .then(
+                            if (bubbleShadow) {
+                                Modifier.shadow(
+                                    8.dp,
+                                    shape,
+                                    ambientColor = scheme.primary,
+                                    spotColor = scheme.primary,
+                                )
+                            } else {
+                                Modifier
+                            },
+                        )
                         .clip(shape)
                         .background(
                             Brush.linearGradient(

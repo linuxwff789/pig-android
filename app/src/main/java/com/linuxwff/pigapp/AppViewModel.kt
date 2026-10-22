@@ -70,6 +70,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         current = this
+        ui = ui.copy(
+            avatarShadow = if (prefs.contains("avatarShadow")) {
+                prefs.getBoolean("avatarShadow", false)
+            } else {
+                false
+            },
+            bubbleShadow = if (prefs.contains("bubbleShadow")) {
+                prefs.getBoolean("bubbleShadow", true)
+            } else {
+                true
+            },
+        )
         viewModelScope.launch {
             client.connected.collect { connected ->
                 ui = ui.copy(connected = connected)
@@ -275,6 +287,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setAvatarShadow(enabled: Boolean) {
         prefs.edit().putBoolean("avatarShadow", enabled).apply()
         ui = ui.copy(avatarShadow = enabled)
+    }
+
+    fun setBubbleShadow(enabled: Boolean) {
+        prefs.edit().putBoolean("bubbleShadow", enabled).apply()
+        ui = ui.copy(bubbleShadow = enabled)
     }
 
     fun setWakeLock(enabled: Boolean) {
@@ -1283,11 +1300,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val changed = ui.uiPackHash.isNotEmpty() && hash != ui.uiPackHash
+        // UI pack provides defaults; an explicit user toggle wins.
+        val avatarShadow = if (prefs.contains("avatarShadow")) {
+            prefs.getBoolean("avatarShadow", false)
+        } else {
+            pack.theme.avatarShadow
+        }
+        val bubbleShadow = if (prefs.contains("bubbleShadow")) {
+            prefs.getBoolean("bubbleShadow", true)
+        } else {
+            pack.theme.bubbleShadow
+        }
         ui = ui.copy(
             uiPack = pack,
             uiPackHash = hash,
             uiPackFiles = files.size,
             assetCount = assets.size,
+            avatarShadow = avatarShadow,
+            bubbleShadow = bubbleShadow,
             uiPackError = result.warnings.firstOrNull(),
             toast = when {
                 changed -> "UI pack 已应用: ${pack.name} v${pack.version}"

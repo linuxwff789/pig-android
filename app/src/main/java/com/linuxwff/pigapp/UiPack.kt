@@ -16,6 +16,10 @@ data class UiTheme(
     val cornerRadius: Int = 18,
     /** End of the brand gradient (avatar, send button, accents). */
     val accent: Color = Color(0xFF22D3EE),
+    /** Default for per-message avatar glow; a user setting overrides it. */
+    val avatarShadow: Boolean = false,
+    /** Default for the user message bubble shadow; a user setting overrides it. */
+    val bubbleShadow: Boolean = true,
 )
 
 data class TypeScale(
@@ -35,6 +39,8 @@ data class UiLayout(
     val sidebarWidthDp: Int = 300,
     val assistantLabel: String = "PIG",
     val toolCards: String = "collapsed",
+    /** Group consecutive same-name tool cards behind one collapsible header. */
+    val toolGroups: Boolean = true,
     val showUsage: Boolean = true,
     val composerPlaceholder: String = "给 Pig 发消息…",
     val composerMaxLines: Int = 6,
@@ -167,6 +173,8 @@ object UiPackParser {
             danger = json.color("danger", d.danger, warnings),
             cornerRadius = json.optInt("cornerRadius", d.cornerRadius).coerceIn(0, 40),
             accent = json.color("accent", d.secondary, warnings),
+            avatarShadow = json.optBoolean("avatarShadow", d.avatarShadow),
+            bubbleShadow = json.optBoolean("bubbleShadow", d.bubbleShadow),
         )
     }
 
@@ -222,6 +230,7 @@ object UiPackParser {
             assistantLabel = chat?.optString("assistantLabel", d.assistantLabel)
                 ?.takeIf { it.isNotBlank() } ?: d.assistantLabel,
             toolCards = mode.takeIf { it in modes } ?: d.toolCards,
+            toolGroups = chat?.optBoolean("toolGroups", d.toolGroups) ?: d.toolGroups,
             showUsage = chat?.optBoolean("showUsage", d.showUsage) ?: d.showUsage,
             composerPlaceholder = composer?.optString("placeholder", d.composerPlaceholder)
                 ?.takeIf { it.isNotBlank() } ?: d.composerPlaceholder,
