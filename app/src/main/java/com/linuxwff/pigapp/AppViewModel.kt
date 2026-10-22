@@ -1572,7 +1572,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             "relay_error" -> {
                 val message = event.optString("message", "relay error")
-                ui = ui.copy(error = message, setup = true, setupHint = message)
+                if (message.contains("relay_settings")) {
+                    // Relay older than the settings frame: keep the tuning
+                    // section read-only instead of surfacing a connection error.
+                    ui = ui.copy(settingsRemote = false)
+                } else {
+                    ui = ui.copy(error = message, setup = true, setupHint = message)
+                }
             }
             "relay_exit" -> {
                 ui = ui.copy(
