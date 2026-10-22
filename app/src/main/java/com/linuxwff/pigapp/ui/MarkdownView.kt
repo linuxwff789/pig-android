@@ -59,8 +59,7 @@ fun PigMarkdown(
         )
     }
     val themeTypography = MaterialTheme.typography
-    val typography = remember(types, themeTypography) {
-        markdownTypography(
+    val typography = markdownTypography(
         h1 = themeTypography.headlineLarge,
         h2 = themeTypography.headlineMedium,
         h3 = themeTypography.headlineSmall,
@@ -77,16 +76,13 @@ fun PigMarkdown(
             fontSize = types.code.sp,
         ),
         quote = themeTypography.bodyMedium.copy(fontStyle = FontStyle.Italic),
-        )
-    }
+    )
     val scheme = MaterialTheme.colorScheme
-    val colors = remember(scheme) {
-        markdownColor(
-            codeBackground = scheme.surfaceVariant,
-            inlineCodeBackground = scheme.surfaceVariant,
-            linkText = scheme.secondary,
-        )
-    }
+    val colors = markdownColor(
+        codeBackground = scheme.surfaceVariant,
+        inlineCodeBackground = scheme.surfaceVariant,
+        linkText = scheme.secondary,
+    )
     Markdown(
         content = text,
         modifier = modifier,
