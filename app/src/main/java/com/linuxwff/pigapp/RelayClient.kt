@@ -38,6 +38,7 @@ class RelayClient(
     private var socket: Socket? = null
     private var writer: BufferedWriter? = null
     private var job: Job? = null
+    private var generation = 0
 
     // A channel buffers events until the ViewModel collector is scheduled.
     // SharedFlow without replay dropped the relay hello/pack when the
@@ -50,14 +51,17 @@ class RelayClient(
 
     fun connect() {
         if (job?.isActive == true) return
+        val gen = ++generation
         job = scope.launch {
             var lastError: Exception? = null
             var attempt = 0
             var everConnected = false
-            while (isActive) {
+            while (isActive && gen == generation) {
+                var s: Socket? = null
                 try {
-                    val s = Socket()
+                    s = Socket()
                     s.connect(InetSocketAddress(host, port), 1500)
+                    if (gen != generation) return@launch
                     s.soTimeout = 0
                     socket = s
                     writer = BufferedWriter(OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8))
@@ -66,7 +70,7 @@ class RelayClient(
                     _connected.value = true
                     everConnected = true
                     attempt = 0
-                    while (isActive) {
+                    while (isActive && gen == generation) {
                         val line = reader.readLine() ?: break
                         if (line.isBlank()) continue
                         val obj = runCatching { JSONObject(line) }.getOrNull() ?: continue
@@ -75,11 +79,19 @@ class RelayClient(
                 } catch (e: Exception) {
                     lastError = e
                 } finally {
-                    _connected.value = false
-                    runCatching { socket?.close() }
-                    socket = null
-                    writer = null
+                    // Only the current generation may touch the shared socket
+                    // or flip the connected flag; an older connect attempt must
+                    // not kill the replacement socket.
+                    if (gen == generation) {
+                        _connected.value = false
+                        if (socket === s) {
+                            socket = null
+                            writer = null
+                        }
+                    }
+                    runCatching { s?.close() }
                 }
+                if (gen != generation) return@launch
                 attempt++
                 // Show the setup hint only when the relay never came up; a
                 // dropped connection after a successful handshake is retried
@@ -121,9 +133,12 @@ class RelayClient(
     }
 
     fun close() {
+        generation++
         job?.cancel()
         job = null
         runCatching { socket?.close() }
+        socket = null
+        writer = null
         _connected.value = false
     }
 }
