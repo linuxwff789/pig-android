@@ -185,6 +185,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun rememberSession(path: String) {
         if (path.isBlank()) return
         if (savedSession() != path) prefs.edit().putString("lastSessionFile", path).apply()
+        markVisited(path)
+    }
+
+    private fun markVisited(path: String) {
+        if (path.isBlank()) return
+        val current = prefs.getStringSet("visitedSessions", emptySet()) ?: emptySet()
+        if (path in current) return
+        prefs.edit().putStringSet("visitedSessions", current + path).apply()
     }
 
     fun reconnect() {
@@ -280,6 +288,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (text.isEmpty()) return
         append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = text))
         currentAssistant = null
+        markVisited(ui.sessionFile)
         ui = ui.copy(readOnly = false)
         val command = JSONObject()
             .put("id", "p${nextId++}")
@@ -364,6 +373,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun doSwitch(path: String) {
         if (path == ui.sessionFile) return
+        markVisited(path)
         desiredSessionPath = path
         restorePending = false
         ui = ui.copy(status = "switching")
@@ -896,7 +906,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 if (!live) {
-                    status = "历史会话 · 发送消息后启动"
+                    // Shown by the static read-only banner; the status bar is
+                    // reserved for real activity (and its spinner).
+                    status = ""
                 }
                 ui = ui.copy(
                     model = label,
@@ -1045,20 +1057,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun handleSessions(event: JSONObject) {
+        val visited = prefs.getStringSet("visitedSessions", emptySet()) ?: emptySet()
         val array = event.optJSONArray("sessions")
         val sessions = buildList {
             if (array != null) {
                 for (index in 0 until array.length()) {
                     val item = array.optJSONObject(index) ?: continue
+                    val path = item.optString("path")
                     add(
                         SessionInfo(
-                            path = item.optString("path"),
+                            path = path,
                             id = item.optString("id"),
                             cwd = item.optString("cwd"),
                             name = item.optString("name"),
                             preview = item.optString("preview"),
                             updated = item.optLong("updated"),
                             size = item.optLong("size"),
+                            live = item.optBoolean("live", false),
+                            busy = item.optBoolean("busy", false),
+                            visited = visited.contains(path),
                         ),
                     )
                 }

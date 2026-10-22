@@ -56,6 +56,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
@@ -150,6 +151,10 @@ fun PigApp(vm: AppViewModel) {
 
     BackHandler(enabled = ui.windows.isNotEmpty()) { vm.closeTopWindow() }
 
+    LaunchedEffect(drawerState.currentValue) {
+        if (drawerState.currentValue == DrawerValue.Open) vm.requestSessions()
+    }
+
     LaunchedEffect(ui.toast) {
         val toast = ui.toast
         if (toast != null) {
@@ -232,6 +237,9 @@ fun PigApp(vm: AppViewModel) {
                         exit = fadeOut() + shrinkVertically(),
                     ) {
                         StatusBar(ui.status)
+                    }
+                    if (ui.readOnly) {
+                        ReadOnlyBanner()
                     }
                     MessageList(
                         ui = ui,
@@ -868,7 +876,7 @@ private fun DrawerContent(
             items(shownSessions, key = { it.path }) { session ->
                 SessionRow(
                     session = session,
-                    current = session.id == ui.sessionId,
+                    current = session.path == ui.sessionFile,
                     cornerRadius = corner,
                     onClick = {
                         vm.switchSession(session.path)
@@ -973,6 +981,62 @@ private fun navIcon(name: String) = when (name.lowercase()) {
 }
 
 @Composable
+private fun SessionBadge(session: SessionInfo) {
+    val scheme = MaterialTheme.colorScheme
+    val (label, color) = when {
+        session.busy -> "运行中" to scheme.tertiary
+        session.live -> "已打开" to scheme.secondary
+        session.visited -> "开过" to scheme.onSurfaceVariant
+        else -> "历史" to scheme.onSurfaceVariant.copy(alpha = 0.75f)
+    }
+    Row(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(color.copy(alpha = 0.12f))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (session.busy) {
+            Box(
+                Modifier
+                    .size(5.dp)
+                    .clip(CircleShape)
+                    .background(color),
+            )
+            Spacer(Modifier.width(3.dp))
+        }
+        Text(label, style = MaterialTheme.typography.labelSmall, color = color)
+    }
+}
+
+@Composable
+private fun ReadOnlyBanner() {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(scheme.surfaceVariant.copy(alpha = 0.45f))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Default.History,
+            contentDescription = null,
+            modifier = Modifier.size(14.dp),
+            tint = scheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            "历史会话 · 发送消息后启动后端",
+            style = MaterialTheme.typography.labelSmall,
+            color = scheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun SessionRow(
     session: SessionInfo,
     current: Boolean,
@@ -1018,6 +1082,8 @@ private fun SessionRow(
                 color = scheme.onSurfaceVariant,
             )
         }
+        SessionBadge(session)
+        Spacer(Modifier.width(2.dp))
         if (current) {
             Icon(
                 Icons.Default.Check,

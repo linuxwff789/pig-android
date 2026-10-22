@@ -23,6 +23,12 @@ data class SessionInfo(
     val preview: String,
     val updated: Long,
     val size: Long,
+    /** A pig process is attached to this session (idle or streaming). */
+    val live: Boolean = false,
+    /** That pig is currently producing a turn. */
+    val busy: Boolean = false,
+    /** The app has opened this session at least once. */
+    val visited: Boolean = false,
 )
 
 data class AppWidget(val key: String, val lines: List<String>, val placement: String)

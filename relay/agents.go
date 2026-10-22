@@ -754,7 +754,25 @@ func (s *session) handleClientLine(line []byte) {
 		}
 		_ = s.send(frame{"type": "relay_projects", "id": head.ID, "root": root, "projects": listProjects(root)})
 	case "relay_sessions":
-		_ = s.send(frame{"type": "relay_sessions", "id": head.ID, "sessions": listSessions(s.sessionsDir)})
+		sessions := listSessions(s.sessionsDir)
+		s.agentMu.Lock()
+		for _, item := range sessions {
+			path, _ := item["path"].(string)
+			item["live"] = false
+			item["busy"] = false
+			if a := s.agents[path]; a != nil {
+				item["live"] = true
+				item["busy"] = a.isBusy()
+			}
+		}
+		active := s.activePath
+		s.agentMu.Unlock()
+		_ = s.send(frame{
+			"type":     "relay_sessions",
+			"id":       head.ID,
+			"sessions": sessions,
+			"active":   active,
+		})
 	case "relay_session_rename":
 		if err := appendSessionInfo(head.Path, head.Name, s.sessionsDir); err != nil {
 			_ = s.send(frame{"type": "relay_session_error", "id": head.ID, "message": "rename: " + err.Error()})
