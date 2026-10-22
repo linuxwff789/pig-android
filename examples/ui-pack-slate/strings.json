@@ -98,7 +98,12 @@
     "actionMissing": "没有这个动作：{name}",
     "actionDenied": "不允许调用 {rpc}",
     "actionNeedsModel": "需要 provider 和 modelId",
-    "actionNeedsLevel": "需要 level"
+    "actionNeedsLevel": "需要 level",
+    "delete": "删除",
+    "deleteTitle": "删除 pack？",
+    "deleteBody": "将删除「{name}」及其文件，不可恢复。",
+    "deleteActive": "这是当前正在使用的 pack，删除后会切回内置 pack。",
+    "deleteFailed": "删除失败：{error}"
   },
   "settings": {
     "title": "设置",
@@ -167,7 +172,12 @@
     "noWindow": "还没有窗口 {id}",
     "notConnectedRefresh": "未连接，无法刷新 {label}",
     "openedWindow": "已打开 {label}",
-    "noWindowFor": "还没有 {label} 窗口"
+    "noWindowFor": "还没有 {label} 窗口",
+    "packDeleted": "已删除：{name}",
+    "modelSwitched": "模型已切换：{model}",
+    "modelSwitchedActual": "已切换，实际模型：{model}",
+    "modelSwitchFailed": "模型切换失败",
+    "thinkingChanged": "思考档位：{level}"
   },
   "a11y": {
     "menu": "菜单",
@@ -181,5 +191,8 @@
     "close": "关闭",
     "refresh": "刷新",
     "closeWindow": "关闭 {title}"
+  },
+  "model": {
+    "switching": "切换中…"
   }
 }

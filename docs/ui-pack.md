@@ -499,7 +499,23 @@ removed through `drawer.modules`.
 | `codeBlockRadius` | -1 | fenced code block radius; `-1` = theme/2 |
 | `codeBlockBorderAlpha` | 0.35 | fenced code block border opacity |
 
-`layout/chat.json` → `composer.placeholderColor`: `onSurfaceVariant` (default),
+### Composer (`composer`)
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `fontSize` | 0 | input text size in sp; `0` = theme bodyMedium |
+| `textColor` | `onSurface` | input text token |
+| `minHeight` | 0 | minimum input height; `0` = natural |
+| `paddingH` / `paddingV` | 12 / 10 | composer inner padding |
+| `radius` | -1 | composer top radius; `-1` = theme composerRadius/corner+8 |
+| `inputRadius` | 22 | OutlinedTextField radius |
+| `inputAlpha` | 0.35 | input background opacity |
+| `borderAlpha` | 0.5 | unfocused input border opacity |
+| `elevation` | -1 | composer shadow; `-1` = theme composerElevation |
+| `surfaceAlpha` | 1 | composer surface opacity |
+| `buttonIconSize` | 0 | send/stop icon size; `0` = 21dp |
+
+`composer.placeholderColor`: `onSurfaceVariant` (default),
 `primary`, `secondary`, `tertiary`, `text`, `error`.
 
 ### Chat bubbles (`chat.bubble`)
@@ -757,6 +773,8 @@ Open **UI pack 管理** from the drawer or settings (see `packManager` below).
 - **Import ZIP** — pick any `.zip` containing a pack (`manifest.json` at the
   root or inside a single top-level folder).
 - **Import directory** — pick a folder with the system tree chooser.
+- **Delete** — each imported pack has a delete icon in the manager. Deleting the
+  active pack switches back to the relay pack first, then removes its files.
 
 Import rules:
 

@@ -64,6 +64,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var lastStateRequestId = ""
     private var lastMessagesRequestId = ""
     private var lastCommandsAt = 0L
+    private var modelSwitchAccepted = false
     private val pendingRpcSources = mutableMapOf<String, String>()
     private var currentAssistant: String? = null
     private val toolMsgIds = mutableMapOf<String, String>()
@@ -397,6 +398,42 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         ui = ui.copy(activePackId = id)
         applyPack(files.first, files.second, files.third, "local:$id", announce = true)
+    }
+
+    /** Delete an imported pack; if it is active, switch back to the relay pack first. */
+    fun deletePack(id: String) {
+        if (!Regex("^[a-zA-Z0-9._-]{1,64}$").matches(id) || id == "." || id == "..") {
+            ui = ui.copy(toast = str("pack.deleteFailed", "删除失败：{error}").replace("{error}", id))
+            return
+        }
+        val target = File(packsDir, id)
+        if (!target.isDirectory) {
+            refreshLocalPacks()
+            ui = ui.copy(toast = str("toast.packDeleted", "已删除：{name}").replace("{name}", id))
+            return
+        }
+        if (ui.activePackId == id) {
+            selectPack("")
+            if (relayFiles.isEmpty()) {
+                ui = ui.copy(
+                    uiPack = UiPack(),
+                    uiPackHash = "",
+                    uiPackFiles = 0,
+                    skinId = "",
+                    activePackId = "",
+                )
+            }
+        }
+        val name = ui.localPacks.firstOrNull { it.id == id }?.name ?: id
+        val ok = runCatching { target.deleteRecursively() }.getOrDefault(false)
+        refreshLocalPacks()
+        ui = ui.copy(
+            toast = if (ok) {
+                str("toast.packDeleted", "已删除：{name}").replace("{name}", name)
+            } else {
+                str("pack.deleteFailed", "删除失败：{error}").replace("{error}", id)
+            },
+        )
     }
 
     /** Import a `.zip` exported from a UI pack directory. */
@@ -745,7 +782,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun selectModel(model: ModelInfo) {
-        showModelPicker = false
+        modelSwitchAccepted = false
+        ui = ui.copy(
+            modelSwitchPending = true,
+            pendingModel = "${model.provider}/${model.id}",
+        )
         client.send(
             JSONObject()
                 .put("id", "setmodel-${nextId++}")
@@ -1491,6 +1532,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (!event.optBoolean("success", true)) {
             val command = event.optString("command")
+            if (command == "set_model") {
+                modelSwitchAccepted = false
+                ui = ui.copy(
+                    modelSwitchPending = false,
+                    pendingModel = "",
+                    toast = str("toast.modelSwitchFailed", "模型切换失败"),
+                )
+            }
             if (command == "switch_session" && restorePending) {
                 // The remembered session was deleted; fall back to a fresh one.
                 restorePending = false
@@ -1534,7 +1583,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (command == "set_thinking_level") {
+            val level = event.optJSONObject("data")?.optString("level").orEmpty()
             requestState()
+            if (level.isNotBlank()) {
+                ui = ui.copy(
+                    toast = str("toast.thinkingChanged", "思考档位：{level}")
+                        .replace("{level}", level),
+                )
+            }
             return
         }
         if (command == "set_session_name") {
@@ -1574,6 +1630,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         storeRpcData(command, pendingRpcSources.remove(responseId), data)
         when (command) {
             "get_state" -> {
+                val wasModelSwitch = ui.modelSwitchPending && modelSwitchAccepted
+                val pendingModel = ui.pendingModel
                 val model = data.optJSONObject("model")
                 val label = listOfNotNull(
                     model?.optString("provider")?.takeIf { it.isNotBlank() },
@@ -1650,6 +1708,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     status = status,
                     toast = toast,
                 )
+                if (wasModelSwitch) {
+                    val actual = listOfNotNull(
+                        model?.optString("provider")?.takeIf { it.isNotBlank() },
+                        model?.optString("id")?.takeIf { it.isNotBlank() },
+                    ).joinToString("/")
+                    ui = ui.copy(
+                        modelSwitchPending = false,
+                        pendingModel = "",
+                        toast = if (actual.isNotBlank() && actual == pendingModel) {
+                            str("toast.modelSwitched", "模型已切换：{model}")
+                                .replace("{model}", actual)
+                        } else {
+                            str("toast.modelSwitchedActual", "已切换，实际模型：{model}")
+                                .replace("{model}", actual.ifBlank { ui.model })
+                        },
+                    )
+                }
                 if (streaming) bindResumedAssistant()
             }
             "get_session_stats" -> {
@@ -1732,6 +1807,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             "set_model" -> {
+                modelSwitchAccepted = true
                 val provider = data.optString("provider", ui.model.substringBefore('/'))
                 val id = data.optString("id", ui.model.substringAfter('/'))
                 ui = ui.copy(

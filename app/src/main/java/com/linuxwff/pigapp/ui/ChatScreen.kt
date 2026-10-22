@@ -132,6 +132,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import com.linuxwff.pigapp.AppUiState
 import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.ChatMsg
+import com.linuxwff.pigapp.LocalPackInfo
 import com.linuxwff.pigapp.RelayLauncher
 import com.linuxwff.pigapp.Role
 import com.linuxwff.pigapp.SessionInfo
@@ -287,6 +288,7 @@ fun PigApp(vm: AppViewModel) {
                             title = boundTitle ?: ui.titleOverride ?: packText("header.title", "Pig"),
                             connected = ui.connected,
                             model = ui.model,
+                            modelSwitching = ui.modelSwitchPending,
                             boundSubtitle = boundSubtitle,
                             boundUsage = boundUsage,
                             boundCache = boundCache,
@@ -475,6 +477,7 @@ private fun PigHeader(
     title: String,
     connected: Boolean,
     model: String,
+    modelSwitching: Boolean,
     boundSubtitle: String?,
     boundUsage: String?,
     boundCache: String?,
@@ -557,9 +560,14 @@ private fun PigHeader(
                             .padding(top = 1.dp, bottom = 1.dp, end = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        val modelText = boundSubtitle ?: model.ifBlank {
+                            packText("header.modelEmpty", "点击选择模型")
+                        }
                         Text(
-                            boundSubtitle ?: model.ifBlank {
-                                packText("header.modelEmpty", "点击选择模型")
+                            if (modelSwitching) {
+                                "$modelText · " + packText("model.switching", "切换中…")
+                            } else {
+                                modelText
                             },
                             modifier = Modifier.weight(1f, fill = false),
                             style = MaterialTheme.typography.labelSmall,
@@ -1486,6 +1494,7 @@ private fun PackManagerDialog(
     val dirPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree(),
     ) { uri -> uri?.let(vm::importPackTree) }
+    var deleteTarget by remember { mutableStateOf<LocalPackInfo?>(null) }
     LaunchedEffect(Unit) { vm.refreshLocalPacks() }
 
     AlertDialog(
@@ -1524,7 +1533,8 @@ private fun PackManagerDialog(
                         .replace("{files}", ui.uiPackFiles.toString()),
                     selected = ui.activePackId.isBlank(),
                     cornerRadius = corner,
-                ) { vm.selectPack("") }
+                    onPick = { vm.selectPack("") },
+                )
 
                 if (ui.localPacks.isEmpty()) {
                     Text(
@@ -1541,7 +1551,9 @@ private fun PackManagerDialog(
                                 .replace("{files}", pack.files.toString()),
                             selected = pack.id == ui.activePackId,
                             cornerRadius = corner,
-                        ) { vm.selectPack(pack.id) }
+                            onPick = { vm.selectPack(pack.id) },
+                            onDelete = { deleteTarget = pack },
+                        )
                     }
                 }
 
@@ -1594,6 +1606,46 @@ private fun PackManagerDialog(
             }
         },
     )
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = scheme.surface,
+            title = { Text(packText("pack.deleteTitle", "删除 pack？")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        packText(
+                            "pack.deleteBody",
+                            "将删除「{name}」及其文件，不可恢复。",
+                        ).replace("{name}", target.name),
+                    )
+                    if (target.id == ui.activePackId) {
+                        Text(
+                            packText("pack.deleteActive", "这是当前正在使用的 pack，删除后会切回内置 pack。"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.error,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.deletePack(target.id)
+                        deleteTarget = null
+                    },
+                ) {
+                    Text(packText("pack.delete", "删除"), color = scheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) {
+                    Text(packText("dialog.cancel", "取消"))
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -1603,6 +1655,7 @@ private fun PackRow(
     selected: Boolean,
     cornerRadius: Int,
     onPick: () -> Unit,
+    onDelete: (() -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     Surface(
@@ -1642,6 +1695,19 @@ private fun PackRow(
                     modifier = Modifier.size(15.dp),
                     tint = scheme.primary,
                 )
+            }
+            if (onDelete != null) {
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(30.dp),
+                ) {
+                    Icon(
+                        packIcon("delete", "delete"),
+                        contentDescription = packText("pack.delete", "删除"),
+                        modifier = Modifier.size(15.dp),
+                        tint = scheme.error,
+                    )
+                }
             }
         }
     }
@@ -3087,6 +3153,21 @@ private fun Composer(
     val scheme = MaterialTheme.colorScheme
     val components = packComponents()
     val buttonSize = components.composerButtonSize.dp
+    val theme = packTheme()
+    val composerRadius = if (layout.composerRadius >= 0) {
+        layout.composerRadius
+    } else {
+        theme.composerRadius ?: (cornerRadius + 8)
+    }
+    val composerElevation = if (layout.composerElevation >= 0) {
+        layout.composerElevation
+    } else {
+        theme.composerElevation
+    }
+    val inputStyle = MaterialTheme.typography.bodyMedium.let { base ->
+        if (layout.composerFontSize > 0) base.copy(fontSize = layout.composerFontSize.sp) else base
+    }.copy(color = packColor(layout.composerTextColor))
+    val buttonIconSize = (layout.composerButtonIconSize.takeIf { it > 0 } ?: 21).dp
     val placeholderColor = when (layout.composerPlaceholderColor) {
         "primary" -> scheme.primary
         "secondary" -> scheme.secondary
@@ -3097,26 +3178,38 @@ private fun Composer(
     }
     val canSend = connected && value.isNotBlank()
     val shape = RoundedCornerShape(
-        topStart = (cornerRadius + 8).dp,
-        topEnd = (cornerRadius + 8).dp,
+        topStart = composerRadius.dp,
+        topEnd = composerRadius.dp,
     )
 
     Surface(
-        color = scheme.surface,
+        color = scheme.surface.copy(alpha = layout.composerSurfaceAlpha),
         shape = shape,
-        shadowElevation = 12.dp,
+        shadowElevation = composerElevation.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(
+                    horizontal = layout.composerPaddingH.dp,
+                    vertical = layout.composerPaddingV.dp,
+                ),
         ) {
             Row(verticalAlignment = Alignment.Bottom) {
                 OutlinedTextField(
                     value = value,
                     onValueChange = onValueChange,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(
+                            if (layout.composerMinHeight > 0) {
+                                Modifier.heightIn(min = layout.composerMinHeight.dp)
+                            } else {
+                                Modifier
+                            },
+                        ),
+                    textStyle = inputStyle,
                     placeholder = {
                         Text(
                             if (busy) {
@@ -3124,16 +3217,25 @@ private fun Composer(
                             } else {
                                 layout.composerPlaceholder
                             },
+                            style = MaterialTheme.typography.bodyMedium.let { base ->
+                                if (layout.composerFontSize > 0) {
+                                    base.copy(fontSize = layout.composerFontSize.sp)
+                                } else {
+                                    base
+                                }
+                            },
                             color = placeholderColor.copy(alpha = 0.75f),
                         )
                     },
                     maxLines = layout.composerMaxLines,
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(layout.composerInputRadius.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = scheme.primary.copy(alpha = 0.7f),
-                        unfocusedBorderColor = scheme.outline.copy(alpha = 0.5f),
-                        focusedContainerColor = scheme.surfaceVariant.copy(alpha = 0.35f),
-                        unfocusedContainerColor = scheme.surfaceVariant.copy(alpha = 0.35f),
+                        focusedBorderColor = scheme.primary.copy(
+                            alpha = (layout.composerInputBorderAlpha + 0.2f).coerceAtMost(1f),
+                        ),
+                        unfocusedBorderColor = scheme.outline.copy(alpha = layout.composerInputBorderAlpha),
+                        focusedContainerColor = scheme.surfaceVariant.copy(alpha = layout.composerInputAlpha),
+                        unfocusedContainerColor = scheme.surfaceVariant.copy(alpha = layout.composerInputAlpha),
                         cursorColor = scheme.primary,
                     ),
                     keyboardOptions = KeyboardOptions(
@@ -3156,7 +3258,7 @@ private fun Composer(
                         Icon(
                             packIcon("stop", "stop"),
                             contentDescription = packText("a11y.stop", "停止"),
-                            modifier = Modifier.size(21.dp),
+                            modifier = Modifier.size(buttonIconSize),
                             tint = scheme.error,
                         )
                     }
@@ -3179,7 +3281,7 @@ private fun Composer(
                             Icon(
                                 packIcon("send", "send"),
                                 contentDescription = packText("a11y.steer", "插队"),
-                                modifier = Modifier.size(21.dp),
+                                modifier = Modifier.size(buttonIconSize),
                                 tint = MaterialTheme.colorScheme.onPrimary,
                             )
                         }
@@ -3203,7 +3305,7 @@ private fun Composer(
                         Icon(
                             packIcon("send", "send"),
                             contentDescription = packText("a11y.send", "发送"),
-                            modifier = Modifier.size(21.dp),
+                            modifier = Modifier.size(buttonIconSize),
                             tint = if (canSend) MaterialTheme.colorScheme.onPrimary else scheme.onSurfaceVariant,
                         )
                     }

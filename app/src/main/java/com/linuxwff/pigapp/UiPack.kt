@@ -115,6 +115,19 @@ data class UiLayout(
     val composerPlaceholder: String = "给 Pig 发消息…",
     val composerMaxLines: Int = 6,
     val sendOnEnter: Boolean = true,
+    /** Composer surface/input appearance. */
+    val composerFontSize: Int = 0,
+    val composerTextColor: String = "onSurface",
+    val composerMinHeight: Int = 0,
+    val composerPaddingH: Int = 12,
+    val composerPaddingV: Int = 10,
+    val composerRadius: Int = -1,
+    val composerInputRadius: Int = 22,
+    val composerInputAlpha: Float = 0.35f,
+    val composerInputBorderAlpha: Float = 0.5f,
+    val composerElevation: Int = -1,
+    val composerSurfaceAlpha: Float = 1f,
+    val composerButtonIconSize: Int = 0,
     /** Chat transcript appearance. */
     val chatPaddingH: Int = 14,
     val chatPaddingV: Int = 10,
@@ -438,6 +451,33 @@ object UiPackParser {
             composerMaxLines = (composer?.optInt("maxLines", d.composerMaxLines)
                 ?: d.composerMaxLines).coerceIn(1, 12),
             sendOnEnter = composer?.optBoolean("sendOnEnter", d.sendOnEnter) ?: d.sendOnEnter,
+            composerFontSize = (composer?.optInt("fontSize", d.composerFontSize)
+                ?: d.composerFontSize).coerceIn(0, 32),
+            composerTextColor = composer?.optString("textColor", d.composerTextColor)
+                ?.takeIf { it.isNotBlank() } ?: d.composerTextColor,
+            composerMinHeight = (composer?.optInt("minHeight", d.composerMinHeight)
+                ?: d.composerMinHeight).coerceIn(0, 200),
+            composerPaddingH = (composer?.optInt("paddingH", d.composerPaddingH)
+                ?: d.composerPaddingH).coerceIn(0, 48),
+            composerPaddingV = (composer?.optInt("paddingV", d.composerPaddingV)
+                ?: d.composerPaddingV).coerceIn(0, 48),
+            composerRadius = (composer?.optInt("radius", d.composerRadius)
+                ?: d.composerRadius).coerceIn(-1, 40),
+            composerInputRadius = (composer?.optInt("inputRadius", d.composerInputRadius)
+                ?: d.composerInputRadius).coerceIn(0, 40),
+            composerInputAlpha = (composer?.optDouble(
+                "inputAlpha", d.composerInputAlpha.toDouble(),
+            ) ?: d.composerInputAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
+            composerInputBorderAlpha = (composer?.optDouble(
+                "borderAlpha", d.composerInputBorderAlpha.toDouble(),
+            ) ?: d.composerInputBorderAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
+            composerElevation = (composer?.optInt("elevation", d.composerElevation)
+                ?: d.composerElevation).coerceIn(-1, 40),
+            composerSurfaceAlpha = (composer?.optDouble(
+                "surfaceAlpha", d.composerSurfaceAlpha.toDouble(),
+            ) ?: d.composerSurfaceAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
+            composerButtonIconSize = (composer?.optInt("buttonIconSize", d.composerButtonIconSize)
+                ?: d.composerButtonIconSize).coerceIn(0, 32),
             chatPaddingH = (chat?.optInt("paddingH", d.chatPaddingH) ?: d.chatPaddingH)
                 .coerceIn(0, 64),
             chatPaddingV = (chat?.optInt("paddingV", d.chatPaddingV) ?: d.chatPaddingV)

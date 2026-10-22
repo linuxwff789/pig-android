@@ -280,4 +280,7 @@ data class AppUiState(
     val pendingMessages: Int = 0,
     /** Slash commands (built-ins + registered extension commands). */
     val commands: List<UiCommand> = emptyList(),
+    /** A model switch is in flight; header shows the actual model until get_state confirms. */
+    val modelSwitchPending: Boolean = false,
+    val pendingModel: String = "",
 )

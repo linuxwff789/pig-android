@@ -2,7 +2,10 @@
   "version": 1,
   "sidebar": {
     "widthDp": 260,
-    "sections": ["sessions", "projects"]
+    "sections": [
+      "sessions",
+      "projects"
+    ]
   },
   "chat": {
     "assistantLabel": "PIG",
@@ -48,7 +51,19 @@
     "placeholder": "输入消息…",
     "maxLines": 5,
     "sendOnEnter": true,
-    "placeholderColor": "textMuted"
+    "placeholderColor": "textMuted",
+    "fontSize": 12,
+    "textColor": "onSurface",
+    "minHeight": 40,
+    "paddingH": 10,
+    "paddingV": 8,
+    "radius": 12,
+    "inputRadius": 10,
+    "inputAlpha": 0.28,
+    "borderAlpha": 0.35,
+    "elevation": 2,
+    "surfaceAlpha": 1.0,
+    "buttonIconSize": 18
   },
   "drawer": {
     "background": "surface",
@@ -67,11 +82,13 @@
     "sectionLabelSize": 10,
     "sectionLabelUppercase": true,
     "sessionRowRadius": 8,
-    "sessionSelectedAlpha": 0.10,
+    "sessionSelectedAlpha": 0.1,
     "showSessionId": false,
     "showSessionTime": false,
     "searchRadius": 10,
-    "modules": ["newSession"]
+    "modules": [
+      "newSession"
+    ]
   },
   "skinSwitcher": {
     "show": true,
@@ -94,21 +111,84 @@
       "type": "row",
       "spacing": 6,
       "children": [
-        { "type": "icon", "icon": "menu", "size": 18, "action": "header:menu" },
-        { "type": "text", "text": "PIG", "style": "heading" },
-        { "type": "text", "bind": "state.model", "format": "{id}", "action": "header:model", "style": "label" },
-        { "type": "icon", "icon": "chevronDown", "size": 12, "action": "header:model" },
-        { "type": "spacer", "weight": 1.0 },
-        { "type": "text", "bind": "stats.contextUsage", "format": "ctx {percent}%", "style": "label" },
-        { "type": "text", "bind": "state.thinkingLevel", "format": "think {value}", "style": "label" },
-        { "type": "text", "bind": "stats", "format": "cache {cacheHitRate}%", "style": "label" },
-        { "type": "icon", "icon": "stop", "size": 18, "action": "header:stop", "visibleWhen": "busy" },
-        { "type": "icon", "icon": "refresh", "size": 18, "action": "header:reconnect", "visibleWhen": "offline" }
+        {
+          "type": "icon",
+          "icon": "menu",
+          "size": 18,
+          "action": "header:menu"
+        },
+        {
+          "type": "text",
+          "text": "PIG",
+          "style": "heading"
+        },
+        {
+          "type": "text",
+          "bind": "state.model",
+          "format": "{id}",
+          "action": "header:model",
+          "style": "label"
+        },
+        {
+          "type": "icon",
+          "icon": "chevronDown",
+          "size": 12,
+          "action": "header:model"
+        },
+        {
+          "type": "spacer",
+          "weight": 1.0
+        },
+        {
+          "type": "text",
+          "bind": "stats.contextUsage",
+          "format": "ctx {percent}%",
+          "style": "label"
+        },
+        {
+          "type": "text",
+          "bind": "state.thinkingLevel",
+          "format": "think {value}",
+          "style": "label"
+        },
+        {
+          "type": "text",
+          "bind": "stats",
+          "format": "cache {cacheHitRate}%",
+          "style": "label"
+        },
+        {
+          "type": "icon",
+          "icon": "stop",
+          "size": 18,
+          "action": "header:stop",
+          "visibleWhen": "busy"
+        },
+        {
+          "type": "icon",
+          "icon": "refresh",
+          "size": 18,
+          "action": "header:reconnect",
+          "visibleWhen": "offline"
+        }
       ]
     }
   },
   "dataSources": {
-    "state": { "rpc": "get_state", "refresh": ["connect", "agent_end", "session_switch"] },
-    "stats": { "rpc": "get_session_stats", "refresh": ["agent_end", "compaction_end"] }
+    "state": {
+      "rpc": "get_state",
+      "refresh": [
+        "connect",
+        "agent_end",
+        "session_switch"
+      ]
+    },
+    "stats": {
+      "rpc": "get_session_stats",
+      "refresh": [
+        "agent_end",
+        "compaction_end"
+      ]
+    }
   }
 }

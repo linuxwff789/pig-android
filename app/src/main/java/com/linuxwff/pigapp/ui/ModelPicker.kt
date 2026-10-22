@@ -74,7 +74,9 @@ fun ModelPickerDialog(vm: AppViewModel) {
                 Column(Modifier.weight(1f)) {
                     Text(packText("model.title", "选择模型"), style = MaterialTheme.typography.titleLarge)
                     Text(
-                        if (vm.modelsLoading) {
+                        if (vm.ui.modelSwitchPending) {
+                            packText("model.switching", "切换中…")
+                        } else if (vm.modelsLoading) {
                             packText("model.loading", "正在加载模型…")
                         } else {
                             packText("model.count", "{count} 个可用")
@@ -117,7 +119,7 @@ fun ModelPickerDialog(vm: AppViewModel) {
                         cursorColor = scheme.primary,
                     ),
                 )
-                if (vm.ui.thinkingLevels.size > 1) {
+                if (vm.ui.thinkingLevels.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
                     Text(
                         packText("model.thinking", "思考档位 · {level}")
@@ -132,6 +134,7 @@ fun ModelPickerDialog(vm: AppViewModel) {
                         vm.ui.thinkingLevels.forEach { level ->
                             FilterChip(
                                 selected = vm.ui.thinkingLevel == level,
+                                enabled = !vm.ui.modelSwitchPending,
                                 onClick = { vm.setThinkingLevel(level) },
                                 label = { Text(level) },
                                 shape = CircleShape,
@@ -143,7 +146,7 @@ fun ModelPickerDialog(vm: AppViewModel) {
                         }
                     }
                 }
-                if (vm.modelsLoading) {
+                if (vm.modelsLoading || vm.ui.modelSwitchPending) {
                     Spacer(Modifier.height(6.dp))
                     LinearProgressIndicator(
                         modifier = Modifier
@@ -172,6 +175,7 @@ fun ModelPickerDialog(vm: AppViewModel) {
                             model = model,
                             selected = "${model.provider}/${model.id}" == vm.ui.model,
                             cornerRadius = corner,
+                            enabled = !vm.ui.modelSwitchPending,
                             onClick = { vm.selectModel(model) },
                         )
                     }
@@ -192,7 +196,13 @@ fun ModelPickerDialog(vm: AppViewModel) {
 }
 
 @Composable
-private fun ModelRow(model: ModelInfo, selected: Boolean, cornerRadius: Int, onClick: () -> Unit) {
+private fun ModelRow(
+    model: ModelInfo,
+    selected: Boolean,
+    cornerRadius: Int,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
     val scheme = MaterialTheme.colorScheme
     val shape = RoundedCornerShape((cornerRadius - 4).coerceAtLeast(8).dp)
     Row(
@@ -201,7 +211,7 @@ private fun ModelRow(model: ModelInfo, selected: Boolean, cornerRadius: Int, onC
             .padding(vertical = 1.dp)
             .clip(shape)
             .background(if (selected) scheme.primary.copy(alpha = 0.12f) else Color.Transparent)
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
