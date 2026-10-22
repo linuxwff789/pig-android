@@ -1270,9 +1270,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (currentAssistant == null) {
             currentAssistant = "a${nextId++}".also {
                 append(ChatMsg(id = it, role = Role.ASSISTANT))
+                ui = ui.copy(streamingId = it)
             }
         }
-        currentAssistant?.let { ui = ui.copy(streamingId = it) }
         scheduleLiveFlush()
     }
 
