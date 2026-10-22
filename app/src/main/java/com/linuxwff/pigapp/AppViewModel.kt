@@ -52,6 +52,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     private var nextId = 1
+    private var lastStateRequestId = ""
+    private var lastMessagesRequestId = ""
     private var currentAssistant: String? = null
     private val toolMsgIds = mutableMapOf<String, String>()
 
@@ -367,6 +369,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Ask pig for the current context usage; refreshed on connect, session switch and after each turn. */
     private fun requestStats() {
         client.send(JSONObject().put("id", "stats-${nextId++}").put("type", "get_session_stats"))
+    }
+
+    private fun requestState() {
+        val id = "state-${nextId++}"
+        lastStateRequestId = id
+        client.send(JSONObject().put("id", id).put("type", "get_state"))
+    }
+
+    private fun requestMessages() {
+        val id = "msgs-${nextId++}"
+        lastMessagesRequestId = id
+        client.send(JSONObject().put("id", id).put("type", "get_messages"))
     }
 
     fun switchSession(path: String) {
@@ -720,8 +734,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 pendingToolPartials.clear()
                 // The relay may have kept the previous pig alive (mid-turn
                 // reconnect). Ask it what it is doing before switching sessions.
-                client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
-                client.send(JSONObject().put("id", "msgs-${nextId++}").put("type", "get_messages"))
+                requestState()
+                requestMessages()
                 requestStats()
                 requestSessions()
                 client.send(JSONObject().put("type", "relay_ui"))
@@ -803,6 +817,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun handleResponse(event: JSONObject) {
+        val responseCommand = event.optString("command")
+        val responseId = event.optString("id")
+        if (responseCommand == "get_state" && responseId.isNotBlank() && responseId != lastStateRequestId) {
+            return
+        }
+        if (responseCommand == "get_messages" && responseId.isNotBlank() && responseId != lastMessagesRequestId) {
+            return
+        }
+        val taggedPath = event.optString("sessionPath")
+        if (taggedPath.isNotBlank() && responseCommand in setOf("get_messages", "get_session_stats")) {
+            val expected = desiredSessionPath ?: ui.sessionFile
+            if (expected.isNotBlank() && taggedPath != expected) return
+        }
         if (!event.optBoolean("success", true)) {
             val command = event.optString("command")
             if (command == "switch_session" && restorePending) {
@@ -811,7 +838,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 desiredSessionPath = null
                 prefs.edit().remove("lastSessionFile").apply()
                 ui = ui.copy(status = "")
-                client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
+                requestState()
                 requestStats()
                 append(
                     ChatMsg(
@@ -827,8 +854,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 ui = ui.copy(status = "")
                 // Never leave the transcript empty after a failed switch:
                 // reload whatever the pig is still working on.
-                client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
-                client.send(JSONObject().put("id", "msgs-${nextId++}").put("type", "get_messages"))
+                requestState()
+                requestMessages()
                 requestStats()
             }
             append(
@@ -844,7 +871,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val command = event.optString("command")
         // These commands carry no data but still change UI state.
         if (command == "set_thinking_level") {
-            client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
+            requestState()
             return
         }
         if (command == "set_session_name") {
@@ -862,8 +889,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             ui = ui.copy(messages = emptyList(), status = "", streamingId = null)
             clearLive()
             pendingToolPartials.clear()
-            client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
-            client.send(JSONObject().put("id", "msgs-${nextId++}").put("type", "get_messages"))
+            requestState()
+            requestMessages()
             requestStats()
             requestSessions()
             return
@@ -994,7 +1021,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     JSONObject().put("id", "levels-${nextId++}")
                         .put("type", "get_available_thinking_levels"),
                 )
-                client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
+                requestState()
                 requestStats()
             }
         }

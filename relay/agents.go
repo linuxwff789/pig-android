@@ -245,6 +245,37 @@ func (a *agentProc) trackFrame(s *session, payload []byte) {
 	}
 }
 
+// tagResponse adds the producing session path to state/message responses so a
+// client can drop stale replies that raced a session switch.
+func (s *session) tagResponse(a *agentProc, payload []byte) []byte {
+	head := payload
+	if len(head) > 256 {
+		head = head[:256]
+	}
+	if !bytes.Contains(head, []byte(`"command":"get_messages"`)) &&
+		!bytes.Contains(head, []byte(`"command":"get_state"`)) &&
+		!bytes.Contains(head, []byte(`"command":"get_session_stats"`)) {
+		return payload
+	}
+	s.agentMu.Lock()
+	path := a.path
+	s.agentMu.Unlock()
+	if path == "" || len(payload) == 0 || payload[0] != '{' {
+		return payload
+	}
+	quoted, err := json.Marshal(path)
+	if err != nil {
+		return payload
+	}
+	out := make([]byte, 0, len(payload)+len(quoted)+20)
+	out = append(out, '{')
+	out = append(out, []byte(`"sessionPath":`)...)
+	out = append(out, quoted...)
+	out = append(out, ',')
+	out = append(out, payload[1:]...)
+	return out
+}
+
 func (s *session) mapAgentPath(a *agentProc, path string) {
 	if path == "" {
 		return
@@ -311,7 +342,7 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 			payload := append([]byte(nil), line...)
 			a.trackFrame(s, payload)
 			if s.isActive(a) {
-				_ = s.sendRaw(payload)
+				_ = s.sendRaw(s.tagResponse(a, payload))
 			}
 		}
 	}()
@@ -604,10 +635,11 @@ func (s *session) syntheticState(id any) frame {
 	path := s.activePath
 	sid, provider, model, count := readSessionSummary(path)
 	return frame{
-		"type":    "response",
-		"id":      id,
-		"command": "get_state",
-		"success": true,
+		"type":        "response",
+		"id":          id,
+		"command":     "get_state",
+		"success":     true,
+		"sessionPath": path,
 		"data": frame{
 			"model": frame{
 				"provider":      provider,
@@ -628,10 +660,11 @@ func (s *session) syntheticState(id any) frame {
 
 func (s *session) syntheticMessages(id any) frame {
 	return frame{
-		"type":    "response",
-		"id":      id,
-		"command": "get_messages",
-		"success": true,
+		"type":        "response",
+		"id":          id,
+		"command":     "get_messages",
+		"success":     true,
+		"sessionPath": s.activePath,
 		"data": frame{
 			"messages": s.cachedMessages(s.activePath),
 		},
@@ -692,7 +725,7 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 		} else {
 			_ = s.send(frame{
 				"type": "response", "id": id, "command": "get_session_stats",
-				"success": true, "data": frame{},
+				"success": true, "sessionPath": s.activePath, "data": frame{},
 			})
 		}
 	case "prompt":
