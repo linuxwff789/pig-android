@@ -61,6 +61,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var desiredSessionPath: String? = null
     private var restorePending = false
     private var restoreChecked = false
+    private var deferredSwitchPath: String? = null
     private var liveText: String? = null
     private val pendingToolPartials = mutableMapOf<String, String>()
 
@@ -280,6 +281,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (text.isEmpty()) return
         append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = text))
         currentAssistant = null
+        deferredSwitchPath = null
         val command = JSONObject()
             .put("id", "p${nextId++}")
             .put("type", "prompt")
@@ -344,9 +346,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun switchSession(path: String) {
+        if (path == ui.sessionFile) {
+            if (deferredSwitchPath != null) {
+                deferredSwitchPath = null
+                ui = ui.copy(toast = "已取消切换")
+            } else {
+                ui = ui.copy(toast = "已经是当前会话")
+            }
+            return
+        }
         val session = ui.sessions.firstOrNull { it.path == path }
         val recent = session != null && System.currentTimeMillis() - session.updated < 60_000
-        if (recent && path != ui.sessionFile) {
+        if (recent) {
             ui = ui.copy(pendingSwitch = session)
             return
         }
@@ -364,9 +375,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun doSwitch(path: String) {
+        if (path == ui.sessionFile) return
+        if (ui.busy) {
+            // One pig can only own one session at a time; switching now would
+            // abort/queue behind the running turn. Keep streaming and switch
+            // once the turn settles (tap 当前会话 again to cancel).
+            deferredSwitchPath = path
+            ui = ui.copy(toast = "当前会话还在输出，结束后会切换")
+            return
+        }
+        deferredSwitchPath = null
         desiredSessionPath = path
         restorePending = false
-        ui = ui.copy(status = "switching", messages = emptyList())
+        // Keep the current transcript visible until the new one arrives.
+        ui = ui.copy(status = "switching")
         client.send(
             JSONObject()
                 .put("id", "switch-${nextId++}")
@@ -377,6 +399,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun newSession() {
         currentAssistant = null
+        deferredSwitchPath = null
         client.send(JSONObject().put("type", "new_session"))
     }
 
@@ -686,6 +709,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 restoreChecked = false
                 restorePending = false
                 desiredSessionPath = null
+                deferredSwitchPath = null
                 liveText = null
                 pendingToolPartials.clear()
                 // The relay may have kept the previous pig alive (mid-turn
@@ -749,6 +773,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 liveText = null
                 pendingToolPartials.clear()
                 requestStats()
+                deferredSwitchPath?.let { path ->
+                    deferredSwitchPath = null
+                    doSwitch(path)
+                }
             }
             "message_start" -> handleMessageStart(event.optJSONObject("message"))
             "message_update" -> handleMessageUpdate(event)
@@ -793,7 +821,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (command == "switch_session") {
                 desiredSessionPath = null
+                deferredSwitchPath = null
                 ui = ui.copy(status = "")
+                // Never leave the transcript empty after a failed switch:
+                // reload whatever the pig is still working on.
+                client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
+                client.send(JSONObject().put("id", "msgs-${nextId++}").put("type", "get_messages"))
+                requestStats()
             }
             append(
                 ChatMsg(
