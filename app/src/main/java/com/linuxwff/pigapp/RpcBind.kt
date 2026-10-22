@@ -3,6 +3,8 @@ package com.linuxwff.pigapp
 import org.json.JSONArray
 import org.json.JSONObject
 
+private val placeholderRegex = Regex("\\{([a-zA-Z0-9_.]+)\\}")
+
 /**
  * Resolve `stats.tokens.cacheRead` against the pack's RPC data. The first
  * segment is a `dataSources` name (or a built-in alias such as `state`).
@@ -33,8 +35,7 @@ fun formatRpcValue(value: Any?, format: String, fallback: String = ""): String? 
     if (format.isBlank()) return displayRpcValue(value)
     var out = format
     if (value is JSONObject || value is JSONArray) {
-        val regex = Regex("\\{([a-zA-Z0-9_.]+)\\}")
-        out = regex.replace(out) { match ->
+        out = placeholderRegex.replace(out) { match ->
             val path = match.groupValues[1]
             val resolved = resolveAny(value, path)
             if (resolved == null) match.value else displayRpcValue(resolved)
@@ -42,6 +43,7 @@ fun formatRpcValue(value: Any?, format: String, fallback: String = ""): String? 
     } else {
         out = out.replace("{value}", displayRpcValue(value))
     }
+    if (placeholderRegex.containsMatchIn(out)) return fallback.ifBlank { null }
     return out
 }
 
