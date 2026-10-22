@@ -89,7 +89,8 @@ Optional drawer entries. The relay pushes it with the rest of the pack.
       "label": "模型供应商",
       "window": "providers",
       "command": "provider-ui",
-      "icon": "build"
+      "icon": "build",
+      "placement": "settings"
     }
   ]
 }
@@ -100,7 +101,10 @@ Optional drawer entries. The relay pushes it with the rest of the pack.
 - `command` is a slash command (leading `/` optional); it runs after the window
   is restored so the extension can refresh it.
 - `icon` accepts `build`, `refresh` or `add` (unknown values fall back to build).
-- Entries appear in the drawer under 面板. A window referenced by `nav.json` is
+- `placement` is `drawer` (default, listed under 面板) or `settings` (rendered in
+  the app's settings dialog, e.g. 模型供应商). This is data-only: moving an entry
+  between the drawer and settings needs no app rebuild.
+- A window referenced by `nav.json` is
   **on demand**: it is not auto-opened when the pack loads (including app
   restarts); tapping the entry restores it. A window without a nav entry still
   opens automatically when its file appears.

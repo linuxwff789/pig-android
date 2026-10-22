@@ -30,8 +30,10 @@ an API key. All agent work happens in the original `pig` binary.
   preview, id or cwd; each row has a menu to rename (RPC `set_session_name` for
   the live session, a relay-appended `session_info` entry otherwise) and delete
   the session file. The active session cannot be deleted.
-- `nav.json` drawer entries: extensions can add a button (e.g. 模型供应商) that
-  restores its window and runs a slash command to refresh it.
+- `nav.json` entries: extensions can add a button (e.g. 模型供应商) that restores
+  its window and runs a slash command to refresh it. `placement` is `drawer`
+  (default) or `settings`; the latter appears in the settings dialog, so moving
+  extension entries is a data-only edit (no app rebuild).
 - Model picker: tap the model name in the top bar to search the available
   models (context size, thinking, image support) and switch with `set_model`.
   The same dialog exposes the thinking-level chips when the model supports

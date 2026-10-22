@@ -603,6 +603,32 @@ private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Un
                     }
                 }
 
+                val settingsNav = ui.uiPack.nav.filter { it.placement == "settings" }
+                if (settingsNav.isNotEmpty()) {
+                    HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
+                    Text("扩展", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                    settingsNav.forEach { item ->
+                        OutlinedButton(
+                            onClick = {
+                                onDismiss()
+                                vm.openNavItem(item)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(
+                                (ui.uiPack.theme.cornerRadius / 2).coerceAtLeast(8).dp,
+                            ),
+                        ) {
+                            Icon(
+                                navIcon(item.icon),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(item.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+
                 HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
                 Text("关于", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
                 Text(
@@ -758,9 +784,10 @@ private fun DrawerContent(
             Text("设置")
         }
 
-        if (ui.uiPack.nav.isNotEmpty()) {
+        val drawerNav = ui.uiPack.nav.filter { it.placement != "settings" }
+        if (drawerNav.isNotEmpty()) {
             SectionLabel("面板")
-            ui.uiPack.nav.forEach { item ->
+            drawerNav.forEach { item ->
                 OutlinedButton(
                     onClick = {
                         vm.openNavItem(item)

@@ -129,6 +129,11 @@ object UiPackParser {
             val id = item.optString("id", window).ifBlank { window }.take(40)
             val label = item.optString("label", id).ifBlank { id }.take(40)
             val command = item.optString("command").trim().removePrefix("/").take(80)
+            val placement = if (item.optString("placement", "drawer").trim().lowercase() == "settings") {
+                "settings"
+            } else {
+                "drawer"
+            }
             out.add(
                 NavItem(
                     id = id,
@@ -136,6 +141,7 @@ object UiPackParser {
                     window = window,
                     command = command,
                     icon = item.optString("icon").take(20),
+                    placement = placement,
                 ),
             )
         }

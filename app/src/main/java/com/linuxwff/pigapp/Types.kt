@@ -34,6 +34,8 @@ data class NavItem(
     val window: String,
     val command: String = "",
     val icon: String = "",
+    /** "drawer" (default) or "settings". */
+    val placement: String = "drawer",
 )
 
 data class ModelInfo(
