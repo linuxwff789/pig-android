@@ -195,6 +195,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         client.send(JSONObject().put("id", "sessions-${nextId++}").put("type", "relay_sessions"))
     }
 
+    /** Ask pig for the current context usage; refreshed on connect, session switch and after each turn. */
+    private fun requestStats() {
+        client.send(JSONObject().put("id", "stats-${nextId++}").put("type", "get_session_stats"))
+    }
+
     fun switchSession(path: String) {
         val session = ui.sessions.firstOrNull { it.path == path }
         val recent = session != null && System.currentTimeMillis() - session.updated < 60_000
@@ -496,7 +501,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "relay_hello" -> {
                 ui = ui.copy(error = null, setup = false, setupHint = null)
                 client.send(JSONObject().put("id", "state-1").put("type", "get_state"))
-                client.send(JSONObject().put("id", "stats-1").put("type", "get_session_stats"))
+                requestStats()
                 requestSessions()
             }
             "relay_client_error" -> {
@@ -517,7 +522,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "response" -> handleResponse(event)
             "agent_start" -> ui = ui.copy(busy = true, status = "thinking")
             "turn_start" -> ui = ui.copy(status = "working")
-            "agent_end", "agent_settled" -> ui = ui.copy(busy = false, status = "")
+            "agent_end", "agent_settled" -> {
+                ui = ui.copy(busy = false, status = "")
+                requestStats()
+            }
             "message_start" -> handleMessageStart(event.optJSONObject("message"))
             "message_update" -> handleMessageUpdate(event.optJSONObject("assistantMessageEvent"))
             "message_end" -> handleMessageEnd(event.optJSONObject("message"))
@@ -526,7 +534,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "tool_execution_end" -> handleToolEnd(event)
             "extension_ui_request" -> handleUiRequest(event)
             "compaction_start" -> ui = ui.copy(status = "compacting")
-            "compaction_end" -> ui = ui.copy(status = "")
+            "compaction_end" -> {
+                ui = ui.copy(status = "")
+                requestStats()
+            }
             "error" -> {
                 val message = event.optString("message", event.optString("error", "unknown error"))
                 append(ChatMsg(id = "n${nextId++}", role = Role.NOTICE, text = message, isError = true))
@@ -558,6 +569,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             ui = ui.copy(messages = emptyList(), status = "")
             client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
             client.send(JSONObject().put("id", "msgs-${nextId++}").put("type", "get_messages"))
+            requestStats()
             requestSessions()
             return
         }
@@ -588,7 +600,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "get_session_stats" -> {
                 val usage = data.optJSONObject("contextUsage")
                 if (usage != null) {
-                    ui = ui.copy(contextPercent = usage.optDouble("percent", 0.0))
+                    ui = ui.copy(
+                        contextPercent = usage.optDouble("percent", 0.0),
+                        contextTokens = usage.optInt("tokens", ui.contextTokens),
+                        contextWindow = usage.optInt("contextWindow", ui.contextWindow),
+                    )
                 }
             }
             "get_messages" -> data.optJSONArray("messages")?.let { renderHistory(it) }
@@ -627,6 +643,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         .put("type", "get_available_thinking_levels"),
                 )
                 client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
+                requestStats()
             }
         }
     }

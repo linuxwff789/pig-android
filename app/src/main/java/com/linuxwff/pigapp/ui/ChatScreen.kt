@@ -322,11 +322,20 @@ private fun PigHeader(
                             overflow = TextOverflow.Ellipsis,
                         )
                         if (ui.uiPack.layout.showUsage) {
-                            ui.contextPercent?.let {
+                            ui.contextPercent?.let { percent ->
+                                val usage = buildString {
+                                    append("  ·  %.0f%%".format(percent))
+                                    if (ui.contextWindow > 0) {
+                                        append(" · ")
+                                        append(formatTokens(ui.contextTokens))
+                                        append('/')
+                                        append(formatTokens(ui.contextWindow))
+                                    }
+                                }
                                 Text(
-                                    "  ·  %.0f%%".format(it),
+                                    usage,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = scheme.onSurfaceVariant,
+                                    color = if (percent >= 80) scheme.error else scheme.onSurfaceVariant,
                                 )
                             }
                         }
@@ -1413,4 +1422,10 @@ private fun ErrorBanner(message: String, onDismiss: () -> Unit) {
             }
         }
     }
+}
+
+private fun formatTokens(tokens: Int): String = when {
+    tokens >= 1_000_000 -> "%.1f".format(tokens / 1_000_000f).removeSuffix(".0") + "M"
+    tokens >= 1000 -> "${tokens / 1000}K"
+    else -> "$tokens"
 }

@@ -71,6 +71,7 @@ data class AppUiState(
     val uiPack: UiPack = UiPack(),
     val uiPackError: String? = null,
     val contextPercent: Double? = null,
+    val contextTokens: Int = 0,
     val sessions: List<SessionInfo> = emptyList(),
     val sessionsLoading: Boolean = false,
     val sessionFile: String = "",

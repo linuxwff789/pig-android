@@ -128,7 +128,9 @@ Optional drawer entries. The relay pushes it with the rest of the pack.
   summary, `expanded` shows the full output. The card always has 收起 / 摘要 /
   展开 chips; `write` reports lines and bytes, `edit` reports added/removed
   lines and renders the diff with colored +/- lines.
-- `chat.showUsage` adds the context percentage to the top bar.
+- `chat.showUsage` adds the context usage (percentage plus used/total tokens) to the
+  top bar; the app refreshes it on connect, session switch, model change and
+  after every turn.
 - `composer.maxLines` is clamped to 1–12.
 - `sendOnEnter` changes the IME action to Send.
 
