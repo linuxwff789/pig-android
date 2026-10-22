@@ -243,6 +243,7 @@ next model call provides a fresh usage value.
 | `relay.*`, `error.*` | launcher errors, connection errors, pack errors |
 | `notification.*` | foreground-service notification (best-effort: the service may start before a pack is loaded, then falls back) |
 | `a11y.*` | menu/stop/reconnect/copy/close/window-close labels |
+| `brand.emoji` | avatar glyph (default 🐷) |
 | `toast.*` | short confirmations and validation errors |
 
 Every literal in these groups has a built-in Chinese fallback, so a pack can

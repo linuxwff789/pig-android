@@ -224,5 +224,8 @@
     "channelDesc": "保持与 Termux 里 pig-relay 的连接",
     "title": "Pig 后台运行中",
     "text": "保持与 Termux 的连接，锁屏后会话继续"
+  },
+  "brand": {
+    "emoji": "🐷"
   }
 }

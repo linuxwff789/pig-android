@@ -49,7 +49,8 @@ fun brandBrush(alpha: Float = 1f): Brush {
 
 /** The pig badge: bright gradient disc with a soft glow. */
 @Composable
-fun BrandAvatar(size: Dp = 34.dp, emoji: String = "🐷", shadow: Boolean = true) {
+fun BrandAvatar(size: Dp = 34.dp, emoji: String? = null, shadow: Boolean = true) {
+    val glyph = emoji ?: packText("brand.emoji", "🐷")
     val shape = CircleShape
     val primary = MaterialTheme.colorScheme.primary
     var modifier = Modifier.size(size)
@@ -63,7 +64,7 @@ fun BrandAvatar(size: Dp = 34.dp, emoji: String = "🐷", shadow: Boolean = true
             .border(1.dp, Color.White.copy(alpha = 0.22f), shape),
         contentAlignment = Alignment.Center,
     ) {
-        Text(emoji, fontSize = (size.value * 0.5f).sp)
+        Text(glyph, fontSize = (size.value * 0.5f).sp)
     }
 }
 

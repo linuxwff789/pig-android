@@ -155,6 +155,13 @@ The app is designed to survive screen locks, Doze and process death:
   deltas. If `get_state` says the pig is streaming on the saved session, the app
   skips `switch_session` and binds the partial assistant bubble instead.
 
+## UI pack
+
+`~/.pig/android-ui/` drives colors, typography, layout switches, component
+visibility/sizes, icons, nav entries, windows, assets and **all app-owned
+strings** — including setup, dialogs, tool metrics, notification text and
+launcher errors. See `docs/ui-pack.md` for the key groups and placeholders.
+
 ## Context and cache
 
 The header shows the current context percentage/tokens and the cumulative
