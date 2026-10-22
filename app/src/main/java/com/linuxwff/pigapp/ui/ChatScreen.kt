@@ -61,6 +61,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -586,6 +587,18 @@ private fun DrawerContent(vm: AppViewModel, ui: AppUiState, onClose: () -> Unit)
             Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
             Text("启动 / 重连 relay")
+        }
+        OutlinedButton(
+            onClick = {
+                vm.openBatterySettings()
+                onClose()
+            },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(corner.dp),
+        ) {
+            Icon(Icons.Default.Settings, null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("后台保活 / 电池白名单")
         }
 
         if (ui.uiPack.nav.isNotEmpty()) {

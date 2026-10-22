@@ -144,6 +144,21 @@ The app is designed to survive screen locks, Doze and process death:
   new session.
 - `relay_exit` (pig crashed or was killed) also triggers the reconnect loop.
 
+## Keep-alive
+
+- `KeepAliveService` is a `specialUse` foreground service started by
+  `MainActivity`. It keeps the process (and the loopback socket) alive while the
+  screen is off; Android 14+/15 no longer caches the app aggressively. The
+  persistent notification opens the app when tapped.
+- On the first relay launch each process the app runs `termux-wake-lock` via
+  `RUN_COMMAND`, so Termux does not get frozen during long turns.
+- The drawer has **后台保活 / 电池白名单**, which requests
+  `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` for the app. If the dialog is blocked,
+  allow the app manually under Settings → Battery. Allowing Termux as well is
+  recommended on aggressive OEM ROMs (MIUI, etc.).
+- `POST_NOTIFICATIONS` is requested on Android 13+; the service still runs when
+  it is denied, only the notification is hidden.
+
 ## Layout
 
 ```

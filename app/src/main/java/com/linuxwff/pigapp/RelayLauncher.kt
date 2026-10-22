@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -12,6 +13,7 @@ object RelayLauncher {
     private const val TERMUX_PKG = "com.termux"
     private const val RUN_COMMAND = "com.termux.permission.RUN_COMMAND"
     private const val RELAY_BIN = "/data/data/com.termux/files/usr/bin/pig-relay"
+    private const val WAKE_LOCK_BIN = "/data/data/com.termux/files/usr/bin/termux-wake-lock"
     private const val TERMUX_ACTIVITY = "com.termux.app.TermuxActivity"
     private const val INSTALL_SCRIPT =
         "https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh"
@@ -75,6 +77,7 @@ object RelayLauncher {
      * `allow-external-apps = true` in ~/.termux/termux.properties.
      */
     fun launch(context: Context, port: Int, token: String, cwd: String): String? {
+        acquireTermuxWakeLock(context)
         val intent = Intent().apply {
             setClassName(TERMUX_PKG, "com.termux.app.RunCommandService")
             action = "com.termux.RUN_COMMAND"
@@ -100,5 +103,41 @@ object RelayLauncher {
                     "${second.javaClass.simpleName}: ${second.message}"
             }
         }
+    }
+
+    private var wakeLockRequested = false
+
+    /** Ask Termux to hold its own wakelock once per app process. */
+    private fun acquireTermuxWakeLock(context: Context) {
+        if (wakeLockRequested) return
+        val intent = Intent().apply {
+            setClassName(TERMUX_PKG, "com.termux.app.RunCommandService")
+            action = "com.termux.RUN_COMMAND"
+            putExtra("com.termux.RUN_COMMAND_PATH", WAKE_LOCK_BIN)
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
+        }
+        runCatching {
+            context.startService(intent)
+            wakeLockRequested = true
+        }
+    }
+
+    fun isIgnoringBatteryOptimizations(context: Context): Boolean = runCatching {
+        val manager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        manager.isIgnoringBatteryOptimizations(context.packageName)
+    }.getOrDefault(false)
+
+    /** Returns true when the system dialog was launched. */
+    fun requestIgnoreBatteryOptimizations(context: Context): Boolean {
+        if (isIgnoringBatteryOptimizations(context)) return false
+        return runCatching {
+            context.startActivity(
+                Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:${context.packageName}"),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            true
+        }.getOrDefault(false)
     }
 }

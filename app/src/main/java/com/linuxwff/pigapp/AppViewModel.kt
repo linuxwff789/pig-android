@@ -93,6 +93,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    override fun onCleared() {
+        // The Activity (and this ViewModel) may be destroyed while the keep-alive
+        // service keeps the process alive. Close the socket so a later ViewModel
+        // cannot end up with a second relay connection; onResume reconnects and
+        // restores the session file.
+        client.close()
+        KeepAliveService.stop(getApplication())
+        super.onCleared()
+    }
+
     fun connect() {
         val ctx = getApplication<Application>()
         if (!RelayLauncher.hasPermission(ctx)) {
@@ -209,6 +219,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openAppSettings() {
         RelayLauncher.openAppSettings(getApplication())
+    }
+
+    fun openBatterySettings() {
+        val ctx = getApplication<Application>()
+        if (RelayLauncher.isIgnoringBatteryOptimizations(ctx)) {
+            ui = ui.copy(toast = "已在电池优化白名单里")
+            return
+        }
+        ui = ui.copy(
+            toast = if (RelayLauncher.requestIgnoreBatteryOptimizations(ctx)) {
+                "请在系统弹窗里选择「允许」"
+            } else {
+                "无法直接请求，请在系统设置 → 电池里手动允许"
+            },
+        )
     }
 
     fun sendPrompt(raw: String) {
