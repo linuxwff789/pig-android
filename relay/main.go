@@ -94,30 +94,94 @@ func (p *pigProcess) stop() {
 }
 
 type session struct {
-	conn        net.Conn
-	out         *connWriter
 	token       string
 	cwd         string
 	uiDir       string
 	sessionsDir string
 	pigBin      string
-	closed      chan struct{}
-	closeMu     sync.Once
 
-	pigMu sync.Mutex
-	pig   *pigProcess
+	mu      sync.Mutex
+	conn    net.Conn
+	out     *connWriter
+	connGen uint64
+
+	pigMu     sync.Mutex
+	pig       *pigProcess
+	pendingUI map[string]json.RawMessage
+
+	uiMu   sync.Mutex
+	uiHash string
+
+	streamMu    sync.Mutex
+	streamText  string
+	activeTools map[string]toolProgress
+
+	stopOnce sync.Once
+	stopped  chan struct{}
 }
 
-func (s *session) shutdown() {
-	s.closeMu.Do(func() { close(s.closed) })
-	s.pigMu.Lock()
-	pig := s.pig
-	s.pig = nil
-	s.pigMu.Unlock()
-	if pig != nil {
-		pig.stop()
+type toolProgress struct {
+	Name    string
+	Partial json.RawMessage
+}
+
+// newSession builds the long-lived bridge. The pig lives in this struct, not in
+// the connection, so detaching the app does not abort a running turn.
+func newSession(token, cwd, uiDir, sessionsDir, pigBin string) *session {
+	return &session{
+		token:       token,
+		cwd:         cwd,
+		uiDir:       uiDir,
+		sessionsDir: sessionsDir,
+		pigBin:      pigBin,
+		pendingUI:   map[string]json.RawMessage{},
+		activeTools: map[string]toolProgress{},
+		stopped:     make(chan struct{}),
 	}
-	_ = s.conn.Close()
+}
+
+func (s *session) stop() {
+	s.stopOnce.Do(func() {
+		close(s.stopped)
+		s.pigMu.Lock()
+		pig := s.pig
+		s.pig = nil
+		s.pendingUI = map[string]json.RawMessage{}
+		s.pigMu.Unlock()
+		if pig != nil {
+			pig.stop()
+		}
+		s.mu.Lock()
+		conn := s.conn
+		s.conn = nil
+		s.out = nil
+		s.mu.Unlock()
+		if conn != nil {
+			_ = conn.Close()
+		}
+	})
+}
+
+func (s *session) currentOut() *connWriter {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.out
+}
+
+func (s *session) send(v any) error {
+	out := s.currentOut()
+	if out == nil {
+		return nil
+	}
+	return out.send(v)
+}
+
+func (s *session) sendRaw(payload []byte) error {
+	out := s.currentOut()
+	if out == nil {
+		return nil
+	}
+	return out.sendRaw(payload)
 }
 
 func (s *session) currentPig() *pigProcess {
@@ -126,7 +190,184 @@ func (s *session) currentPig() *pigProcess {
 	return s.pig
 }
 
-func (s *session) startPig() (*pigProcess, error) {
+// trackPigFrame keeps the minimal state needed to resume a client mid-turn:
+// the assistant text streamed so far and the progress of running tools.
+func (s *session) trackPigFrame(payload []byte) {
+	var head struct {
+		Type    string `json:"type"`
+		Message struct {
+			Role string `json:"role"`
+		} `json:"message"`
+		AssistantMessageEvent struct {
+			Type  string `json:"type"`
+			Delta string `json:"delta"`
+		} `json:"assistantMessageEvent"`
+		ToolCallID    string          `json:"toolCallId"`
+		ToolName      string          `json:"toolName"`
+		PartialResult json.RawMessage `json:"partialResult"`
+	}
+	if !bytes.Contains(payload, []byte(`"type":"`)) {
+		return
+	}
+	if err := json.Unmarshal(payload, &head); err != nil {
+		return
+	}
+	switch head.Type {
+	case "message_start":
+		if head.Message.Role == "assistant" {
+			s.streamMu.Lock()
+			s.streamText = ""
+			s.streamMu.Unlock()
+		}
+	case "message_update":
+		if head.AssistantMessageEvent.Type == "text_delta" && head.AssistantMessageEvent.Delta != "" {
+			s.streamMu.Lock()
+			s.streamText += head.AssistantMessageEvent.Delta
+			s.streamMu.Unlock()
+		}
+	case "message_end":
+		if head.Message.Role == "assistant" {
+			s.streamMu.Lock()
+			s.streamText = ""
+			s.streamMu.Unlock()
+		}
+	case "tool_execution_start":
+		if head.ToolCallID != "" {
+			s.streamMu.Lock()
+			s.activeTools[head.ToolCallID] = toolProgress{Name: head.ToolName}
+			s.streamMu.Unlock()
+		}
+	case "tool_execution_update":
+		if head.ToolCallID != "" && len(head.PartialResult) > 0 {
+			s.streamMu.Lock()
+			tool := s.activeTools[head.ToolCallID]
+			tool.Partial = head.PartialResult
+			s.activeTools[head.ToolCallID] = tool
+			s.streamMu.Unlock()
+		}
+	case "tool_execution_end":
+		if head.ToolCallID != "" {
+			s.streamMu.Lock()
+			delete(s.activeTools, head.ToolCallID)
+			s.streamMu.Unlock()
+		}
+	case "agent_end", "agent_settled", "error":
+		s.streamMu.Lock()
+		s.streamText = ""
+		s.activeTools = map[string]toolProgress{}
+		s.streamMu.Unlock()
+	}
+}
+
+// attach makes conn the active client and sends it hello, the current UI pack
+// and any extension dialog that is still waiting for an answer. A previous
+// client (for example a half-dead socket after a process freeze) is kicked.
+func (s *session) attach(conn net.Conn) (*connWriter, uint64, error) {
+	s.mu.Lock()
+	old := s.conn
+	s.connGen++
+	gen := s.connGen
+	s.conn = conn
+	out := &connWriter{conn: conn}
+	s.out = out
+	s.mu.Unlock()
+	if old != nil && old != conn {
+		_ = old.Close()
+	}
+
+	pig, started, err := s.ensurePig()
+	if err != nil {
+		return out, gen, err
+	}
+	_ = out.send(frame{
+		"type":     "relay_hello",
+		"protocol": protocol,
+		"cwd":      s.cwd,
+		"uiDir":    s.uiDir,
+		"pigPid":   pig.cmd.Process.Pid,
+		"resumed":  !started,
+	})
+
+	files, assets, assetHashes, hash, err := scanUI(s.uiDir)
+	if err == nil {
+		s.uiMu.Lock()
+		s.uiHash = hash
+		s.uiMu.Unlock()
+		_ = out.send(frame{
+			"type":        "relay_ui_pack",
+			"hash":        hash,
+			"files":       files,
+			"assets":      assets,
+			"assetHashes": assetHashes,
+		})
+	}
+
+	s.pigMu.Lock()
+	pending := make([]json.RawMessage, 0, len(s.pendingUI))
+	for _, raw := range s.pendingUI {
+		pending = append(pending, raw)
+	}
+	s.pigMu.Unlock()
+	for _, raw := range pending {
+		_ = out.sendRaw(raw)
+	}
+
+	// Replay the in-flight assistant text and running tools so a reconnecting
+	// client can pick up the turn without waiting for the next delta.
+	s.streamMu.Lock()
+	resumeText := s.streamText
+	tools := make(map[string]toolProgress, len(s.activeTools))
+	for id, tool := range s.activeTools {
+		tools[id] = tool
+	}
+	s.streamMu.Unlock()
+	if resumeText != "" {
+		_ = out.send(frame{"type": "relay_resume", "text": resumeText})
+	}
+	for id, tool := range tools {
+		_ = out.send(frame{
+			"type":          "relay_tool",
+			"toolCallId":    id,
+			"toolName":      tool.Name,
+			"partialResult": tool.Partial,
+		})
+	}
+	return out, gen, nil
+}
+
+// detach only drops the client; the pig keeps running so a reconnect can
+// resume an in-flight turn.
+func (s *session) detach(conn net.Conn, gen uint64) {
+	s.mu.Lock()
+	if s.conn == conn && s.connGen == gen {
+		s.conn = nil
+		s.out = nil
+	}
+	s.mu.Unlock()
+	_ = conn.Close()
+}
+
+func (s *session) ensurePig() (*pigProcess, bool, error) {
+	s.pigMu.Lock()
+	defer s.pigMu.Unlock()
+	if s.pig != nil {
+		return s.pig, false, nil
+	}
+	pig, err := s.startPigLocked()
+	if err != nil {
+		return nil, false, err
+	}
+	s.pig = pig
+	s.pendingUI = map[string]json.RawMessage{}
+	s.streamMu.Lock()
+	s.streamText = ""
+	s.activeTools = map[string]toolProgress{}
+	s.streamMu.Unlock()
+	return pig, true, nil
+}
+
+// startPigLocked expects pigMu to be held.
+func (s *session) startPigLocked() (*pigProcess, error) {
 	cmd := exec.Command(s.pigBin, "--mode", "rpc")
 	cmd.Dir = s.cwd
 	cmd.Env = os.Environ()
@@ -157,11 +398,27 @@ func (s *session) startPig() (*pigProcess, error) {
 			if len(line) == 0 {
 				continue
 			}
-			// Forward pig protocol frames unchanged.
 			payload := append([]byte(nil), line...)
-			if err := s.out.sendRaw(payload); err != nil {
-				return
+			s.trackPigFrame(payload)
+			// Keep extension dialogs that have not been answered yet, so a
+			// client that reconnects can answer them.
+			if bytes.Contains(payload, []byte(`"extension_ui_request"`)) {
+				var env struct {
+					Type   string `json:"type"`
+					ID     string `json:"id"`
+					Method string `json:"method"`
+				}
+				answerable := env.Method == "confirm" || env.Method == "select" || env.Method == "input" || env.Method == "editor"
+				if json.Unmarshal(payload, &env) == nil && env.Type == "extension_ui_request" && env.ID != "" && answerable {
+					s.pigMu.Lock()
+					if s.pendingUI == nil {
+						s.pendingUI = map[string]json.RawMessage{}
+					}
+					s.pendingUI[env.ID] = payload
+					s.pigMu.Unlock()
+				}
 			}
+			_ = s.sendRaw(payload)
 		}
 	}()
 
@@ -173,7 +430,7 @@ func (s *session) startPig() (*pigProcess, error) {
 			if line == "" {
 				continue
 			}
-			_ = s.out.send(frame{"type": "relay_log", "message": line})
+			_ = s.send(frame{"type": "relay_log", "message": line})
 		}
 	}()
 
@@ -189,12 +446,19 @@ func (s *session) startPig() (*pigProcess, error) {
 				code = -1
 			}
 		}
-		_ = s.out.send(frame{"type": "relay_exit", "code": code})
+		s.pigMu.Lock()
+		if s.pig == pig {
+			s.pig = nil
+			s.pendingUI = map[string]json.RawMessage{}
+		}
+		s.pigMu.Unlock()
+		s.streamMu.Lock()
+		s.streamText = ""
+		s.activeTools = map[string]toolProgress{}
+		s.streamMu.Unlock()
+		_ = s.send(frame{"type": "relay_exit", "code": code})
 	}()
 
-	s.pigMu.Lock()
-	s.pig = pig
-	s.pigMu.Unlock()
 	return pig, nil
 }
 
@@ -210,16 +474,17 @@ func (s *session) restartPig() error {
 	s.pigMu.Lock()
 	old := s.pig
 	s.pig = nil
+	s.pendingUI = map[string]json.RawMessage{}
 	s.pigMu.Unlock()
 	if old != nil {
 		old.stop()
 	}
-	pig, err := s.startPig()
+	pig, _, err := s.ensurePig()
 	if err != nil {
-		_ = s.out.send(frame{"type": "relay_error", "message": "cannot start pig: " + err.Error()})
+		_ = s.send(frame{"type": "relay_error", "message": "cannot start pig: " + err.Error()})
 		return err
 	}
-	_ = s.out.send(frame{"type": "relay_restarted", "pid": pig.cmd.Process.Pid})
+	_ = s.send(frame{"type": "relay_restarted", "pid": pig.cmd.Process.Pid})
 	return nil
 }
 
@@ -233,18 +498,28 @@ func (s *session) handleClientLine(line []byte) {
 		Name  string `json:"name"`
 	}
 	if err := json.Unmarshal(line, &head); err != nil {
-		_ = s.out.send(frame{"type": "relay_error", "message": "invalid json: " + err.Error()})
+		_ = s.send(frame{"type": "relay_error", "message": "invalid json: " + err.Error()})
 		return
 	}
 
 	if !strings.HasPrefix(head.Type, "relay_") {
 		pig := s.currentPig()
 		if pig == nil {
-			_ = s.out.send(frame{"type": "relay_error", "message": "pig is not running"})
+			_ = s.send(frame{"type": "relay_error", "message": "pig is not running"})
 			return
 		}
 		if err := pig.write(line); err != nil {
-			_ = s.out.send(frame{"type": "relay_error", "message": "pig write failed: " + err.Error()})
+			_ = s.send(frame{"type": "relay_error", "message": "pig write failed: " + err.Error()})
+		}
+		if head.Type == "extension_ui_response" {
+			var response struct {
+				ID string `json:"id"`
+			}
+			if json.Unmarshal(line, &response) == nil && response.ID != "" {
+				s.pigMu.Lock()
+				delete(s.pendingUI, response.ID)
+				s.pigMu.Unlock()
+			}
 		}
 		return
 	}
@@ -253,7 +528,7 @@ func (s *session) handleClientLine(line []byte) {
 	case "relay_auth":
 		// Already authenticated before this loop.
 	case "relay_ping":
-		_ = s.out.send(frame{"type": "relay_pong", "id": head.ID})
+		_ = s.send(frame{"type": "relay_pong", "id": head.ID})
 	case "relay_restart":
 		_ = s.restartPig()
 	case "relay_projects":
@@ -261,14 +536,14 @@ func (s *session) handleClientLine(line []byte) {
 		if root == "" {
 			root = s.cwd
 		}
-		_ = s.out.send(frame{"type": "relay_projects", "id": head.ID, "root": root, "projects": listProjects(root)})
+		_ = s.send(frame{"type": "relay_projects", "id": head.ID, "root": root, "projects": listProjects(root)})
 	case "relay_sessions":
-		_ = s.out.send(frame{"type": "relay_sessions", "id": head.ID, "sessions": listSessions(s.sessionsDir)})
+		_ = s.send(frame{"type": "relay_sessions", "id": head.ID, "sessions": listSessions(s.sessionsDir)})
 	case "relay_session_rename":
 		if err := appendSessionInfo(head.Path, head.Name, s.sessionsDir); err != nil {
-			_ = s.out.send(frame{"type": "relay_session_error", "id": head.ID, "message": "rename: " + err.Error()})
+			_ = s.send(frame{"type": "relay_session_error", "id": head.ID, "message": "rename: " + err.Error()})
 		} else {
-			_ = s.out.send(frame{
+			_ = s.send(frame{
 				"type": "relay_session_renamed",
 				"id":   head.ID,
 				"path": head.Path,
@@ -277,17 +552,17 @@ func (s *session) handleClientLine(line []byte) {
 		}
 	case "relay_session_delete":
 		if err := deleteSession(head.Path, s.sessionsDir); err != nil {
-			_ = s.out.send(frame{"type": "relay_session_error", "id": head.ID, "message": "delete: " + err.Error()})
+			_ = s.send(frame{"type": "relay_session_error", "id": head.ID, "message": "delete: " + err.Error()})
 		} else {
-			_ = s.out.send(frame{"type": "relay_session_deleted", "id": head.ID, "path": head.Path})
+			_ = s.send(frame{"type": "relay_session_deleted", "id": head.ID, "path": head.Path})
 		}
 	case "relay_ui":
 		files, assets, assetHashes, hash, err := scanUI(s.uiDir)
 		if err != nil {
-			_ = s.out.send(frame{"type": "relay_error", "message": "ui pack: " + err.Error()})
+			_ = s.send(frame{"type": "relay_error", "message": "ui pack: " + err.Error()})
 			return
 		}
-		_ = s.out.send(frame{
+		_ = s.send(frame{
 			"type":        "relay_ui_pack",
 			"hash":        hash,
 			"files":       files,
@@ -295,26 +570,36 @@ func (s *session) handleClientLine(line []byte) {
 			"assetHashes": assetHashes,
 		})
 	case "relay_stop":
-		s.shutdown()
+		s.mu.Lock()
+		conn := s.conn
+		s.mu.Unlock()
+		if conn != nil {
+			_ = conn.Close()
+		}
 	default:
-		_ = s.out.send(frame{"type": "relay_error", "message": "unknown relay frame: " + head.Type})
+		_ = s.send(frame{"type": "relay_error", "message": "unknown relay frame: " + head.Type})
 	}
 }
 
 func (s *session) watchUI() {
-	last := ""
 	for {
 		select {
-		case <-s.closed:
+		case <-s.stopped:
 			return
 		case <-time.After(800 * time.Millisecond):
 		}
 		files, assets, assetHashes, hash, err := scanUI(s.uiDir)
-		if err != nil || hash == last {
+		if err != nil {
 			continue
 		}
-		last = hash
-		_ = s.out.send(frame{
+		s.uiMu.Lock()
+		if hash == s.uiHash {
+			s.uiMu.Unlock()
+			continue
+		}
+		s.uiHash = hash
+		s.uiMu.Unlock()
+		_ = s.send(frame{
 			"type":        "relay_ui_pack",
 			"hash":        hash,
 			"files":       files,
@@ -775,10 +1060,14 @@ func main() {
 	}
 	log.Printf("pig-relay %s on %s (cwd=%s ui=%s pig=%s)", protocol, listener.Addr(), *cwd, *uiDir, *pigBin)
 
+	agent := newSession(*token, *cwd, *uiDir, sessionsDir, *pigBin)
+	go agent.watchUI()
+
 	go func() {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 		<-sig
+		agent.stop()
 		_ = listener.Close()
 	}()
 
@@ -788,14 +1077,14 @@ func main() {
 			log.Printf("accept: %v", err)
 			return
 		}
-		go serve(conn, *token, *cwd, *uiDir, sessionsDir, *pigBin)
+		go serve(conn, agent)
 	}
 }
 
-func serve(conn net.Conn, token, cwd, uiDir, sessionsDir, pigBin string) {
+func serve(conn net.Conn, s *session) {
 	defer conn.Close()
 
-	reader, err := authenticate(conn, token)
+	reader, err := authenticate(conn, s.token)
 	if err != nil {
 		_ = (&connWriter{conn: conn}).send(frame{"type": "relay_error", "message": "auth failed: " + err.Error()})
 		if !hadClient.Load() {
@@ -809,31 +1098,13 @@ func serve(conn net.Conn, token, cwd, uiDir, sessionsDir, pigBin string) {
 	}
 	hadClient.Store(true)
 
-	s := &session{
-		conn:        conn,
-		out:         &connWriter{conn: conn},
-		token:       token,
-		cwd:         cwd,
-		uiDir:       uiDir,
-		sessionsDir: sessionsDir,
-		pigBin:      pigBin,
-		closed:      make(chan struct{}),
-	}
-	defer s.shutdown()
-
-	pig, err := s.startPig()
+	_, gen, err := s.attach(conn)
 	if err != nil {
-		_ = s.out.send(frame{"type": "relay_error", "message": "cannot start pig: " + err.Error()})
+		_ = (&connWriter{conn: conn}).send(frame{"type": "relay_error", "message": "cannot start pig: " + err.Error()})
+		s.detach(conn, gen)
 		return
 	}
-	_ = s.out.send(frame{
-		"type":     "relay_hello",
-		"protocol": protocol,
-		"cwd":      cwd,
-		"uiDir":    uiDir,
-		"pigPid":   pig.cmd.Process.Pid,
-	})
-	go s.watchUI()
+	defer s.detach(conn, gen)
 
 	for {
 		line, err := reader.ReadBytes('\n')

@@ -43,7 +43,7 @@ Control frames:
 
 | Frame | Meaning |
 | --- | --- |
-| `relay_hello` | auth accepted, pig is running |
+| `relay_hello` | auth accepted; `resumed=true` when an existing pig was reused |
 | `relay_log` | a line from pig's stderr |
 | `relay_exit` | pig exited; `code` is the exit status |
 | `relay_error` | relay-level error (not an agent error) |
@@ -53,6 +53,8 @@ Control frames:
 | `relay_session_deleted` | delete succeeded |
 | `relay_session_error` | rename/delete failed (`message`) |
 | `relay_ui_pack` | UI pack snapshot |
+| `relay_resume` | in-flight assistant text replayed after a reconnect |
+| `relay_tool` | running tool progress replayed after a reconnect |
 | `relay_restarted` | pig was respawned |
 
 Everything else is a pig RPC frame (`response`, `message_update`,
@@ -74,8 +76,19 @@ push. A missing directory is treated as an empty pack.
 M1 defines the pack schema (`manifest.json`, `theme/`, `layout/`, `panels/`,
 `renderers/`); see `examples/ui-pack/`.
 
-## Lifecycle
+## Lifecycle and reconnects
 
-One relay process serves one client at a time. The relay spawns a fresh
-`pig --mode rpc` per connection and terminates it when the client disconnects.
-`--no-session` is not passed, so sessions persist under `~/.pig/agent/sessions`.
+The relay owns the `pig --mode rpc` process and serves one client at a time.
+When a client disconnects the pig **keeps running**, so a turn that is still
+streaming is not aborted. A new client attaches to the same pig:
+
+- the relay sends `relay_hello` with `resumed: true` and the same `pigPid`;
+- after the handshake it replays `relay_resume` with the assistant text
+  accumulated so far, `relay_tool` for running tools, and any unanswered
+  `extension_ui_request`;
+- the client resyncs its transcript with `get_state`/`get_messages` and must not
+  call `switch_session` while `isStreaming` is true.
+
+If the pig exits, the relay sends `relay_exit`; the next attach starts a fresh
+pig. `relay_restart` explicitly stops and replaces it. `--no-session` is not
+passed, so sessions persist under `~/.pig/agent/sessions`.

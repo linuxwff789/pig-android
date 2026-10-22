@@ -143,6 +143,12 @@ The app is designed to survive screen locks, Doze and process death:
   transcript. If the session can no longer be opened the app falls back to a
   new session.
 - `relay_exit` (pig crashed or was killed) also triggers the reconnect loop.
+- **Lossless mid-turn reattach**: the relay owns the pig and no longer kills it
+  when the app disconnects. A reconnect attaches to the same `pig --mode rpc`
+  process, replays the assistant text streamed so far (`relay_resume`), running
+  tool progress (`relay_tool`) and unanswered dialogs, then continues live
+  deltas. If `get_state` says the pig is streaming on the saved session, the app
+  skips `switch_session` and binds the partial assistant bubble instead.
 
 ## Keep-alive
 

@@ -60,6 +60,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var lastPongAt = 0L
     private var desiredSessionPath: String? = null
     private var restorePending = false
+    private var restoreChecked = false
+    private var liveText: String? = null
+    private val pendingToolPartials = mutableMapOf<String, String>()
 
     init {
         current = this
@@ -643,28 +646,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "relay_hello" -> {
                 ui = ui.copy(error = null, setup = false, setupHint = null)
                 lastPongAt = System.currentTimeMillis()
-                val saved = savedSession()
-                if (saved != null) {
-                    // The app UID cannot stat Termux's private home, so let pig
-                    // validate the path: a failure falls back to a new session.
-                    // The relay always spawns a fresh pig process; reattach it to
-                    // the session that was open before the app was killed.
-                    restorePending = true
-                    desiredSessionPath = saved
-                    ui = ui.copy(status = "restoring")
-                    client.send(
-                        JSONObject()
-                            .put("id", "switch-${nextId++}")
-                            .put("type", "switch_session")
-                            .put("sessionPath", saved),
-                    )
-                } else {
-                    client.send(JSONObject().put("id", "state-1").put("type", "get_state"))
-                    requestStats()
-                }
+                restoreChecked = false
+                restorePending = false
+                desiredSessionPath = null
+                liveText = null
+                pendingToolPartials.clear()
+                // The relay may have kept the previous pig alive (mid-turn
+                // reconnect). Ask it what it is doing before switching sessions.
+                client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
+                client.send(JSONObject().put("id", "msgs-${nextId++}").put("type", "get_messages"))
+                requestStats()
                 requestSessions()
+                client.send(JSONObject().put("type", "relay_ui"))
             }
             "relay_pong" -> lastPongAt = System.currentTimeMillis()
+            "relay_resume" -> handleResumeText(event.optString("text", ""))
+            "relay_tool" -> handleRelayTool(event)
             "relay_client_error" -> {
                 val message = event.optString("message")
                 ui = ui.copy(error = message, setup = true, setupHint = message)
@@ -680,6 +677,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     error = "pig 已退出（code ${event.optInt("code")}），正在重连…",
                 )
                 lastPongAt = 0
+                liveText = null
+                pendingToolPartials.clear()
                 client.close()
                 if (foreground) startAutoReconnect()
             }
@@ -710,10 +709,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "turn_start" -> ui = ui.copy(status = "working")
             "agent_end", "agent_settled" -> {
                 ui = ui.copy(busy = false, status = "")
+                liveText = null
+                pendingToolPartials.clear()
                 requestStats()
             }
             "message_start" -> handleMessageStart(event.optJSONObject("message"))
-            "message_update" -> handleMessageUpdate(event.optJSONObject("assistantMessageEvent"))
+            "message_update" -> handleMessageUpdate(event)
             "message_end" -> handleMessageEnd(event.optJSONObject("message"))
             "tool_execution_start" -> handleToolStart(event)
             "tool_execution_update" -> handleToolUpdate(event)
@@ -786,6 +787,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 restorePending = false
             }
             ui = ui.copy(messages = emptyList(), status = "")
+            liveText = null
+            pendingToolPartials.clear()
             client.send(JSONObject().put("id", "state-${nextId++}").put("type", "get_state"))
             client.send(JSONObject().put("id", "msgs-${nextId++}").put("type", "get_messages"))
             requestStats()
@@ -802,34 +805,55 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 ).joinToString("/")
                 val sessionId = data.optString("sessionId", "")
                 val sessionFile = data.optString("sessionFile", ui.sessionFile)
+                val streaming = data.optBoolean("isStreaming", false)
                 val switched = sessionId.isNotBlank() &&
                     ui.sessionId.isNotBlank() &&
                     sessionId != ui.sessionId
                 if (switched) currentAssistant = null
                 var status = ui.status
                 var toast = ui.toast
-                if (sessionFile.isNotBlank()) {
-                    if (restorePending) {
-                        val restored = sessionFile == desiredSessionPath
-                        restorePending = false
-                        desiredSessionPath = null
-                        rememberSession(sessionFile)
-                        status = ""
-                        if (restored) toast = "已恢复上次会话"
-                    } else {
-                        // Any state response carries the file that pig is using;
-                        // keeping it lets a later process death reopen the same
-                        // session. During restore the initial state is skipped,
-                        // so this cannot clobber the remembered path.
-                        rememberSession(sessionFile)
-                        if (sessionFile == desiredSessionPath) desiredSessionPath = null
+
+                if (!restoreChecked) {
+                    restoreChecked = true
+                    val saved = savedSession()
+                    if (saved != null && sessionFile.isNotBlank() && sessionFile != saved) {
+                        if (streaming) {
+                            // The pig is still producing on another session;
+                            // attach to the live turn instead of switching.
+                            toast = "已接上正在运行的会话"
+                        } else {
+                            restorePending = true
+                            desiredSessionPath = saved
+                            ui = ui.copy(status = "restoring")
+                            client.send(
+                                JSONObject()
+                                    .put("id", "switch-${nextId++}")
+                                    .put("type", "switch_session")
+                                    .put("sessionPath", saved),
+                            )
+                            return
+                        }
+                    } else if (saved != null && sessionFile == saved) {
+                        toast = "已恢复上次会话"
                     }
                 }
+
+                if (restorePending && sessionFile.isNotBlank() && sessionFile == desiredSessionPath) {
+                    restorePending = false
+                    desiredSessionPath = null
+                    status = ""
+                    toast = "已恢复上次会话"
+                }
+                if (!restorePending && sessionFile.isNotBlank()) {
+                    rememberSession(sessionFile)
+                    if (sessionFile == desiredSessionPath) desiredSessionPath = null
+                }
+
                 ui = ui.copy(
                     model = label,
                     sessionId = sessionId,
                     sessionFile = sessionFile,
-                    busy = data.optBoolean("isStreaming", ui.busy),
+                    busy = streaming,
                     messages = if (switched) emptyList() else ui.messages,
                     contextWindow = model?.optInt("contextWindow", ui.contextWindow)
                         ?: ui.contextWindow,
@@ -837,6 +861,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     status = status,
                     toast = toast,
                 )
+                if (streaming) bindResumedAssistant()
             }
             "get_session_stats" -> {
                 val usage = data.optJSONObject("contextUsage")
@@ -989,6 +1014,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun renderHistory(messages: org.json.JSONArray) {
         val out = mutableListOf<ChatMsg>()
         val toolIds = mutableMapOf<String, String>()
+        val lastInputRole = if (messages.length() > 0) {
+            messages.optJSONObject(messages.length() - 1)?.optString("role")
+        } else {
+            null
+        }
+        toolMsgIds.clear()
+        currentAssistant = null
         var counter = 1
         for (index in 0 until messages.length()) {
             val message = messages.optJSONObject(index) ?: continue
@@ -1006,13 +1038,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         if (block.optString("type") != "toolCall") continue
                         val callId = block.optString("id")
                         val id = "h${counter++}"
-                        if (callId.isNotBlank()) toolIds[callId] = id
+                        if (callId.isNotBlank()) {
+                            toolIds[callId] = id
+                            // Let live tool_execution_update/end events find the
+                            // card after a reconnect.
+                            toolMsgIds[callId] = id
+                        }
+                        val pending = if (callId.isBlank()) null else pendingToolPartials.remove(callId)
                         out.add(
                             ChatMsg(
                                 id = id,
                                 role = Role.TOOL,
                                 toolName = block.optString("name", "tool"),
                                 toolArgs = block.optJSONObject("arguments")?.toString(2) ?: "",
+                                toolResult = pending ?: "",
+                                running = pending != null,
                             ),
                         )
                     }
@@ -1026,6 +1066,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     message.optJSONObject("structuredContent")?.let { meta.put("structured", it) }
                     if (position >= 0) {
                         out[position] = out[position].copy(
+                            running = false,
                             toolResult = text,
                             toolDetails = meta.toString(),
                             isError = message.optBoolean("isError", false),
@@ -1044,7 +1085,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+        // If the relay replayed an in-flight assistant message, put it back
+        // after the history rebuild. Only the last input message can be the
+        // partial assistant, so never overwrite an older completed bubble.
+        val live = liveText
+        if (!live.isNullOrEmpty() && lastInputRole == "assistant") {
+            val last = out.lastOrNull()
+            if (last?.role == Role.ASSISTANT) {
+                if (last.text.length > live.length) {
+                    // History got further than the relay snapshot; continue
+                    // appending from the longer text.
+                    liveText = last.text
+                }
+                out[out.lastIndex] = last.copy(text = if (last.text.length < live.length) live else last.text)
+                currentAssistant = out.last().id
+            } else {
+                val id = "h${counter++}"
+                out.add(ChatMsg(id = id, role = Role.ASSISTANT, text = live))
+                currentAssistant = id
+            }
+        }
         ui = ui.copy(messages = out)
+        bindResumedAssistant()
     }
 
     private fun handleUiPack(event: JSONObject) {
@@ -1106,6 +1168,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun handleMessageStart(message: JSONObject?) {
         if (message == null || message.optString("role") != "assistant") return
         val text = contentText(message)
+        liveText = text
         val id = currentAssistant ?: "a${nextId++}".also {
             currentAssistant = it
             append(ChatMsg(id = it, role = Role.ASSISTANT, text = text))
@@ -1114,22 +1177,73 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun handleMessageUpdate(event: JSONObject?) {
-        if (event == null || event.optString("type") != "text_delta") return
-        val delta = event.optString("delta", "")
+        if (event == null) return
+        val update = event.optJSONObject("assistantMessageEvent") ?: return
+        if (update.optString("type") != "text_delta") return
+        val delta = update.optString("delta", "")
         if (delta.isEmpty()) return
-        val id = currentAssistant ?: return
-        update(id) { it.copy(text = it.text + delta) }
+        // liveText holds the text including the prefix replayed by relay_resume,
+        // so replacing the bubble is safe after a mid-stream reconnect.
+        liveText = (liveText ?: "") + delta
+        val id = currentAssistant ?: "a${nextId++}".also {
+            currentAssistant = it
+            append(ChatMsg(id = it, role = Role.ASSISTANT))
+        }
+        val text = liveText ?: delta
+        update(id) { it.copy(text = text) }
+    }
+
+    /** Relay replayed the assistant text that was streamed before the reconnect. */
+    private fun handleResumeText(text: String) {
+        if (text.isEmpty()) return
+        liveText = text
+        val id = currentAssistant ?: "a${nextId++}".also {
+            currentAssistant = it
+            append(ChatMsg(id = it, role = Role.ASSISTANT))
+        }
+        update(id) { it.copy(text = text) }
+    }
+
+    /** Relay replayed a tool that is still running (arrives before get_messages). */
+    private fun handleRelayTool(event: JSONObject) {
+        val callId = event.optString("toolCallId")
+        if (callId.isEmpty()) return
+        val partial = event.optJSONObject("partialResult")?.let { contentText(it) } ?: ""
+        val id = toolMsgIds[callId]
+        if (id == null) {
+            if (partial.isNotEmpty()) pendingToolPartials[callId] = partial
+            return
+        }
+        update(id) {
+            it.copy(
+                running = true,
+                toolResult = partial.ifBlank { it.toolResult },
+                toolName = event.optString("toolName").ifBlank { it.toolName ?: "tool" },
+            )
+        }
+    }
+
+    /** Reattach a reconnecting client to the assistant message that is still streaming. */
+    private fun bindResumedAssistant() {
+        if (!ui.busy || currentAssistant != null) return
+        val last = ui.messages.lastOrNull() ?: return
+        if (last.role == Role.ASSISTANT) currentAssistant = last.id
     }
 
     private fun handleMessageEnd(message: JSONObject?) {
         if (message == null || message.optString("role") != "assistant") return
-        val id = currentAssistant ?: return
+        val id = currentAssistant
+        if (id == null) {
+            liveText = null
+            return
+        }
         val text = contentText(message)
         update(id) { it.copy(text = text.ifBlank { it.text }) }
         // Tool-call-only assistant messages have no text; the tool card is the
         // visible representation, so drop the empty bubble.
         if (ui.messages.firstOrNull { it.id == id }?.text.isNullOrBlank()) remove(id)
         currentAssistant = null
+        liveText = null
     }
 
     private fun handleToolStart(event: JSONObject) {
