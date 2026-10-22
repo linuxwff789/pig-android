@@ -4,7 +4,9 @@
     "online": "在线",
     "offline": "离线",
     "modelEmpty": "点击选择模型",
-    "noModel": "无模型"
+    "noModel": "无模型",
+    "usage": "  ·  {percent}% · {used}/{window}",
+    "usagePercent": "  ·  {percent}%"
   },
   "drawer": {
     "tagline": "Termux 里的本地 coding agent",
@@ -82,6 +84,35 @@
     "sessionActions": "会话操作",
     "copy": "复制",
     "steer": "插队",
-    "send": "发送"
+    "send": "发送",
+    "close": "关闭"
+  },
+  "settings": {
+    "title": "设置",
+    "connection": "连接",
+    "connected": "已连接",
+    "offline": "离线",
+    "reconnect": "重连 relay",
+    "keepAlive": "后台保活",
+    "keepAliveHint": "前台服务，锁屏后保持与 Termux 的连接",
+    "wakeLock": "唤醒锁",
+    "wakeLockHint": "像 termux-wake-lock 一样让 CPU 不休眠",
+    "avatarShadow": "消息头像阴影",
+    "avatarShadowHint": "关闭可减少每条消息的绘制开销",
+    "bubbleShadow": "气泡阴影",
+    "bubbleShadowHint": "用户消息气泡的投影，默认跟随 UI pack",
+    "battery": "电池优化",
+    "batteryAllowed": "已允许后台运行",
+    "batteryMissing": "未加入白名单，系统可能随时清理",
+    "batteryView": "查看",
+    "batteryGo": "去设置",
+    "termuxWake": "Termux 端的 termux-wake-lock 由 App 在连接时自动获取。",
+    "data": "数据",
+    "clearLocal": "清空本地记录",
+    "clearLocalHint": "只清空当前 App 显示的 transcript，不影响会话文件",
+    "clear": "清空",
+    "extensions": "扩展",
+    "about": "关于",
+    "done": "完成"
   }
 }

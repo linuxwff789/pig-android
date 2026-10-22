@@ -397,7 +397,7 @@ private fun PigHeader(
                             Text(
                                 packText(
                                     if (connected) "header.online" else "header.offline",
-                                    if (connected) "在线" else "离线",
+                                    if (connected) "在线" else packText("settings.offline", "离线"),
                                 ),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (connected) scheme.tertiary else scheme.onSurfaceVariant,
@@ -422,14 +422,17 @@ private fun PigHeader(
                         )
                         if (showUsage) {
                             contextPercent?.let { percent ->
-                                val usage = buildString {
-                                    append("  ·  %.0f%%".format(percent))
-                                    if (contextWindow > 0) {
-                                        append(" · ")
-                                        append(formatTokens(contextTokens))
-                                        append('/')
-                                        append(formatTokens(contextWindow))
-                                    }
+                                val usage = if (contextWindow > 0) {
+                                    packText(
+                                        "header.usage",
+                                        "  ·  {percent}% · {used}/{window}",
+                                    )
+                                        .replace("{percent}", "%.0f".format(percent))
+                                        .replace("{used}", formatTokens(contextTokens))
+                                        .replace("{window}", formatTokens(contextWindow))
+                                } else {
+                                    packText("header.usagePercent", "  ·  {percent}%")
+                                        .replace("{percent}", "%.0f".format(percent))
                                 }
                                 Text(
                                     usage,
@@ -606,7 +609,7 @@ private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Un
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(ui.uiPack.theme.cornerRadius.dp),
         containerColor = scheme.surface,
-        title = { Text("设置") },
+        title = { Text(packText("settings.title", "设置")) },
         text = {
             Column(
                 modifier = Modifier
@@ -614,89 +617,89 @@ private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Un
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Text("连接", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                Text(packText("settings.connection", "连接"), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            if (ui.connected) "已连接" else "离线",
+                            if (ui.connected) packText("settings.connected", "已连接") else packText("settings.offline", "离线"),
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (ui.connected) scheme.onSurface else scheme.error,
                         )
                         Text(
-                            ui.model.ifBlank { "无模型" },
+                            ui.model.ifBlank { packText("header.noModel", "无模型") },
                             style = MaterialTheme.typography.labelSmall,
                             color = scheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    TextButton(onClick = vm::reconnect) { Text("重连 relay") }
+                    TextButton(onClick = vm::reconnect) { Text(packText("settings.reconnect", "重连 relay")) }
                 }
 
                 HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
                 SettingToggle(
-                    title = "后台保活",
-                    subtitle = "前台服务，锁屏后保持与 Termux 的连接",
+                    title = packText("settings.keepAlive", "后台保活"),
+                    subtitle = packText("settings.keepAliveHint", "前台服务，锁屏后保持与 Termux 的连接"),
                     checked = ui.keepAlive,
                     onCheckedChange = vm::setKeepAlive,
                 )
                 SettingToggle(
-                    title = "唤醒锁",
-                    subtitle = "像 termux-wake-lock 一样让 CPU 不休眠",
+                    title = packText("settings.wakeLock", "唤醒锁"),
+                    subtitle = packText("settings.wakeLockHint", "像 termux-wake-lock 一样让 CPU 不休眠"),
                     checked = ui.wakeLock,
                     onCheckedChange = vm::setWakeLock,
                 )
                 SettingToggle(
-                    title = "消息头像阴影",
-                    subtitle = "关闭可减少每条消息的绘制开销",
+                    title = packText("settings.avatarShadow", "消息头像阴影"),
+                    subtitle = packText("settings.avatarShadowHint", "关闭可减少每条消息的绘制开销"),
                     checked = ui.avatarShadow,
                     onCheckedChange = vm::setAvatarShadow,
                 )
                 SettingToggle(
-                    title = "气泡阴影",
-                    subtitle = "用户消息气泡的投影，默认跟随 UI pack",
+                    title = packText("settings.bubbleShadow", "气泡阴影"),
+                    subtitle = packText("settings.bubbleShadowHint", "用户消息气泡的投影，默认跟随 UI pack"),
                     checked = ui.bubbleShadow,
                     onCheckedChange = vm::setBubbleShadow,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("电池优化", style = MaterialTheme.typography.bodyMedium)
+                        Text(packText("settings.battery", "电池优化"), style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            if (batteryOk) "已允许后台运行" else "未加入白名单，系统可能随时清理",
+                            if (batteryOk) packText("settings.batteryAllowed", "已允许后台运行") else packText("settings.batteryMissing", "未加入白名单，系统可能随时清理"),
                             style = MaterialTheme.typography.labelSmall,
                             color = if (batteryOk) scheme.tertiary else scheme.error,
                         )
                     }
                     TextButton(onClick = vm::openBatterySettings) {
-                        Text(if (batteryOk) "查看" else "去设置")
+                        Text(if (batteryOk) packText("settings.batteryView", "查看") else packText("settings.batteryGo", "去设置"))
                     }
                 }
                 Text(
-                    "Termux 端的 termux-wake-lock 由 App 在连接时自动获取。",
+                    packText("settings.termuxWake", "Termux 端的 termux-wake-lock 由 App 在连接时自动获取。"),
                     style = MaterialTheme.typography.labelSmall,
                     color = scheme.onSurfaceVariant,
                 )
 
                 HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
-                Text("数据", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                Text(packText("settings.data", "数据"), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("清空本地记录", style = MaterialTheme.typography.bodyMedium)
+                        Text(packText("settings.clearLocal", "清空本地记录"), style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            "只清空当前 App 显示的 transcript，不影响会话文件",
+                            packText("settings.clearLocalHint", "只清空当前 App 显示的 transcript，不影响会话文件"),
                             style = MaterialTheme.typography.labelSmall,
                             color = scheme.onSurfaceVariant,
                         )
                     }
                     TextButton(onClick = vm::clearLocal) {
-                        Text("清空", color = scheme.error)
+                        Text(packText("settings.clear", "清空"), color = scheme.error)
                     }
                 }
 
                 val settingsNav = ui.uiPack.nav.filter { it.placement == "settings" }
                 if (settingsNav.isNotEmpty()) {
                     HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
-                    Text("扩展", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                    Text(packText("settings.extensions", "扩展"), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
                     settingsNav.forEach { item ->
                         OutlinedButton(
                             onClick = {
@@ -720,7 +723,7 @@ private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Un
                 }
 
                 HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
-                Text("关于", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                Text(packText("settings.about", "关于"), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
                 Text(
                     "UI pack: ${ui.uiPack.name} v${ui.uiPack.version} · ${ui.uiPackFiles} files",
                     style = MaterialTheme.typography.labelSmall,
@@ -746,7 +749,7 @@ private fun SettingsDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Un
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("完成") }
+            TextButton(onClick = onDismiss) { Text(packText("settings.done", "完成")) }
         },
     )
 }
@@ -841,12 +844,12 @@ private fun DrawerContent(
                     InfoPill(
                         text = packText(
                             if (ui.connected) "header.online" else "header.offline",
-                            if (ui.connected) "在线" else "离线",
+                            if (ui.connected) "在线" else packText("settings.offline", "离线"),
                         ),
                         color = if (ui.connected) scheme.tertiary else scheme.onSurfaceVariant,
                     )
                     InfoPill(
-                        text = ui.model.substringAfter('/').ifBlank { packText("header.noModel", "无模型") },
+                        text = ui.model.substringAfter('/').ifBlank { packText("header.noModel", packText("header.noModel", "无模型")) },
                         color = scheme.secondary,
                     )
                     if (ui.sessionId.isNotBlank()) {
@@ -1127,7 +1130,7 @@ private fun ReadOnlyBanner() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            Icons.Default.History,
+            packIcon("history", "history"),
             contentDescription = null,
             modifier = Modifier.size(14.dp),
             tint = scheme.onSurfaceVariant,
@@ -1196,7 +1199,7 @@ private fun SessionRow(
         }
         if (current) {
             Icon(
-                Icons.Default.Check,
+                packIcon("check", "check"),
                 contentDescription = null,
                 modifier = Modifier.size(15.dp),
                 tint = scheme.primary,
@@ -1536,7 +1539,7 @@ private fun MessageList(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        Icons.Default.KeyboardArrowDown,
+                        packIcon("chevronDown", "down"),
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.onPrimary,
@@ -2147,7 +2150,7 @@ private fun PendingBanner(count: Int) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            Icons.Default.Send,
+            packIcon("send", "send"),
             contentDescription = null,
             modifier = Modifier.size(13.dp),
             tint = scheme.secondary,
@@ -2477,7 +2480,7 @@ private fun ErrorBanner(message: String, onDismiss: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                Icons.Default.Warning,
+                packIcon("warning", "warning"),
                 contentDescription = null,
                 modifier = Modifier.size(17.dp),
                 tint = scheme.error,
@@ -2491,8 +2494,8 @@ private fun ErrorBanner(message: String, onDismiss: () -> Unit) {
             )
             IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                 Icon(
-                    Icons.Default.Close,
-                    contentDescription = "关闭",
+                    packIcon("close", "close"),
+                    contentDescription = packText("a11y.close", "关闭"),
                     modifier = Modifier.size(16.dp),
                     tint = scheme.onErrorContainer,
                 )
