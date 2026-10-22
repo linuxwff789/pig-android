@@ -62,10 +62,12 @@ class RelayClient(
                     sendNow(JSONObject().put("type", "relay_auth").put("token", token))
                     val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
                     _connected.value = true
+                    Log.i("RelayClient", "connected")
                     while (isActive) {
                         val line = reader.readLine() ?: break
                         if (line.isBlank()) continue
                         val obj = runCatching { JSONObject(line) }.getOrNull() ?: continue
+                        Log.d("RelayClient", "frame: ${obj.optString("type")}")
                         eventChannel.trySend(obj)
                     }
                 } catch (e: Exception) {

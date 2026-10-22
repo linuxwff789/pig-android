@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.util.Log
 import android.util.Base64
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -57,15 +58,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         current = this
+        Log.i("PigEvents", "vm init")
         viewModelScope.launch {
             client.connected.collect { connected -> ui = ui.copy(connected = connected) }
         }
         viewModelScope.launch {
-            client.events.collect { event -> handle(event) }
+            Log.i("PigEvents", "events collector started")
+            client.events.collect { event ->
+                Log.d("PigEvents", "handle: ${event.optString("type")}")
+                handle(event)
+            }
         }
     }
 
     fun connect() {
+        Log.i("PigEvents", "connect called")
         val ctx = getApplication<Application>()
         if (!RelayLauncher.hasPermission(ctx)) {
             ui = ui.copy(
