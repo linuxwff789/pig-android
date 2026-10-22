@@ -108,6 +108,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             },
             skinId = prefs.getString("skinId", "").orEmpty(),
             activePackId = prefs.getString("activePackId", "").orEmpty(),
+            contextOverrides = loadContextOverrides(),
         )
         refreshLocalPacks()
         // Restore an imported pack without waiting for the relay push.
@@ -822,6 +823,63 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun requestStats() {
         client.send(JSONObject().put("id", "stats-${nextId++}").put("type", "get_session_stats"))
+    }
+
+    private fun loadContextOverrides(): Map<String, Int> {
+        val raw = prefs.getString("contextOverrides", "").orEmpty()
+        if (raw.isBlank()) return emptyMap()
+        val json = runCatching { JSONObject(raw) }.getOrNull() ?: return emptyMap()
+        val out = LinkedHashMap<String, Int>()
+        json.keys().forEach { key ->
+            val tokens = json.optInt(key, 0)
+            if (tokens > 0) out[key] = tokens
+        }
+        return out
+    }
+
+    /** Context window actually used for the percentage: user override wins. */
+    fun contextWindowFor(provider: String, id: String): Int =
+        ui.contextOverrides["$provider/$id"] ?: 0
+
+    private fun effectiveContextWindow(reported: Int, key: String): Int =
+        ui.contextOverrides[key]?.takeIf { it > 0 } ?: reported
+
+    /**
+     * Pin the context window for a model when the provider reports a wrong or
+     * missing value. `tokens <= 0` clears the override.
+     */
+    fun setContextWindow(provider: String, id: String, tokens: Int) {
+        val key = "$provider/$id"
+        val map = ui.contextOverrides.toMutableMap()
+        if (tokens > 0) map[key] = tokens else map.remove(key)
+        ui = ui.copy(contextOverrides = map)
+        prefs.edit()
+            .putString("contextOverrides", JSONObject(map as Map<*, *>).toString())
+            .apply()
+        val window = effectiveContextWindow(ui.contextWindow, ui.model)
+        ui = ui.copy(
+            contextWindow = window,
+            contextPercent = if (window > 0 && ui.contextTokens > 0) {
+                ui.contextTokens * 100.0 / window
+            } else {
+                null
+            },
+        )
+        requestStats()
+        ui = ui.copy(
+            toast = if (tokens > 0) {
+                str("toast.contextWindowSet", "上下文长度已设为 {tokens}")
+                    .replace("{tokens}", formatTokenCount(tokens))
+            } else {
+                str("toast.contextWindowReset", "已恢复自动检测的上下文长度")
+            },
+        )
+    }
+
+    private fun formatTokenCount(tokens: Int): String = when {
+        tokens >= 1_000_000 -> "${tokens / 1_000_000}M"
+        tokens >= 1000 -> "${tokens / 1000}K"
+        else -> tokens.toString()
     }
 
     private val readRpcs = setOf(
@@ -1697,7 +1755,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     readOnly = !live,
                     messages = if (switched) emptyList() else ui.messages,
                     contextWindow = if (live) {
-                        model?.optInt("contextWindow", ui.contextWindow) ?: ui.contextWindow
+                        effectiveContextWindow(
+                            model?.optInt("contextWindow", ui.contextWindow) ?: ui.contextWindow,
+                            label,
+                        )
                     } else {
                         0
                     },
@@ -1735,10 +1796,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     rawPercent != null && rawPercent != JSONObject.NULL &&
                     usage.opt("tokens") != null && usage.opt("tokens") != JSONObject.NULL
                 ui = if (hasContext) {
+                    val tokens = usage!!.optInt("tokens")
+                    val window = effectiveContextWindow(
+                        usage.optInt("contextWindow", ui.contextWindow),
+                        ui.model,
+                    )
+                    val override = ui.contextOverrides[ui.model]?.takeIf { it > 0 }
                     ui.copy(
-                        contextPercent = usage!!.optDouble("percent"),
-                        contextTokens = usage.optInt("tokens"),
-                        contextWindow = usage.optInt("contextWindow", ui.contextWindow),
+                        contextPercent = if (override != null && window > 0) {
+                            tokens * 100.0 / window
+                        } else {
+                            usage.optDouble("percent")
+                        },
+                        contextTokens = tokens,
+                        contextWindow = window,
                         contextCompacted = false,
                     )
                 } else {
@@ -1812,7 +1883,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val id = data.optString("id", ui.model.substringAfter('/'))
                 ui = ui.copy(
                     model = "$provider/$id",
-                    contextWindow = data.optInt("contextWindow", ui.contextWindow),
+                    contextWindow = effectiveContextWindow(
+                        data.optInt("contextWindow", ui.contextWindow),
+                        "$provider/$id",
+                    ),
                 )
                 client.send(
                     JSONObject().put("id", "levels-${nextId++}")

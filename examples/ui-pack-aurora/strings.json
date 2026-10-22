@@ -91,12 +91,23 @@
     "modelSwitched": "模型已切换：{model}",
     "modelSwitchedActual": "已切换，实际模型：{model}",
     "modelSwitchFailed": "模型切换失败",
-    "thinkingChanged": "思考档位：{level}"
+    "thinkingChanged": "思考档位：{level}",
+    "contextWindowSet": "上下文长度已设为 {tokens}",
+    "contextWindowReset": "已恢复自动检测的上下文长度"
   },
   "model": {
     "switching": "切换中…",
     "reasoning": "思考",
     "reasoningOnly": "只看支持思考",
-    "thinkingUnsupported": "当前模型不支持思考档位；换一个支持 reasoning 的模型即可。"
+    "thinkingUnsupported": "当前模型不支持思考档位；换一个支持 reasoning 的模型即可。",
+    "contextCustom": "自定义",
+    "contextEdit": "设置上下文长度",
+    "contextTitle": "上下文长度",
+    "contextHint": "provider 上报：{value}。上报不准时可手动指定，支持 128K / 1M；留空恢复自动检测。",
+    "contextAuto": "留空 = 使用 provider 上报值",
+    "contextReset": "恢复自动"
+  },
+  "dialog": {
+    "save": "保存"
   }
 }

@@ -21,6 +21,7 @@ import java.io.File
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_EVENT --es json '{"type":"extension_ui_request","method":"setWidget",...}'
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_SET_MODEL --es provider deepseek --es model deepseek-flash
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_THINKING --es level high
+ *   am broadcast -a com.linuxwff.pigapp.DEBUG_CONTEXT --es provider eu --es model foo --ei tokens 128000
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_PACK --es id <packId|"">
  *
  * Exported without a permission on purpose; this class is only compiled into
@@ -92,6 +93,13 @@ class DebugReceiver : BroadcastReceiver() {
                 Log.i(TAG, "select pack: '$id'")
                 vm.refreshLocalPacks()
                 vm.selectPack(id)
+            }
+            "com.linuxwff.pigapp.DEBUG_CONTEXT" -> {
+                val provider = intent.getStringExtra("provider") ?: ""
+                val model = intent.getStringExtra("model") ?: ""
+                val tokens = intent.getIntExtra("tokens", 0)
+                Log.i(TAG, "context window: $provider/$model = $tokens")
+                vm.setContextWindow(provider, model, tokens)
             }
             "com.linuxwff.pigapp.DEBUG_THINKING" -> {
                 val level = intent.getStringExtra("level") ?: ""

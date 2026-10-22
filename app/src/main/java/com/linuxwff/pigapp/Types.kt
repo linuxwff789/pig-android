@@ -259,6 +259,8 @@ data class AppUiState(
     val titleOverride: String? = null,
     val availableModelCount: Int = 0,
     val contextWindow: Int = 0,
+    /** User-specified context window overrides, keyed by `provider/id`. */
+    val contextOverrides: Map<String, Int> = emptyMap(),
     val thinkingLevel: String = "off",
     val thinkingLevels: List<String> = emptyList(),
     val assetCount: Int = 0,

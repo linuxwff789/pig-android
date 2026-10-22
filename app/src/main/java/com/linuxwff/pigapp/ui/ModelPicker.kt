@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
@@ -52,16 +53,15 @@ import com.linuxwff.pigapp.ModelInfo
 fun ModelPickerDialog(vm: AppViewModel) {
     if (!vm.showModelPicker) return
     var query by rememberSaveable { mutableStateOf("") }
-    var reasoningOnly by rememberSaveable { mutableStateOf(false) }
+    var contextTarget by remember { mutableStateOf<ModelInfo?>(null) }
     val models = vm.models
-    val filtered = remember(query, models, reasoningOnly) {
+    val filtered = remember(query, models) {
         models.filter { model ->
-            (!reasoningOnly || model.reasoning) &&
-                (query.isBlank() ||
-                    "${model.provider}/${model.id} ${model.name}".contains(
-                        query.trim(),
-                        ignoreCase = true,
-                    ))
+            query.isBlank() ||
+                "${model.provider}/${model.id} ${model.name}".contains(
+                    query.trim(),
+                    ignoreCase = true,
+                )
         }
     }
     val scheme = MaterialTheme.colorScheme
@@ -119,17 +119,6 @@ fun ModelPickerDialog(vm: AppViewModel) {
                         focusedContainerColor = scheme.surfaceVariant.copy(alpha = 0.35f),
                         unfocusedContainerColor = scheme.surfaceVariant.copy(alpha = 0.35f),
                         cursorColor = scheme.primary,
-                    ),
-                )
-                Spacer(Modifier.height(6.dp))
-                FilterChip(
-                    selected = reasoningOnly,
-                    onClick = { reasoningOnly = !reasoningOnly },
-                    label = { Text(packText("model.reasoningOnly", "只看支持思考")) },
-                    shape = CircleShape,
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = scheme.primary.copy(alpha = 0.18f),
-                        selectedLabelColor = scheme.primary,
                     ),
                 )
                 if (vm.ui.thinkingLevels.isNotEmpty()) {
@@ -202,12 +191,15 @@ fun ModelPickerDialog(vm: AppViewModel) {
                         }
                     }
                     items(filtered, key = { "${it.provider}/${it.id}" }) { model ->
+                        val overridden = vm.contextWindowFor(model.provider, model.id)
                         ModelRow(
                             model = model,
                             selected = "${model.provider}/${model.id}" == vm.ui.model,
                             cornerRadius = corner,
                             enabled = !vm.ui.modelSwitchPending,
+                            contextOverride = overridden,
                             onClick = { vm.selectModel(model) },
+                            onEditContext = { contextTarget = model },
                         )
                     }
                 }
@@ -224,6 +216,22 @@ fun ModelPickerDialog(vm: AppViewModel) {
             }
         },
     )
+
+    contextTarget?.let { model ->
+        ContextWindowDialog(
+            model = model,
+            override = vm.contextWindowFor(model.provider, model.id),
+            onSave = { tokens ->
+                vm.setContextWindow(model.provider, model.id, tokens)
+                contextTarget = null
+            },
+            onReset = {
+                vm.setContextWindow(model.provider, model.id, 0)
+                contextTarget = null
+            },
+            onDismiss = { contextTarget = null },
+        )
+    }
 }
 
 @Composable
@@ -232,7 +240,9 @@ private fun ModelRow(
     selected: Boolean,
     cornerRadius: Int,
     enabled: Boolean,
+    contextOverride: Int,
     onClick: () -> Unit,
+    onEditContext: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val shape = RoundedCornerShape((cornerRadius - 4).coerceAtLeast(8).dp)
@@ -285,16 +295,36 @@ private fun ModelRow(
                     color = if (selected) scheme.primary else scheme.onSurface,
                 )
             }
-            Text(
-                buildString {
-                    append("ctx ")
-                    append(formatContext(model.contextWindow))
-                    if (model.reasoning) append(" · think")
-                    if (model.images) append(" · img")
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = scheme.onSurfaceVariant,
-            )
+            val window = if (contextOverride > 0) contextOverride else model.contextWindow
+            Row(
+                Modifier
+                    .clip(CircleShape)
+                    .clickable(enabled = enabled, onClick = onEditContext)
+                    .padding(vertical = 2.dp, horizontal = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    buildString {
+                        append("ctx ")
+                        append(formatContext(window))
+                        if (contextOverride > 0) {
+                            append(" · ")
+                            append(packText("model.contextCustom", "自定义"))
+                        }
+                        if (model.reasoning) append(" · think")
+                        if (model.images) append(" · img")
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (contextOverride > 0) scheme.primary else scheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = packText("model.contextEdit", "设置上下文长度"),
+                    modifier = Modifier.size(12.dp),
+                    tint = if (contextOverride > 0) scheme.primary else scheme.onSurfaceVariant,
+                )
+            }
         }
         if (selected) {
             Icon(
@@ -305,6 +335,112 @@ private fun ModelRow(
             )
         }
     }
+}
+
+@Composable
+private fun ContextWindowDialog(
+    model: ModelInfo,
+    override: Int,
+    onSave: (Int) -> Unit,
+    onReset: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    var text by remember {
+        mutableStateOf(if (override > 0) override.toString() else "")
+    }
+    val parsed = parseTokenCount(text)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(22.dp),
+        containerColor = scheme.surface,
+        title = { Text(packText("model.contextTitle", "上下文长度")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "${model.provider}/${model.id}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+                Text(
+                    packText(
+                        "model.contextHint",
+                        "provider 上报：{value}。上报不准时可手动指定，支持 128K / 1M；留空恢复自动检测。",
+                    ).replace(
+                        "{value}",
+                        if (model.contextWindow > 0) formatContext(model.contextWindow) else "未知",
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { input ->
+                        text = input.filter { it.isDigit() || it.equals('k', true) || it.equals('m', true) }
+                    },
+                    singleLine = true,
+                    label = { Text("tokens") },
+                    placeholder = { Text("例如 131072 / 128K / 1M") },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = scheme.primary.copy(alpha = 0.7f),
+                        unfocusedBorderColor = scheme.outline.copy(alpha = 0.5f),
+                    ),
+                )
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    listOf("32K", "64K", "128K", "200K", "256K", "512K", "1M").forEach { preset ->
+                        FilterChip(
+                            selected = text.equals(preset, ignoreCase = true),
+                            onClick = { text = preset },
+                            label = { Text(preset) },
+                            shape = CircleShape,
+                        )
+                    }
+                }
+                Text(
+                    if (parsed > 0) {
+                        "= $parsed tokens (${formatContext(parsed)})"
+                    } else {
+                        packText("model.contextAuto", "留空 = 使用 provider 上报值")
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (parsed > 0) scheme.primary else scheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = parsed > 0, onClick = { onSave(parsed) }) {
+                Text(packText("dialog.save", "保存"))
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onReset) {
+                    Text(packText("model.contextReset", "恢复自动"))
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(packText("dialog.cancel", "取消"))
+                }
+            }
+        },
+    )
+}
+
+private fun parseTokenCount(raw: String): Int {
+    val text = raw.trim()
+    if (text.isEmpty()) return 0
+    val multiplier = when {
+        text.endsWith("k", true) -> 1000
+        text.endsWith("m", true) -> 1_000_000
+        else -> 1
+    }
+    val number = if (multiplier == 1) text else text.dropLast(1)
+    val value = number.toLongOrNull() ?: return 0
+    val tokens = value * multiplier
+    return if (tokens in 1..Int.MAX_VALUE) tokens.toInt() else 0
 }
 
 private fun formatContext(tokens: Int): String = when {
