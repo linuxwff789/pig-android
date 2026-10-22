@@ -346,6 +346,22 @@ object UiPackParser {
             }
             return value
         }
+        fun weight(key: String, fallback: Int): Int {
+            return when (val raw = json.opt(key)) {
+                is Number -> raw.toInt()
+                is String -> when (raw.trim().lowercase()) {
+                    "thin" -> 100
+                    "light" -> 300
+                    "normal", "regular" -> 400
+                    "medium" -> 500
+                    "semibold", "semi-bold" -> 600
+                    "bold" -> 700
+                    "black" -> 900
+                    else -> raw.toIntOrNull() ?: fallback
+                }
+                else -> fallback
+            }.coerceIn(100, 900)
+        }
         return TypeScale(
             body = size("body", d.body),
             label = size("label", d.label),
