@@ -35,7 +35,8 @@
   "composer": {
     "steerPlaceholder": "插一句…",
     "steerHint": "点发送=插队 · 长按=排队",
-    "offline": "未连接 · 点右上角重连"
+    "offline": "未连接 · 点右上角重连",
+    "commandCount": "共 {count} 个命令，上下滑动查看"
   },
   "empty": {
     "title": "Aurora 演示包",

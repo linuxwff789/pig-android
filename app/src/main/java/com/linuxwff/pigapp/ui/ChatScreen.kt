@@ -185,12 +185,23 @@ fun PigApp(vm: AppViewModel) {
         if (commandQuery == null) {
             emptyList()
         } else {
-            ui.commands
-                .filter {
-                    it.name.contains(commandQuery, true) ||
-                        it.description.contains(commandQuery, true)
-                }
-                .take(8)
+            val matches = ui.commands.filter {
+                it.name.contains(commandQuery, true) ||
+                    it.description.contains(commandQuery, true)
+            }
+            // A bare "/" lists everything: keep pig's order (built-ins first) but
+            // do not cut the list at a handful, or installed extensions such as
+            // plan never show up. Typing narrows it, prefix matches first.
+            val ordered = if (commandQuery.isEmpty()) {
+                matches
+            } else {
+                matches.sortedWith(
+                    compareByDescending<com.linuxwff.pigapp.UiCommand> {
+                        it.name.startsWith(commandQuery, true)
+                    }.thenBy { it.name },
+                )
+            }
+            ordered.take(60)
         }
     }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -3362,7 +3373,7 @@ private fun CommandPalette(
     ) {
         Column(
             Modifier
-                .heightIn(max = 220.dp)
+                .heightIn(max = 280.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
             commands.forEach { command ->
@@ -3389,6 +3400,15 @@ private fun CommandPalette(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+            }
+            if (commands.size > 6) {
+                Text(
+                    packText("composer.commandCount", "共 {count} 个命令，上下滑动查看")
+                        .replace("{count}", commands.size.toString()),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant.copy(alpha = 0.7f),
+                )
             }
         }
     }
