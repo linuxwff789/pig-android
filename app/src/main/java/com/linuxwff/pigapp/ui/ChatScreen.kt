@@ -372,11 +372,12 @@ fun PigApp(vm: AppViewModel) {
                         ui.error?.let { ErrorBanner(it, vm::dismissError) }
                     }
                     AnimatedVisibility(
-                        visible = components.showStatusBar && ui.status.isNotBlank(),
+                        visible = components.showStatusBar &&
+                            (ui.status.isNotBlank() || ui.extensionStatuses.isNotEmpty()),
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically(),
                     ) {
-                        StatusBar(ui.status)
+                        StatusBar(ui.status, ui.extensionStatuses)
                     }
                     if (ui.readOnly && components.showReadOnlyBanner) {
                         ReadOnlyBanner()
@@ -3715,7 +3716,7 @@ private fun PendingDialog(request: UiRequest, vm: AppViewModel) {
 }
 
 @Composable
-private fun StatusBar(status: String) {
+private fun StatusBar(status: String, extensionStatuses: Map<String, String>) {
     val scheme = MaterialTheme.colorScheme
     val label = when (status) {
         "thinking" -> packText("status.thinking", "思考中")
@@ -3725,7 +3726,8 @@ private fun StatusBar(status: String) {
         "switching" -> packText("status.switching", "切换中")
         "restoring" -> packText("status.restoring", "恢复中")
         else -> status
-    }
+    }.ifBlank { extensionStatuses.values.firstOrNull().orEmpty() }
+    val extras = extensionStatuses.values.filter { it.isNotBlank() && it != label }
     Row(
         Modifier
             .padding(horizontal = 14.dp, vertical = 5.dp)
@@ -3741,7 +3743,7 @@ private fun StatusBar(status: String) {
         )
         Spacer(Modifier.width(9.dp))
         Text(
-            label,
+            (listOf(label) + extras).filter { it.isNotBlank() }.joinToString(" · "),
             style = MaterialTheme.typography.labelSmall,
             color = scheme.onSurfaceVariant,
             maxLines = 1,

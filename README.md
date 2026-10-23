@@ -241,6 +241,11 @@ that file at start, so the pinned window becomes the window used for
 compaction in newly spawned agents; until then the header shows both values,
 e.g. `ctx 57% / 1M (pig 128K)`. Clearing the pin removes the key.
 
+Extension status lines (`ctx.ui.setStatus(key, text)`) keep their key: the app
+shows them next to its own activity label (`工作中 · ⚡ 38.2 tok/s`), and an empty
+`statusText` clears only that key. Widgets (`ctx.ui.setWidget`) render above or
+below the composer as before.
+
 Failures are part of the transcript instead of a toast: pig's own failed turns
 are stored in the session file (`errorMessage`) and are replayed on load, while
 relay/transport failures the app sees are kept per session in

@@ -1233,7 +1233,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         markVisited(path)
         desiredSessionPath = path
         restorePending = false
-        ui = ui.copy(status = "switching")
+        ui = ui.copy(status = "switching", extensionStatuses = emptyMap())
         // The relay parks the current pig and attaches/reads the target
         // session, so switching during a running turn is safe.
         client.send(
@@ -1246,7 +1246,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun newSession() {
         currentAssistant = null
-        ui = ui.copy(readOnly = false)
+        ui = ui.copy(readOnly = false, extensionStatuses = emptyMap())
         client.send(JSONObject().put("type", "new_session"))
     }
 
@@ -1288,7 +1288,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearLocal() {
-        ui = ui.copy(messages = emptyList())
+        ui = ui.copy(messages = emptyList(), extensionStatuses = emptyMap())
     }
 
     fun injectWindow(text: String) {
@@ -2664,7 +2664,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             "notify" -> ui = ui.copy(toast = event.optString("message", ""))
-            "setStatus" -> ui = ui.copy(status = event.optString("statusText", ""))
+            "setStatus" -> {
+                // Protocol: a status line is keyed, and an empty text clears
+                // only that key. Keeping them apart from the activity status
+                // lets "工作中" and an extension's rate coexist.
+                val key = event.optString("statusKey", "status").ifBlank { "status" }
+                val text = event.optString("statusText", "")
+                val next = ui.extensionStatuses.toMutableMap()
+                if (text.isBlank()) next.remove(key) else next[key] = text
+                ui = ui.copy(extensionStatuses = next)
+            }
             "setTitle" -> ui = ui.copy(
                 titleOverride = event.optString("title", "").takeIf { it.isNotBlank() },
             )

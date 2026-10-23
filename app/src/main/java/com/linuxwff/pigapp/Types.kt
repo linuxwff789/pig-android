@@ -220,6 +220,9 @@ data class AppUiState(
     val busy: Boolean = false,
     val messages: List<ChatMsg> = emptyList(),
     val status: String = "",
+
+    /** Status lines pinned by extensions, keyed by `statusKey`. */
+    val extensionStatuses: Map<String, String> = emptyMap(),
     val model: String = "",
     val sessionId: String = "",
     val pending: UiRequest? = null,
