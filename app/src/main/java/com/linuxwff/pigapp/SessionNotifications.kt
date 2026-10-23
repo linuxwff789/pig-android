@@ -168,7 +168,7 @@ class SessionNotifications(private val context: Context) {
 
     private fun soundUri(choice: String): Uri? = when (choice) {
         SOUND_SILENT -> null
-        SOUND_ALARM -> Settings.System.DEFAULT_ALARM_URI
+        SOUND_ALARM -> Settings.System.DEFAULT_ALARM_ALERT_URI
         SOUND_RINGTONE -> Settings.System.DEFAULT_RINGTONE_URI
         else -> Settings.System.DEFAULT_NOTIFICATION_URI
     }
