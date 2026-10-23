@@ -950,23 +950,42 @@ private fun SettingsDialog(
                     )
                 }
                 val ctxWindow = ui.contextWindow
+                val basisWindow = if (ui.contextWindowActual > 0) {
+                    ui.contextWindowActual
+                } else {
+                    ctxWindow
+                }
                 val reserveTokens = ui.compactionReserveTokens
-                val thresholdPct = if (ctxWindow > 0 && reserveTokens in 1 until ctxWindow) {
-                    ((ctxWindow - reserveTokens) * 100.0 / ctxWindow).roundToInt()
+                val thresholdPct = if (basisWindow > 0 && reserveTokens in 1 until basisWindow) {
+                    ((basisWindow - reserveTokens) * 100.0 / basisWindow).roundToInt()
                 } else {
                     0
                 }
+                val pendingPin = ctxWindow > 0 && basisWindow > 0 && ctxWindow != basisWindow
                 QueueModeRow(
                     title = packText("settings.compactionThreshold", "自动压缩阈值"),
-                    hint = if (ctxWindow > 0 && reserveTokens in 1 until ctxWindow) {
+                    hint = if (basisWindow > 0 && reserveTokens in 1 until basisWindow) {
                         packText(
                             "settings.compactionThresholdHint",
-                            "上下文用到 {percent}%（{used} / {window}）时自动总结，预留 {reserve}",
+                            "上下文用到 {percent}%（{used} / {window}）时自动总结，预留 {reserve}{pending}",
                         )
                             .replace("{percent}", thresholdPct.toString())
-                            .replace("{used}", formatTokens(ctxWindow - reserveTokens))
-                            .replace("{window}", formatTokens(ctxWindow))
+                            .replace("{used}", formatTokens(basisWindow - reserveTokens))
+                            .replace("{window}", formatTokens(basisWindow))
                             .replace("{reserve}", formatTokens(reserveTokens))
+                            .replace(
+                                "{pending}",
+                                if (pendingPin) {
+                                    packText(
+                                        "settings.compactionThresholdPending",
+                                        " · PiG 仍是 {actual}，重启后按 {pinned} 生效",
+                                    )
+                                        .replace("{actual}", formatTokens(basisWindow))
+                                        .replace("{pinned}", formatTokens(ctxWindow))
+                                } else {
+                                    ""
+                                },
+                            )
                     } else {
                         packText(
                             "settings.compactionThresholdUnknown",

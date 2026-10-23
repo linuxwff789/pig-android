@@ -165,13 +165,7 @@
             {
               "type": "text",
               "bind": "context",
-              "format": "{percentLabel} / {windowLabel}",
-              "style": "muted"
-            },
-            {
-              "type": "text",
-              "bind": "stats",
-              "format": "缓存 {cacheHitRate}%",
+              "format": "{percentLabel} / {windowLabel}{mismatch}",
               "style": "muted"
             },
             {

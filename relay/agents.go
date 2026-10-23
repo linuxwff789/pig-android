@@ -797,6 +797,9 @@ func (s *session) handleClientLine(line []byte) {
 		Name        string         `json:"name"`
 		SessionPath string         `json:"sessionPath"`
 		Set         map[string]any `json:"set"`
+		Provider    string         `json:"provider"`
+		Model       string         `json:"model"`
+		Window      *int           `json:"contextWindow"`
 	}
 	if err := json.Unmarshal(line, &head); err != nil {
 		_ = s.send(frame{"type": "relay_error", "message": "invalid json: " + err.Error()})
@@ -875,6 +878,8 @@ func (s *session) handleClientLine(line []byte) {
 		}
 	case "relay_settings":
 		handleSettings(s, head.ID, head.Set)
+	case "relay_model_override":
+		handleModelOverride(s, head.ID, head.Provider, head.Model, head.Window)
 	case "relay_ui":
 		files, assets, assetHashes, hash, err := scanUI(s.uiDir)
 		if err != nil {
@@ -988,6 +993,74 @@ func editableSettingsList() []string {
 	}
 	sort.Strings(list)
 	return list
+}
+
+// handleModelOverride pins (or clears, with a zero window) the context window
+// of `provider/model` in models.json under
+// `providers.<provider>.modelOverrides.<model>.contextWindow`. PiG reads that
+// file when it starts, so the value applies to newly spawned agents — the app
+// uses it to make a user-pinned context length real instead of display-only.
+func handleModelOverride(s *session, id any, provider, model string, window *int) {
+	fail := func(msg string) {
+		_ = s.send(frame{"type": "relay_model_override_error", "id": id, "message": msg})
+	}
+	if provider == "" || model == "" {
+		fail("provider and model are required")
+		return
+	}
+	if window != nil && (*window < 0 || *window > 10_000_000) {
+		fail("contextWindow out of range")
+		return
+	}
+	path := filepath.Join(filepath.Dir(s.settingsPath), "models.json")
+	root, err := readSettingsFile(path)
+	if err != nil {
+		fail(err.Error())
+		return
+	}
+	providers, _ := root["providers"].(map[string]interface{})
+	if providers == nil {
+		fail("models.json has no providers object")
+		return
+	}
+	entry, _ := providers[provider].(map[string]interface{})
+	if entry == nil {
+		fail("unknown provider: " + provider)
+		return
+	}
+	overrides, _ := entry["modelOverrides"].(map[string]interface{})
+	if overrides == nil {
+		overrides = map[string]interface{}{}
+		entry["modelOverrides"] = overrides
+	}
+	fields, _ := overrides[model].(map[string]interface{})
+	if fields == nil {
+		fields = map[string]interface{}{}
+	}
+	value := 0
+	if window != nil && *window > 0 {
+		value = *window
+		fields["contextWindow"] = value
+		overrides[model] = fields
+	} else {
+		delete(fields, "contextWindow")
+		if len(fields) == 0 {
+			delete(overrides, model)
+		} else {
+			overrides[model] = fields
+		}
+	}
+	if err := writeSettingsFile(path, root); err != nil {
+		fail(err.Error())
+		return
+	}
+	_ = s.send(frame{
+		"type":          "relay_model_override",
+		"id":            id,
+		"provider":      provider,
+		"model":         model,
+		"contextWindow": value,
+	})
 }
 
 func readSettingsFile(path string) (map[string]interface{}, error) {

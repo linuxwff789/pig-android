@@ -38,6 +38,8 @@ Control frames:
 | `relay_ui` | | `relay_ui_pack` snapshot |
 | `relay_settings` | `id`, optional `set` object | `relay_settings` (`settings`, `editable`) |
 | `relay_settings` | `set` only merges allow-listed keys | `relay_settings_error` (`message`) |
+| `relay_model_override` | `id`, `provider`, `model`, `contextWindow` | `relay_model_override` (`provider`, `model`, `contextWindow`) |
+| `relay_model_override` | `contextWindow` outside 0…10 000 000 or unknown provider | `relay_model_override_error` (`message`) |
 | `relay_restart` | | kills and respawns pig (`relay_restarted`) |
 | `relay_stop` | | closes the connection |
 
@@ -57,6 +59,8 @@ Control frames:
 | `relay_ui_pack` | UI pack snapshot |
 | `relay_settings` | parsed `~/.pig/agent/settings.json` plus the writable key list |
 | `relay_settings_error` | settings read/write failed (`message`) |
+| `relay_model_override` | context window written to `models.json` (echo) |
+| `relay_model_override_error` | override rejected (`message`) |
 | `relay_resume` | in-flight assistant text replayed after a reconnect |
 | `relay_tool` | running tool progress replayed after a reconnect |
 | `relay_restarted` | pig was respawned |
@@ -78,6 +82,28 @@ Writable keys: `compaction.enabled`, `compaction.reserveTokens`,
 `compaction.keepRecentTokens`, `cacheWarming`, `hideThinkingBlock`,
 `retry.enabled`, `retry.maxRetries`, `retry.baseDelayMs`,
 `retry.maxAgentDelayMs`, `defaultThinkingLevel`, `thinkingBudgets.*`.
+
+## Model overrides
+
+`relay_model_override` pins a per-model context window in
+`~/.pig/agent/models.json`:
+
+```json
+{"type": "relay_model_override", "id": 7, "provider": "eu",
+ "model": "wb2api/cn:deepseek-v4.1-flash", "contextWindow": 1000000}
+```
+
+It writes `providers.<provider>.modelOverrides.<model>.contextWindow`, keeping
+the other override keys (`reasoning`, `thinkingLevelMap`, ...). A
+`contextWindow` of `0` removes just that key (and the empty override object).
+The provider must already exist in `models.json`; unknown providers and windows
+outside `0…10 000 000` are rejected. Same write discipline as the settings
+frame: atomic rename plus `models.json.bak-<timestamp>-pre-app`.
+
+PiG reads `models.json` when it starts, so the new window applies to agents
+spawned afterwards — the running agent keeps its old value until it is
+restarted. `get_session_stats` reports `contextUsage.contextWindow`, which is
+what the app compares a pinned window against.
 
 These values are read by pig when a process starts, so a change applies to
 newly spawned sessions; the running pig keeps its loaded values.

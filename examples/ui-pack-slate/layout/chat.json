@@ -142,19 +142,13 @@
         {
           "type": "text",
           "bind": "context",
-          "format": "ctx {percentLabel} / {windowLabel}",
+          "format": "ctx {percentLabel} / {windowLabel}{mismatch}",
           "style": "label"
         },
         {
           "type": "text",
           "bind": "state.thinkingLevel",
-          "format": "think {value}",
-          "style": "label"
-        },
-        {
-          "type": "text",
-          "bind": "stats",
-          "format": "cache {cacheHitRate}%",
+          "format": "{value}",
           "style": "label"
         },
         {

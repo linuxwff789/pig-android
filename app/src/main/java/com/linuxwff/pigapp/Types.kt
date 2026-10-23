@@ -259,6 +259,8 @@ data class AppUiState(
     val titleOverride: String? = null,
     val availableModelCount: Int = 0,
     val contextWindow: Int = 0,
+    /** Window PiG itself reports, before the user-pinned override. */
+    val contextWindowActual: Int = 0,
     /** User-specified context window overrides, keyed by `provider/id`. */
     val contextOverrides: Map<String, Int> = emptyMap(),
     val thinkingLevel: String = "off",

@@ -233,12 +233,22 @@ The composer recognises `/name args`:
 - **打断消息 / 追问消息** → `set_steering_mode` / `set_follow_up_mode`
   (`one-at-a-time` or `all`).
 
+The context length picked in the model picker is not display-only any more: the
+app sends `relay_model_override`, which writes
+`providers.<provider>.modelOverrides.<model>.contextWindow` in
+`~/.pig/agent/models.json` (atomic write, `.bak-*-pre-app` backup). Pig reads
+that file at start, so the pinned window becomes the window used for
+compaction in newly spawned agents; until then the header shows both values,
+e.g. `ctx 57% / 1M (pig 128K)`. Clearing the pin removes the key.
+
 **设置 → 压缩与重试** also offers **自动压缩阈值** as a share of the window
 (60/70/80/88/90 %). PiG only knows the absolute headroom, so the app converts
-the picked value with `reserveTokens = window × (1 − threshold)` using the
-*effective* window (a pinned context length included) and writes it through
-`relay_settings`. The row shows the resulting numbers, and the absolute
-`压缩预留 tokens` entry below stays available for exact values.
+the picked value with `reserveTokens = window × (1 − threshold)` and writes it
+through `relay_settings`. The window used is the one pig reports (it is the one
+compaction compares against), so a pin that has not been applied yet cannot
+produce a reserve larger than the real window; the hint says so and shows the
+resulting numbers. The absolute `压缩预留 tokens` entry below stays available
+for exact values.
 
 The section edits values that only live in
 `~/.pig/agent/settings.json` (`compaction.reserveTokens`,

@@ -109,6 +109,22 @@ fun resolveUiPath(ui: AppUiState, path: String): Any? {
             .put("tokensLabel", formatTokenLabel(ui.contextTokens))
             .put("window", ui.contextWindow)
             .put("windowLabel", if (ui.contextWindow > 0) formatTokenLabel(ui.contextWindow) else "—")
+            .put("actualWindow", ui.contextWindowActual)
+            .put(
+                "actualWindowLabel",
+                if (ui.contextWindowActual > 0) formatTokenLabel(ui.contextWindowActual) else "—",
+            )
+            .put(
+                // Only shown when the pin and pig disagree, e.g. " (pig 128K)".
+                "mismatch",
+                if (ui.contextWindowActual > 0 && ui.contextWindow > 0 &&
+                    ui.contextWindowActual != ui.contextWindow
+                ) {
+                    " (pig ${formatTokenLabel(ui.contextWindowActual)})"
+                } else {
+                    ""
+                },
+            )
         val key = path.removePrefix("context").removePrefix(".")
         if (key.isEmpty()) return ctx
         return if (ctx.has(key) && !ctx.isNull(key)) ctx.opt(key) else null

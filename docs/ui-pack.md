@@ -641,13 +641,17 @@ live pig. Both header elements and window nodes can bind it.
 | `context.tokensLabel` | string | e.g. `104K` |
 | `context.window` | number | effective max context length (0 when unknown) |
 | `context.windowLabel` | string | e.g. `1M`, `128K`, `—` when unknown |
+| `context.actualWindow` | number | window pig itself reports, before the pin |
+| `context.actualWindowLabel` | string | e.g. `128K`, `—` when unknown |
+| `context.mismatch` | string | ` (pig 128K)` only when the pin and pig differ, else `""` |
 
 ```json
-{ "type": "text", "bind": "context", "format": "ctx {percentLabel} / {windowLabel}" }
+{ "type": "text", "bind": "context", "format": "ctx {percentLabel} / {windowLabel}{mismatch}" }
 ```
 
-That renders e.g. `ctx 10.4% / 1M`. Prefer it over `stats.contextUsage` when the
-pack should follow a pinned window or survive a reconnect. A `dataSources` entry
+That renders e.g. `ctx 10.4% / 1M`, and `ctx 57% / 1M (pig 128K)` while a pinned
+window has not reached pig yet. Prefer it over `stats.contextUsage` when the pack
+should follow a pinned window or survive a reconnect. A `dataSources` entry
 named `context` takes precedence over the computed object.
 
 ### actions

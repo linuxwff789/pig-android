@@ -896,7 +896,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * percentage is converted here: reserve = window * (1 - percent).
      */
     fun setCompactionThreshold(percent: Int) {
-        val window = ui.contextWindow
+        // PiG compares against the window it knows; while a pin has not reached
+        // pig yet that is still the reported one, so prefer it over the display
+        // value to avoid a reserve larger than the real window.
+        val window = if (ui.contextWindowActual > 0) ui.contextWindowActual else ui.contextWindow
         if (window <= 0) {
             ui = ui.copy(
                 toast = str("toast.contextUnknown", "未知上下文窗口，先切到一个可用会话"),
@@ -952,7 +955,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         prefs.edit()
             .putString("contextOverrides", JSONObject(map as Map<*, *>).toString())
             .apply()
-        val window = effectiveContextWindow(ui.contextWindow, ui.model)
+        val window = effectiveContextWindow(
+            ui.contextWindowActual.takeIf { it > 0 } ?: ui.contextWindow,
+            ui.model,
+        )
         ui = ui.copy(
             contextWindow = window,
             contextPercent = if (window > 0 && ui.contextTokens > 0) {
@@ -962,9 +968,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             },
         )
         requestStats()
+        // Make the pin real for PiG too: pig reads models.json at start, so the
+        // window applies to the next spawned agent instead of being display-only.
+        client.send(
+            JSONObject()
+                .put("id", "model-override-${nextId++}")
+                .put("type", "relay_model_override")
+                .put("provider", provider)
+                .put("model", id)
+                .put("contextWindow", tokens.coerceAtLeast(0)),
+        )
         ui = ui.copy(
             toast = if (tokens > 0) {
-                str("toast.contextWindowSet", "上下文长度已设为 {tokens}")
+                str("toast.contextWindowSet", "上下文长度已设为 {tokens}（新会话生效）")
                     .replace("{tokens}", formatTokenCount(tokens))
             } else {
                 str("toast.contextWindowReset", "已恢复自动检测的上下文长度")
@@ -1605,6 +1621,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     // Relay older than the settings frame: keep the tuning
                     // section read-only instead of surfacing a connection error.
                     ui = ui.copy(settingsRemote = false)
+                } else if (message.contains("relay_model_override")) {
+                    // Older relay: the pin stays display-only, nothing to show.
+                    ui = ui.copy(
+                        toast = str("toast.contextWindowLocalOnly", "relay 版本过旧，上下文长度仅在本机生效"),
+                    )
                 } else {
                     ui = ui.copy(error = message, setup = true, setupHint = message)
                 }
@@ -1641,6 +1662,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 ui = ui.copy(
                     settingsRemote = false,
                     toast = str("toast.settingsUnsupported", "relay 版本过旧，无法读写 settings.json"),
+                )
+            }
+            "relay_model_override" -> {
+                // The optimistic toast from setContextWindow already covered it.
+            }
+            "relay_model_override_error" -> {
+                ui = ui.copy(
+                    toast = str("toast.contextWindowLocalOnly", "relay 版本过旧，上下文长度仅在本机生效"),
                 )
             }
             "relay_sessions" -> handleSessions(event)
@@ -1798,6 +1827,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 pendingMessages = 0,
                 contextPercent = null,
                 contextTokens = 0,
+                contextWindowActual = 0,
                 contextCompacted = false,
                 cacheHitRate = null,
                 cacheReadTokens = 0,
@@ -1955,10 +1985,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     usage.opt("tokens") != null && usage.opt("tokens") != JSONObject.NULL
                 ui = if (hasContext) {
                     val tokens = usage!!.optInt("tokens")
-                    val window = effectiveContextWindow(
-                        usage.optInt("contextWindow", ui.contextWindow),
-                        ui.model,
-                    )
+                    val actual = usage.optInt("contextWindow", ui.contextWindowActual)
+                    val window = effectiveContextWindow(actual, ui.model)
                     val override = ui.contextOverrides[ui.model]?.takeIf { it > 0 }
                     ui.copy(
                         contextPercent = if (override != null && window > 0) {
@@ -1968,6 +1996,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         },
                         contextTokens = tokens,
                         contextWindow = window,
+                        contextWindowActual = actual,
                         contextCompacted = false,
                     )
                 } else {
