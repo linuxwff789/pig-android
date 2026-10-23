@@ -1885,7 +1885,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     ),
                     // A relay without an attached pig still describes the same
                     // session; keep the last known usage instead of showing 0.
-                    contextPercent = ui.contextPercent,
+                    contextPercent = if (
+                        label.isNotBlank() && ui.contextOverrides[label] != null &&
+                        ui.contextTokens > 0 && effectiveContextWindow(0, label) > 0
+                    ) {
+                        // A pinned window must also drive the percentage, even
+                        // when get_session_stats arrived before we knew the model.
+                        ui.contextTokens * 100.0 / effectiveContextWindow(0, label)
+                    } else {
+                        ui.contextPercent
+                    },
                     contextTokens = ui.contextTokens,
                     thinkingLevel = data.optString("thinkingLevel", ui.thinkingLevel),
                     pendingMessages = data.optInt("pendingMessageCount", ui.pendingMessages),
