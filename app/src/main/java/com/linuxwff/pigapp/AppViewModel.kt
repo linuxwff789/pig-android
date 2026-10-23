@@ -2335,7 +2335,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } else {
                     needsHistory = false
                     historyHealTried = true
-                    renderHistory(history)
+                    val requestId = responseId
+                    val pending = pendingToolPartials.toMap()
+                    val liveAtRequest = liveActive
+                    val live = if (liveAtRequest) liveBuffer.toString() else null
+                    val notices = readNotices()
+                    val redacted = str("chat.thinkingRedacted", "（提供方已隐藏思考内容）")
+                    viewModelScope.launch {
+                        val build = withContext(Dispatchers.Default) {
+                            buildHistory(history, pending, live, notices, redacted)
+                        }
+                        // A newer get_messages (session switch, heal) may have
+                        // been issued while this one was building.
+                        if (requestId.isNotBlank() && requestId != lastMessagesRequestId) {
+                            return@launch
+                        }
+                        // A turn started while the history was building: its
+                        // messages are not in `build`, so replacing the list
+                        // would drop them.
+                        if (!liveAtRequest && liveActive) return@launch
+                        applyHistory(build)
+                    }
                 }
             }
             "get_commands" -> {
@@ -2499,9 +2519,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(sessions = sessions, sessionsLoading = false)
     }
 
-    private fun renderHistory(messages: org.json.JSONArray) {
+    private data class HistoryBuild(
+        val items: List<ChatMsg>,
+        val toolMsgIds: Map<String, String>,
+        /** callId -> partial text that was consumed; only removed if unchanged. */
+        val consumed: Map<String, String>,
+        val assistantId: String?,
+        /** Text to continue from when history got further than the relay snapshot. */
+        val liveText: String?,
+    )
+
+    /**
+     * Pure builder for [renderHistory]. Runs off the main thread: a 2000-message
+     * session is ~8 MB of JSON and walking it on the frame thread is what made
+     * session switches stutter.
+     */
+    private fun buildHistory(
+        messages: org.json.JSONArray,
+        pending: Map<String, String>,
+        live: String?,
+        notices: List<ChatMsg>,
+        redactedLabel: String,
+    ): HistoryBuild {
         val out = mutableListOf<ChatMsg>()
         val toolIds = mutableMapOf<String, String>()
+        val toolMsgIds = HashMap<String, String>()
+        val consumed = HashMap<String, String>()
         // id -> position in `out`, so a toolResult does not scan the whole
         // transcript. A 2000-message session has ~1800 of them.
         val indexById = HashMap<String, Int>()
@@ -2510,8 +2553,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             null
         }
-        toolMsgIds.clear()
-        currentAssistant = null
         var counter = 1
         for (index in 0 until messages.length()) {
             val message = messages.optJSONObject(index) ?: continue
@@ -2522,7 +2563,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 "assistant" -> {
                     val text = contentText(message)
-                    val thinking = contentThinking(message)
+                    val thinking = contentThinking(message, redactedLabel)
                     if (text.isNotBlank() || thinking.isNotBlank()) {
                         out.add(
                             ChatMsg(
@@ -2551,7 +2592,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             // card after a reconnect.
                             toolMsgIds[callId] = id
                         }
-                        val pending = if (callId.isBlank()) null else pendingToolPartials.remove(callId)
+                        val partial = if (callId.isBlank()) null else pending[callId]
+                        if (partial != null) consumed[callId] = partial
                         indexById[id] = out.size
                         out.add(
                             ChatMsg(
@@ -2559,8 +2601,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 role = Role.TOOL,
                                 toolName = block.optString("name", "tool"),
                                 toolArgs = block.optJSONObject("arguments")?.toString(2) ?: "",
-                                toolResult = pending ?: "",
-                                running = pending != null,
+                                toolResult = partial ?: "",
+                                running = partial != null,
                             ),
                         )
                     }
@@ -2596,29 +2638,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // If the relay replayed an in-flight assistant message, put it back
         // after the history rebuild. Only the last input message can be the
         // partial assistant, so never overwrite an older completed bubble.
-        val live = if (liveActive) liveBuffer.toString() else null
+        var assistantId: String? = null
+        var liveText: String? = null
         if (!live.isNullOrEmpty() && lastInputRole == "assistant") {
             val last = out.lastOrNull()
             if (last?.role == Role.ASSISTANT) {
-                if (last.text.length > live.length) {
-                    // History got further than the relay snapshot; continue
-                    // appending from the longer text.
-                    liveBuffer.setLength(0)
-                    liveBuffer.append(last.text)
-                }
+                if (last.text.length > live.length) liveText = last.text
                 out[out.lastIndex] = last.copy(text = if (last.text.length < live.length) live else last.text)
-                currentAssistant = out.last().id
+                assistantId = out.last().id
             } else {
                 val id = "h${counter++}"
                 out.add(ChatMsg(id = id, role = Role.ASSISTANT, text = live))
-                currentAssistant = id
+                assistantId = id
             }
         }
         // App-recorded failures (relay/transport) are not in pig's file, so
         // replay them from the per-session log; nothing above is duplicated.
         val known = out.filter { it.role == Role.NOTICE }.mapTo(HashSet()) { it.text }
-        out += readNotices().filterNot { it.text in known }
-        ui = ui.copy(messages = out)
+        out += notices.filterNot { it.text in known }
+        return HistoryBuild(out, toolMsgIds, consumed, assistantId, liveText)
+    }
+
+    private fun applyHistory(build: HistoryBuild) {
+        toolMsgIds.clear()
+        toolMsgIds.putAll(build.toolMsgIds)
+        build.consumed.forEach { (callId, text) ->
+            // A newer partial may have arrived while the history was built.
+            if (pendingToolPartials[callId] == text) pendingToolPartials.remove(callId)
+        }
+        build.liveText?.let {
+            liveBuffer.setLength(0)
+            liveBuffer.append(it)
+        }
+        currentAssistant = build.assistantId
+        ui = ui.copy(messages = build.items)
         bindResumedAssistant()
     }
 
@@ -3053,7 +3106,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * Reasoning blocks of an assistant message. A redacted block keeps its
      * signature only, so say so instead of rendering an empty section.
      */
-    private fun contentThinking(object0: JSONObject?): String {
+    private fun contentThinking(object0: JSONObject?): String =
+        contentThinking(object0, str("chat.thinkingRedacted", "（提供方已隐藏思考内容）"))
+
+    private fun contentThinking(object0: JSONObject?, redactedLabel: String): String {
         if (object0 == null) return ""
         val blocks = object0.optJSONArray("content") ?: return ""
         val builder = StringBuilder()
@@ -3062,7 +3118,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (block.optString("type") != "thinking") continue
             if (block.optBoolean("redacted", false)) {
                 if (builder.isNotEmpty()) builder.append("\n\n")
-                builder.append(str("chat.thinkingRedacted", "（提供方已隐藏思考内容）"))
+                builder.append(redactedLabel)
                 continue
             }
             val text = block.optString("thinking", "")

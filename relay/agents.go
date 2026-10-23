@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"io"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -610,30 +611,64 @@ func readSessionSummary(path string) (sid, provider, model string, count int) {
 }
 
 func readSessionMessages(path string) []json.RawMessage {
-	out := []json.RawMessage{}
 	if path == "" {
-		return out
+		return []json.RawMessage{}
 	}
+	out, _ := scanMessages(path, 0)
+	if len(out) > historyLimit {
+		out = out[len(out)-historyLimit:]
+	}
+	return out
+}
+
+// readMessagesFrom reads the messages appended after offset.
+func readMessagesFrom(path string, offset int64) []json.RawMessage {
+	out, err := scanMessages(path, offset)
+	if err != nil {
+		return nil
+	}
+	return out
+}
+
+// scanMessages reads message entries from offset and reports the new offset.
+// The type check is done on the raw line: most session lines are metadata, and
+// unmarshalling each of them just to drop it is the expensive part.
+func scanMessages(path string, offset int64) ([]json.RawMessage, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return out
+		return nil, err
 	}
 	defer f.Close()
+	if offset > 0 {
+		info, statErr := f.Stat()
+		if statErr != nil {
+			return nil, statErr
+		}
+		if info.Size() < offset {
+			return nil, io.ErrUnexpectedEOF
+		}
+		if _, err := f.Seek(offset, io.SeekStart); err != nil {
+			return nil, err
+		}
+	}
+	out := []json.RawMessage{}
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64*1024), 32*1024*1024)
+	messageMarker := []byte(`"type":"message"`)
 	for sc.Scan() {
+		line := sc.Bytes()
+		if !bytes.Contains(line, messageMarker) {
+			continue
+		}
 		var e struct {
 			Type    string          `json:"type"`
 			Message json.RawMessage `json:"message"`
 		}
-		if json.Unmarshal(sc.Bytes(), &e) == nil && e.Type == "message" && len(e.Message) > 0 {
+		if json.Unmarshal(line, &e) == nil && e.Type == "message" && len(e.Message) > 0 {
 			out = append(out, e.Message)
 		}
 	}
-	if len(out) > 2000 {
-		out = out[len(out)-2000:]
-	}
-	return out
+	return out, sc.Err()
 }
 
 func (s *session) syntheticState(id any) frame {
@@ -676,8 +711,18 @@ func (s *session) syntheticMessages(id any) frame {
 	}
 }
 
+// historyLimit is how many messages get_messages returns.
+const historyLimit = 2000
+
+// msgCacheKeep bounds the cache: every entry can hold a few megabytes.
+const msgCacheKeep = 4
+
 // cachedMessages avoids re-reading multi-megabyte JSONL files when switching
 // back and forth between history sessions.
+//
+// Session files are append-only, so when the file only grew we read the new
+// tail instead of the whole thing. Without that every reconnect after a turn
+// paid for the full 10-20 MB file scan.
 func (s *session) cachedMessages(path string) []json.RawMessage {
 	if path == "" {
 		return []json.RawMessage{}
@@ -692,8 +737,26 @@ func (s *session) cachedMessages(path string) []json.RawMessage {
 	if ok && entry.size == info.Size() && entry.mod.Equal(info.ModTime()) {
 		return entry.messages
 	}
-	messages := readSessionMessages(path)
+	var messages []json.RawMessage
+	if ok && info.Size() > entry.size {
+		messages = make([]json.RawMessage, 0, len(entry.messages)+16)
+		messages = append(messages, entry.messages...)
+		messages = append(messages, readMessagesFrom(path, entry.size)...)
+		if len(messages) > historyLimit {
+			messages = messages[len(messages)-historyLimit:]
+		}
+	} else {
+		messages = readSessionMessages(path)
+	}
 	s.msgMu.Lock()
+	if len(s.msgCache) >= msgCacheKeep {
+		for cachedPath := range s.msgCache {
+			if cachedPath != path {
+				delete(s.msgCache, cachedPath)
+				break
+			}
+		}
+	}
 	s.msgCache[path] = msgCacheEntry{
 		size:     info.Size(),
 		mod:      info.ModTime(),
