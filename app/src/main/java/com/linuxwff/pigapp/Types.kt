@@ -292,6 +292,9 @@ data class AppUiState(
 
     /** `hideThinkingBlock` from settings.json: hide reasoning in the transcript. */
     val hideThinkingBlock: Boolean = false,
+
+    /** Last turn was at level `off` yet the upstream still returned reasoning. */
+    val upstreamIgnoresOff: Boolean = false,
     /** `compaction.reserveTokens` from settings.json (0 = unknown). */
     val compactionReserveTokens: Int = 0,
     /** `compaction.keepRecentTokens` from settings.json (0 = unknown). */

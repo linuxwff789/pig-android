@@ -2878,6 +2878,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 thinking = thinking.ifBlank { it.thinking },
             )
         }
+        // Some upstreams (DeepSeek "thinking" models behind proxies) answer with
+        // reasoning even at level off. Remember that, so the picker can say so
+        // instead of leaving the header looking wrong.
+        val level = message.optString("thinkingLevel")
+        if (level == "off") {
+            val reasoning = message.optJSONObject("usage")?.optInt("reasoning", 0) ?: 0
+            ui = ui.copy(upstreamIgnoresOff = reasoning > 0)
+        } else if (level.isNotBlank()) {
+            ui = ui.copy(upstreamIgnoresOff = false)
+        }
         // Tool-call-only assistant messages have no text; the tool card is the
         // visible representation, so drop the empty bubble.
         val finished = ui.messages.firstOrNull { it.id == id }

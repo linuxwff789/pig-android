@@ -142,7 +142,8 @@
     "contextTitle": "上下文长度",
     "contextHint": "provider 上报：{value}。上报不准时可手动指定，支持 128K / 1M；留空恢复自动检测。",
     "contextAuto": "留空 = 使用 provider 上报值",
-    "contextReset": "恢复自动"
+    "contextReset": "恢复自动",
+    "offIgnored": "该上游在 off 档仍会返回思考内容；顶栏显示的是请求档位。"
   },
   "dialog": {
     "save": "保存"

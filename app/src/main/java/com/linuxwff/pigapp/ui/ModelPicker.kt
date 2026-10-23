@@ -147,6 +147,17 @@ fun ModelPickerDialog(vm: AppViewModel) {
                             )
                         }
                     }
+                    if (vm.ui.thinkingLevel == "off" && vm.ui.upstreamIgnoresOff) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            packText(
+                                "model.offIgnored",
+                                "该上游在 off 档仍会返回思考内容；顶栏显示的是请求档位。",
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
                     if (vm.ui.thinkingLevels.size <= 1) {
                         Spacer(Modifier.height(4.dp))
                         Text(
