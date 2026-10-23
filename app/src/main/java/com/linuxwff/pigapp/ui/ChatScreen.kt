@@ -2337,7 +2337,11 @@ private sealed interface ChatListItem {
         override val contentType: String = message.role.name
     }
 
-    data class ToolGroup(val tools: List<ChatMsg>) : ChatListItem {
+    data class ToolGroup(
+        val tools: List<ChatMsg>,
+        /** Reasoning written between the calls; shown collapsed on the group. */
+        val thinking: String = "",
+    ) : ChatListItem {
         // Keep the key stable while more same-name tools are appended.
         override val key: String = "group:${tools.first().id}"
         override val contentType: String = "tool-group"
@@ -2352,15 +2356,29 @@ private fun buildChatListItems(messages: List<ChatMsg>, group: Boolean): List<Ch
         val message = messages[index]
         val name = message.toolName
         if (message.role == Role.TOOL && !name.isNullOrBlank()) {
-            var end = index + 1
-            while (end < messages.size &&
-                messages[end].role == Role.TOOL &&
-                messages[end].toolName == name
-            ) {
-                end++
+            // Tool steps are separated by an assistant line that only carries
+            // reasoning. Treating that line as a break meant a 100-call run was
+            // never grouped, so collect it into the group instead.
+            var end = index
+            val tools = mutableListOf<ChatMsg>()
+            val thinking = StringBuilder()
+            while (end < messages.size) {
+                val next = messages[end]
+                if (next.role == Role.TOOL && next.toolName == name) {
+                    tools.add(next)
+                    end++
+                    continue
+                }
+                if (next.role == Role.ASSISTANT && next.text.isBlank() && next.thinking.isNotBlank()) {
+                    if (thinking.isNotEmpty()) thinking.append("\n\n")
+                    thinking.append(next.thinking)
+                    end++
+                    continue
+                }
+                break
             }
-            if (end - index >= 2) {
-                out.add(ChatListItem.ToolGroup(messages.subList(index, end).toList()))
+            if (tools.size >= 2) {
+                out.add(ChatListItem.ToolGroup(tools.toList(), thinking.toString()))
                 index = end
                 continue
             }
@@ -2374,6 +2392,7 @@ private fun buildChatListItems(messages: List<ChatMsg>, group: Boolean): List<Ch
 @Composable
 private fun ToolGroupCard(
     tools: List<ChatMsg>,
+    thinking: String,
     toolMode: String,
     cornerRadius: Int,
     onToolModeAll: (String) -> Unit,
@@ -2406,6 +2425,11 @@ private fun ToolGroupCard(
         MaterialTheme.typography.titleSmall.copy(fontSize = appearance.titleSize.sp)
     } else {
         MaterialTheme.typography.titleSmall
+    }
+    Column(Modifier.fillMaxWidth()) {
+    if (thinking.isNotBlank()) {
+        ThinkingBlock(id = tools.first().id + ":group", text = thinking, streaming = false)
+        Spacer(Modifier.height(4.dp))
     }
     Surface(
         color = toolSurfaceColor(appearance),
@@ -2495,6 +2519,7 @@ private fun ToolGroupCard(
                 }
             }
         }
+    }
     }
 }
 
@@ -2608,6 +2633,7 @@ private fun MessageList(
                     )
                     is ChatListItem.ToolGroup -> ToolGroupCard(
                         tools = item.tools,
+                        thinking = item.thinking,
                         toolMode = toolMode,
                         cornerRadius = cornerRadius,
                         onToolModeAll = onToolModeAll,
@@ -2782,9 +2808,12 @@ private fun CopyButton(onClick: () -> Unit) {
 @Composable
 private fun ThinkingBlock(id: String, text: String, streaming: Boolean) {
     val scheme = MaterialTheme.colorScheme
-    var toggled by rememberSaveable(id) { mutableStateOf(false) }
-    var expanded by rememberSaveable(id) { mutableStateOf(false) }
-    val open = if (toggled) expanded else streaming
+    var open by rememberSaveable(id) { mutableStateOf(streaming) }
+    var userChoice by rememberSaveable(id) { mutableStateOf(false) }
+    // Follow the stream until the user taps; after that their choice wins.
+    LaunchedEffect(streaming) {
+        if (!userChoice) open = streaming
+    }
     Column(
         Modifier
             .fillMaxWidth()
@@ -2795,8 +2824,8 @@ private fun ThinkingBlock(id: String, text: String, streaming: Boolean) {
             Modifier
                 .fillMaxWidth()
                 .clickable {
-                    toggled = true
-                    expanded = !open
+                    userChoice = true
+                    open = !open
                 }
                 .padding(horizontal = 10.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -2964,6 +2993,14 @@ private fun MessageRow(
                     }
                 }
                 Spacer(Modifier.height(4.dp))
+                if (!hideThinking && message.thinking.isNotBlank()) {
+                    ThinkingBlock(
+                        id = message.id,
+                        text = message.thinking,
+                        streaming = streaming,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                }
                 val content: @Composable () -> Unit = {
                     if (streaming) {
                         // Parsing a growing Markdown document on every delta is
@@ -3024,14 +3061,6 @@ private fun MessageRow(
                     } else {
                         content()
                     }
-                }
-                if (!hideThinking && message.thinking.isNotBlank()) {
-                    ThinkingBlock(
-                        id = message.id,
-                        text = message.thinking,
-                        streaming = streaming,
-                    )
-                    Spacer(Modifier.height(4.dp))
                 }
                 Box(
                     Modifier

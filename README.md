@@ -210,9 +210,13 @@ transcript, not a notification:
 
 - They stream in live (`thinking_delta` / `thinking_end`) while the model is
   thinking and are replayed from history on reload.
-- Each block renders above the answer as a collapsed `思考 · N 字` section; it
-  auto-expands while streaming and collapses when the answer starts. Tap the
+- Each block renders **above** the answer as a collapsed `思考 · N 字` section;
+  it auto-expands while streaming and collapses when the answer starts. Tap the
   header to toggle, per message.
+- A step that only reasons and then calls tools does not get its own bubble:
+  that reasoning is folded into the tool card group (also collapsed), so a long
+  run of same-name calls stays one group instead of being split by thinking
+  bubbles.
 - `hideThinkingBlock` in `settings.json` hides them; **设置 → 会话行为 → 显示思考过程**
   flips it through `relay_settings` and applies immediately.
 - A provider that redacts reasoning sends an empty block with `redacted: true`;
