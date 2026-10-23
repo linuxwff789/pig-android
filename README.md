@@ -237,9 +237,13 @@ The context length picked in the model picker is not display-only any more: the
 app sends `relay_model_override`, which writes
 `providers.<provider>.modelOverrides.<model>.contextWindow` in
 `~/.pig/agent/models.json` (atomic write, `.bak-*-pre-app` backup). Pig reads
-that file at start, so the pinned window becomes the window used for
-compaction in newly spawned agents; until then the header shows both values,
-e.g. `ctx 57% / 1M (pig 128K)`. Clearing the pin removes the key.
+that file once, at process start, and does not re-read it on `set_model`, so
+the app then sends `relay_restart`: the relay stops the agent and reopens the
+same session file with its history, and the pinned window is live within a
+second or two (status `恢复中`). If a turn is running the restart waits for
+`agent_end`. While a pin is still waiting the header appends `⏳` to the ctx
+line (e.g. `ctx 57% / 1M ⏳`); it disappears as soon as pig reports the new
+window. Clearing the pin removes the key and restarts pig the same way.
 
 Extension status lines (`ctx.ui.setStatus(key, text)`) keep their key: the app
 shows them next to its own activity label (`工作中 · ⚡ 38.2 tok/s`), and an empty

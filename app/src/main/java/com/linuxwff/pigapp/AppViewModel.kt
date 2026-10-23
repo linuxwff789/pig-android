@@ -920,6 +920,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun str(key: String, fallback: String): String =
         ui.uiPack.strings.get(key, fallback)
 
+    /**
+     * PiG reads models.json (and the provider catalog) once at start, so a pin
+     * only becomes real when the agent process is replaced. The relay owns that
+     * process: `relay_restart` stops it and reopens the same session file, which
+     * keeps the transcript. Restart right away when idle, otherwise wait for the
+     * running turn to settle.
+     */
+    private fun applyPinLive() {
+        if (restartInFlight) return
+        if (ui.busy) {
+            ui = ui.copy(pendingAgentRestart = true)
+            return
+        }
+        restartAgent()
+    }
+
+    private fun restartAgent() {
+        if (restartInFlight) return
+        restartInFlight = true
+        ui = ui.copy(status = "restoring", pendingAgentRestart = false)
+        client.send(
+            JSONObject()
+                .put("id", "restart-${nextId++}")
+                .put("type", "relay_restart"),
+        )
+    }
+
     private fun requestStats() {
         client.send(JSONObject().put("id", "stats-${nextId++}").put("type", "get_session_stats"))
     }
@@ -980,7 +1007,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
         ui = ui.copy(
             toast = if (tokens > 0) {
-                str("toast.contextWindowSet", "上下文长度已设为 {tokens}（新会话生效）")
+                str("toast.contextWindowSet", "上下文长度已设为 {tokens}")
                     .replace("{tokens}", formatTokenCount(tokens))
             } else {
                 str("toast.contextWindowReset", "已恢复自动检测的上下文长度")
@@ -1572,6 +1599,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(messages = ui.messages + message)
     }
 
+    /** True between `relay_restart` and its `relay_restarted` reply. */
+    private var restartInFlight = false
+
     /** Errors written by the app itself (relay/transport), kept per session. */
     private val noticesDir: File
         get() = File(getApplication<Application>().filesDir, "notices")
@@ -1598,6 +1628,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     .put("ts", System.currentTimeMillis())
                     .toString() + "\n",
             )
+        }
+    }
+
+    /**
+     * Drop a notice that stopped being true (e.g. an old relay rejected the
+     * model-override frame and the notice is now stale). Removes it from the
+     * transcript and from the on-disk log so it stops replaying.
+     */
+    private fun resolveNotice(text: String) {
+        if (text.isBlank()) return
+        ui = ui.copy(messages = ui.messages.filterNot { it.role == Role.NOTICE && it.text == text })
+        val key = noticeKey() ?: return
+        val file = File(noticesDir, "$key.jsonl")
+        if (!file.isFile) return
+        runCatching {
+            val kept = file.readLines().filterNot { line ->
+                runCatching { JSONObject(line).optString("text") }.getOrDefault("") == text
+            }
+            if (kept.isEmpty()) file.delete() else file.writeText(kept.joinToString("\n", postfix = "\n"))
         }
     }
 
@@ -1650,6 +1699,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // would wipe the transcript we are showing.
                 needsHistory = true
                 historyHealTried = false
+                restartInFlight = false
                 clearLive()
                 ui = ui.copy(streamingId = null, pendingMessages = 0)
                 pendingToolPartials.clear()
@@ -1672,7 +1722,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             "relay_error" -> {
                 val message = event.optString("message", "relay error")
-                if (message.contains("relay_settings")) {
+                if (message.contains("relay_restart")) {
+                    restartInFlight = false
+                    ui = ui.copy(status = "")
+                    appendNotice(
+                        str("toast.restartUnsupported", "relay 版本过旧，无法重启 pig；上下文长度在重启后生效"),
+                    )
+                } else if (message.contains("relay_settings")) {
                     // Relay older than the settings frame: keep the tuning
                     // section read-only instead of surfacing a connection error.
                     ui = ui.copy(settingsRemote = false)
@@ -1719,7 +1775,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             "relay_model_override" -> {
-                // The optimistic toast from setContextWindow already covered it.
+                // The optimistic toast from setContextWindow already covered it,
+                // and the relay proved it understands the frame: retire any
+                // "relay 版本过旧" notice left over from an older relay.
+                resolveNotice(str("toast.contextWindowLocalOnly", "relay 版本过旧，上下文长度仅在本机生效"))
+                applyPinLive()
+            }
+            "relay_restarted" -> {
+                // Pig was restarted by us (or by the relay's own button): it now
+                // reads models.json, so a pinned window is live.
+                restartInFlight = false
+                ui = ui.copy(
+                    status = "",
+                    busy = false,
+                    pendingAgentRestart = false,
+                    toast = str("toast.agentRestarted", "已重启 pig，新的上下文长度生效"),
+                )
+                requestState()
+                requestStats()
+                refreshCommands()
             }
             "relay_model_override_error" -> {
                 val message = event.optString("message").takeIf { it.isNotBlank() }
@@ -1757,6 +1831,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 requestStats()
                 refreshCommands()
                 refreshDataSources("agent_end")
+                if (ui.pendingAgentRestart) restartAgent()
             }
             "message_start" -> handleMessageStart(event.optJSONObject("message"))
             "message_update" -> handleMessageUpdate(event)

@@ -165,7 +165,7 @@
             {
               "type": "text",
               "bind": "context",
-              "format": "{percentLabel} / {windowLabel}",
+              "format": "{percentLabel} / {windowLabel}{pendingMark}",
               "style": "muted"
             },
             {

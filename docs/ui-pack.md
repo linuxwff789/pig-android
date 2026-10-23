@@ -643,10 +643,11 @@ live pig. Both header elements and window nodes can bind it.
 | `context.windowLabel` | string | e.g. `1M`, `128K`, `—` when unknown |
 | `context.actualWindow` | number | window pig itself reports, before the pin |
 | `context.actualWindowLabel` | string | e.g. `128K`, `—` when unknown |
+| `context.pendingMark` | string | ` ⏳` while a pin waits for the pig restart that applies it, else `""` |
 | `context.mismatch` | string | ` (pig 128K)` only when the pin and pig differ, else `""` |
 
 ```json
-{ "type": "text", "bind": "context", "format": "ctx {percentLabel} / {windowLabel}{mismatch}" }
+{ "type": "text", "bind": "context", "format": "ctx {percentLabel} / {windowLabel}{pendingMark}" }
 ```
 
 That renders e.g. `ctx 10.4% / 1M`, and `ctx 57% / 1M (pig 128K)` while a pinned

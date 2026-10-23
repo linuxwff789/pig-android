@@ -223,6 +223,9 @@ data class AppUiState(
 
     /** Status lines pinned by extensions, keyed by `statusKey`. */
     val extensionStatuses: Map<String, String> = emptyMap(),
+
+    /** A pin landed while a turn was running; restart pig when it settles. */
+    val pendingAgentRestart: Boolean = false,
     val model: String = "",
     val sessionId: String = "",
     val pending: UiRequest? = null,

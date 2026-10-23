@@ -142,7 +142,7 @@
         {
           "type": "text",
           "bind": "context",
-          "format": "ctx {percentLabel} / {windowLabel}",
+          "format": "ctx {percentLabel} / {windowLabel}{pendingMark}",
           "style": "label"
         },
         {

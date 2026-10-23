@@ -40,7 +40,7 @@ Control frames:
 | `relay_settings` | `set` only merges allow-listed keys | `relay_settings_error` (`message`) |
 | `relay_model_override` | `id`, `provider`, `model`, `contextWindow` | `relay_model_override` (`provider`, `model`, `contextWindow`) |
 | `relay_model_override` | `contextWindow` outside 0…10 000 000 or unknown provider | `relay_model_override_error` (`message`) |
-| `relay_restart` | | kills and respawns pig (`relay_restarted`) |
+| `relay_restart` | | kills and respawns pig from the same session file (`relay_restarted`); used after a context-window pin |
 | `relay_stop` | | closes the connection |
 
 ## Relay → client
@@ -105,10 +105,14 @@ The provider must already exist in `models.json`; unknown providers and windows
 outside `0…10 000 000` are rejected. Same write discipline as the settings
 frame: atomic rename plus `models.json.bak-<timestamp>-pre-app`.
 
-PiG reads `models.json` when it starts, so the new window applies to agents
-spawned afterwards — the running agent keeps its old value until it is
-restarted. `get_session_stats` reports `contextUsage.contextWindow`, which is
-what the app compares a pinned window against.
+PiG reads `models.json` when it starts and does not re-read it on `set_model`,
+so the new window applies only to agents spawned afterwards — the running agent
+keeps its old value. This is why the app follows a successful override with
+`relay_restart` (see above): the relay stops the agent and reopens the same
+session file, so the transcript survives and the pin becomes live.
+`get_session_stats` reports `contextUsage.contextWindow`, which is what the app
+compares a pinned window against (and what drives the `⏳` marker on the
+`context` binding).
 
 These values are read by pig when a process starts, so a change applies to
 newly spawned sessions; the running pig keeps its loaded values.

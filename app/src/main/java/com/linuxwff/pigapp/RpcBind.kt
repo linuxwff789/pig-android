@@ -115,6 +115,18 @@ fun resolveUiPath(ui: AppUiState, path: String): Any? {
                 if (ui.contextWindowActual > 0) formatTokenLabel(ui.contextWindowActual) else "—",
             )
             .put(
+                // Lightweight "not live yet" marker: shown while a pin waits for
+                // the pig restart that applies it.
+                "pendingMark",
+                if (ui.contextWindowActual > 0 && ui.contextWindow > 0 &&
+                    ui.contextWindowActual != ui.contextWindow
+                ) {
+                    " ⏳"
+                } else {
+                    ""
+                },
+            )
+            .put(
                 // Only shown when the pin and pig disagree, e.g. " (pig 128K)".
                 "mismatch",
                 if (ui.contextWindowActual > 0 && ui.contextWindow > 0 &&
