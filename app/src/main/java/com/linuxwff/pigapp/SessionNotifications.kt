@@ -142,9 +142,13 @@ class SessionNotifications(private val context: Context) {
         // Drop variants from an earlier sound choice.
         system.notificationChannels
             .map { it.id }
-            .filter {
-                (it.startsWith(CHANNEL_UPDATES_PREFIX) || it.startsWith(CHANNEL_ALERTS_PREFIX)) &&
-                    it != updates && it != alerts
+            .filter { id ->
+                if (id == updates || id == alerts) return@filter false
+                // Variants of an earlier sound, plus the unsuffixed ids used
+                // before the sound became selectable.
+                id in LEGACY_CHANNEL_IDS ||
+                    id.startsWith(CHANNEL_UPDATES_PREFIX) ||
+                    id.startsWith(CHANNEL_ALERTS_PREFIX)
             }
             .forEach { system.deleteNotificationChannel(it) }
         return updates to alerts
@@ -182,6 +186,7 @@ class SessionNotifications(private val context: Context) {
         const val SOUND_ALARM = "alarm"
         const val SOUND_RINGTONE = "ringtone"
         val SOUND_CHOICES = setOf(SOUND_SYSTEM, SOUND_SILENT, SOUND_ALARM, SOUND_RINGTONE)
+        val LEGACY_CHANNEL_IDS = setOf("pig_updates", "pig_alerts")
         val KIND_IDS = setOf(1001, 1002, 1003, 1004, 1005)
     }
 }
