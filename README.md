@@ -219,6 +219,21 @@ The composer recognises `/name args`:
   Termux still requires the running pig to load it: run `/reload-runtime` (or
   restart the agent), then reopen the palette.
 
+### Plan mode (optional)
+
+`extensions/plan/` in this repository is an optional Go extension: `/plan`
+switches to a read-only planning mode, the model answers with a `Plan:` list,
+and `/plan go` (or the dialog) starts executing it while `[DONE:n]` markers tick
+the steps off. Install it with:
+
+```bash
+pig install ./extensions/plan        # after cloning this repo
+```
+
+Then `/reload-runtime` (or restart pig). The app does not depend on this
+extension — any extension that emits the [plan widget contract](docs/plan-widget.md)
+gets the same card.
+
 `compact` is also available from **设置 → 数据 → 压缩上下文**.
 
 ## Session behaviour and tuning
