@@ -133,6 +133,9 @@ class DebugReceiver : BroadcastReceiver() {
                     "model=${state.model} sessionId=${state.sessionId} " +
                     "messages=${state.messages.size} context=${state.contextPercent}% " +
                     "used=${state.contextTokens}/${state.contextWindow} " +
+                    "actualWindow=${state.contextWindowActual} " +
+                    "pendingRestart=${state.pendingAgentRestart} " +
+                    "extStatuses=${state.extensionStatuses} " +
                     "pack=${state.activePackId.ifBlank { "builtin" }} " +
                     "packName=${state.uiPack.name} localPacks=${state.localPacks.size} " +
                     "windows=${state.windows.size} windowError=${state.windowError} " +

@@ -929,7 +929,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun applyPinLive() {
         if (restartInFlight) return
-        if (ui.busy) {
+        // A running turn or a running compaction both write the session file:
+        // wait for it to settle instead of pulling the process out from under it.
+        if (ui.busy || ui.status == "compacting") {
             ui = ui.copy(pendingAgentRestart = true)
             return
         }
@@ -938,6 +940,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun restartAgent() {
         if (restartInFlight) return
+        if (!client.connected.value) {
+            // Nothing to restart; the pin is still written to models.json and
+            // will be picked up by the next pig that starts.
+            ui = ui.copy(
+                pendingAgentRestart = false,
+                toast = str("toast.restartOffline", "relay 未连接，上下文长度在下次连接后生效"),
+            )
+            return
+        }
         restartInFlight = true
         ui = ui.copy(status = "restoring", pendingAgentRestart = false)
         client.send(
@@ -945,6 +956,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .put("id", "restart-${nextId++}")
                 .put("type", "relay_restart"),
         )
+        // A relay that dies between the request and the reply must not wedge the
+        // flag forever: without this every later pin would stay display-only.
+        viewModelScope.launch {
+            delay(8000)
+            if (restartInFlight) {
+                restartInFlight = false
+                if (ui.status == "restoring") ui = ui.copy(status = "")
+            }
+        }
     }
 
     private fun requestStats() {
@@ -997,20 +1017,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         requestStats()
         // Make the pin real for PiG too: pig reads models.json at start, so the
         // window applies to the next spawned agent instead of being display-only.
-        client.send(
-            JSONObject()
-                .put("id", "model-override-${nextId++}")
-                .put("type", "relay_model_override")
-                .put("provider", provider)
-                .put("model", id)
-                .put("contextWindow", tokens.coerceAtLeast(0)),
-        )
+        val sent = client.connected.value
+        if (sent) {
+            client.send(
+                JSONObject()
+                    .put("id", "model-override-${nextId++}")
+                    .put("type", "relay_model_override")
+                    .put("provider", provider)
+                    .put("model", id)
+                    .put("contextWindow", tokens.coerceAtLeast(0)),
+            )
+        }
         ui = ui.copy(
-            toast = if (tokens > 0) {
-                str("toast.contextWindowSet", "上下文长度已设为 {tokens}")
+            toast = when {
+                !sent -> str(
+                    "toast.contextWindowOffline",
+                    "relay 未连接，上下文长度只在本机生效",
+                )
+                tokens > 0 -> str("toast.contextWindowSet", "上下文长度已设为 {tokens}")
                     .replace("{tokens}", formatTokenCount(tokens))
-            } else {
-                str("toast.contextWindowReset", "已恢复自动检测的上下文长度")
+                else -> str("toast.contextWindowReset", "已恢复自动检测的上下文长度")
             },
         )
     }
@@ -1260,7 +1286,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         markVisited(path)
         desiredSessionPath = path
         restorePending = false
-        ui = ui.copy(status = "switching", extensionStatuses = emptyMap())
+        ui = ui.copy(status = "switching", extensionStatuses = emptyMap(), pendingAgentRestart = false)
         // The relay parks the current pig and attaches/reads the target
         // session, so switching during a running turn is safe.
         client.send(
@@ -1273,7 +1299,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun newSession() {
         currentAssistant = null
-        ui = ui.copy(readOnly = false, extensionStatuses = emptyMap())
+        ui = ui.copy(readOnly = false, extensionStatuses = emptyMap(), pendingAgentRestart = false)
         client.send(JSONObject().put("type", "new_session"))
     }
 
@@ -1641,14 +1667,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun resolveNotice(text: String) {
         if (text.isBlank()) return
-        resolvedNotices.add(text)
-        ui = ui.copy(messages = ui.messages.filterNot { it.role == Role.NOTICE && it.text == text })
+        // The stored text was produced with whatever pack was active back then,
+        // so match on the stable part rather than the current wording.
+        val markers = listOf(text, "上下文长度仅在本机生效").filter { it.isNotBlank() }
+        fun stale(candidate: String) = candidate.isNotBlank() && markers.any { candidate.contains(it) }
+        resolvedNotices.addAll(markers)
+        ui = ui.copy(messages = ui.messages.filterNot { it.role == Role.NOTICE && stale(it.text) })
         val key = noticeKey() ?: return
         val file = File(noticesDir, "$key.jsonl")
         if (!file.isFile) return
         runCatching {
             val kept = file.readLines().filterNot { line ->
-                runCatching { JSONObject(line).optString("text") }.getOrDefault("") == text
+                stale(runCatching { JSONObject(line).optString("text") }.getOrDefault(""))
             }
             if (kept.isEmpty()) file.delete() else file.writeText(kept.joinToString("\n", postfix = "\n"))
         }
@@ -1787,13 +1817,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             "relay_restarted" -> {
                 // Pig was restarted by us (or by the relay's own button): it now
-                // reads models.json, so a pinned window is live.
+                // reads models.json, so a pinned window is live. pid 0 means the
+                // relay had no agent to replace — do not claim it applied.
+                val pid = event.optInt("pid", 0)
                 restartInFlight = false
                 ui = ui.copy(
                     status = "",
                     busy = false,
                     pendingAgentRestart = false,
-                    toast = str("toast.agentRestarted", "已重启 pig，新的上下文长度生效"),
+                    // The replaced process took its status lines with it.
+                    extensionStatuses = emptyMap(),
+                    toast = if (pid > 0) {
+                        str("toast.agentRestarted", "已重启 pig，新的上下文长度生效")
+                    } else {
+                        str("toast.restartIdle", "没有正在运行的 pig，下次启动时按新长度执行")
+                    },
                 )
                 requestState()
                 requestStats()
@@ -1856,6 +1894,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 ui = ui.copy(status = "", contextCompacted = true)
                 requestStats()
                 refreshDataSources("compaction_end")
+                if (ui.pendingAgentRestart) {
+                    viewModelScope.launch {
+                        delay(700)
+                        if (ui.pendingAgentRestart) restartAgent()
+                    }
+                }
             }
             "error" -> {
                 val message = event.optString("message", event.optString("error", "unknown error"))

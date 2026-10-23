@@ -462,8 +462,8 @@ private fun headerTokens(tokens: Int): String = when {
 @Composable
 private fun statusLabel(status: String): String = when (status) {
     "thinking" -> packText("status.thinking", "思考中")
-    "working" -> packText("status.working", "工作中")
-    "compacting" -> packText("status.compacting", "压缩上下文")
+    "working" -> packText("status.working", "处理中")
+    "compacting" -> packText("status.compacting", "压缩中")
     "retrying" -> packText("status.retrying", "重试中")
     "switching" -> packText("status.switching", "切换中")
     "restoring" -> packText("status.restoring", "恢复中")

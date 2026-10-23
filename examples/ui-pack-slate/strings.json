@@ -211,7 +211,10 @@
     "settingsSaved": "设置已保存，新会话生效",
     "settingsUnsupported": "relay 版本过旧，无法读写 settings.json",
     "agentRestarted": "已重启 pig，新的上下文长度生效",
-    "restartUnsupported": "relay 版本过旧，无法重启 pig；上下文长度在重启后生效"
+    "restartIdle": "没有正在运行的 pig，下次启动时按新长度执行",
+    "restartUnsupported": "relay 版本过旧，无法重启 pig；上下文长度在重启后生效",
+    "restartOffline": "relay 未连接，上下文长度在下次连接后生效",
+    "contextWindowOffline": "relay 未连接，上下文长度只在本机生效"
   },
   "a11y": {
     "menu": "菜单",
