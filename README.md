@@ -324,6 +324,31 @@ Older relays reply `relay_settings_error`; the section then shows a hint instead
 of pretending to save. Pig reads these values at process start, so they apply to
 newly spawned sessions.
 
+## Notifications
+
+While the app is in the background, session state changes raise a notification.
+Two channels keep this controllable from system settings:
+
+| Channel | Importance | Used for |
+| --- | --- | --- |
+| 会话进展 (`pig_updates`) | default | turn finished, extension info messages, compaction (silent) |
+| 需要处理 (`pig_alerts`) | high | extension waiting for a confirm/select/input/editor, request or connection errors |
+
+Which states notify:
+
+- **回复完成** — `agent_settled` with `aborted: false` (an aborted turn stays
+  quiet), text is the first line of the last answer.
+- **需要你的操作** — an extension opened a dialog and is waiting.
+- **出错了** — a pig `error` event or a relay error (protocol-compat noise such
+  as `unknown relay frame` is excluded).
+- **上下文已压缩** — `compaction_end`, silent and off by default.
+- Extension `notify` calls map by level: `info` → 会话进展, `warning` →
+  需要处理, `error` → 需要处理.
+
+All four are toggles in **设置 → 会话行为** (完成 / 需要操作 / 出错 / 压缩).
+Tap opens the app; returning to the foreground cancels the notifications the
+app raised. Android 13+ asks for the notification permission on first launch.
+
 ## Keep-alive
 
 - `KeepAliveService` is a `specialUse` foreground service started by

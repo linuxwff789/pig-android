@@ -322,6 +322,12 @@ data class AppUiState(
 
     /** Last turn was at level `off` yet the upstream still returned reasoning. */
     val upstreamIgnoresOff: Boolean = false,
+
+    /** Background notifications per session state. */
+    val notifyDone: Boolean = true,
+    val notifyAttention: Boolean = true,
+    val notifyError: Boolean = true,
+    val notifyCompacted: Boolean = false,
     /** `compaction.reserveTokens` from settings.json (0 = unknown). */
     val compactionReserveTokens: Int = 0,
     /** `compaction.keepRecentTokens` from settings.json (0 = unknown). */

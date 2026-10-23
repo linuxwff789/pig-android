@@ -87,7 +87,15 @@
     "restartPigHint": "安装或更新扩展后，重启才会加载新命令；运行中会等本轮结束",
     "restartAction": "重启",
     "showThinking": "显示思考过程",
-    "showThinkingHint": "在回答上方折叠显示模型的可见思考内容（写入 settings.json 的 hideThinkingBlock）"
+    "showThinkingHint": "在回答上方折叠显示模型的可见思考内容（写入 settings.json 的 hideThinkingBlock）",
+    "notifyDone": "回复完成通知",
+    "notifyDoneHint": "App 在后台时，本轮结束后发一条通知",
+    "notifyAttention": "需要操作 / 消息提醒",
+    "notifyAttentionHint": "扩展等待确认或选择、扩展发出警告时提醒",
+    "notifyError": "出错提醒",
+    "notifyErrorHint": "请求失败、连接错误时提醒",
+    "notifyCompacted": "压缩完成通知",
+    "notifyCompactedHint": "自动压缩结束时静默提醒（默认关闭）"
   },
   "pack": {
     "title": "UI pack",
@@ -164,5 +172,17 @@
   },
   "commands": {
     "thinking": "思考档位：/thinking <级别>"
+  },
+  "notification": {
+    "updatesChannel": "会话进展",
+    "updatesChannelDesc": "回复完成、扩展消息、上下文压缩",
+    "alertsChannel": "需要处理",
+    "alertsChannelDesc": "扩展在等确认、请求失败",
+    "session": "Pig 会话",
+    "done": "回复完成",
+    "attention": "需要你的操作",
+    "attentionBody": "扩展正在等待输入",
+    "error": "出错了",
+    "compacted": "上下文已压缩"
   }
 }

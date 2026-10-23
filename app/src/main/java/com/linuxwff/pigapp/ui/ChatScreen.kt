@@ -947,6 +947,42 @@ private fun SettingsDialog(
                     onPick = { vm.setQueueMode(followUp = true, mode = it) },
                 )
                 SettingToggle(
+                    title = packText("settings.notifyDone", "回复完成通知"),
+                    subtitle = packText(
+                        "settings.notifyDoneHint",
+                        "App 在后台时，本轮结束后发一条通知",
+                    ),
+                    checked = ui.notifyDone,
+                    onCheckedChange = { vm.setNotifyPref("notifyDone", it) },
+                )
+                SettingToggle(
+                    title = packText("settings.notifyAttention", "需要操作 / 消息提醒"),
+                    subtitle = packText(
+                        "settings.notifyAttentionHint",
+                        "扩展等待确认或选择、扩展发出警告时提醒",
+                    ),
+                    checked = ui.notifyAttention,
+                    onCheckedChange = { vm.setNotifyPref("notifyAttention", it) },
+                )
+                SettingToggle(
+                    title = packText("settings.notifyError", "出错提醒"),
+                    subtitle = packText(
+                        "settings.notifyErrorHint",
+                        "请求失败、连接错误时提醒",
+                    ),
+                    checked = ui.notifyError,
+                    onCheckedChange = { vm.setNotifyPref("notifyError", it) },
+                )
+                SettingToggle(
+                    title = packText("settings.notifyCompacted", "压缩完成通知"),
+                    subtitle = packText(
+                        "settings.notifyCompactedHint",
+                        "自动压缩结束时静默提醒（默认关闭）",
+                    ),
+                    checked = ui.notifyCompacted,
+                    onCheckedChange = { vm.setNotifyPref("notifyCompacted", it) },
+                )
+                SettingToggle(
                     title = packText("settings.showThinking", "显示思考过程"),
                     subtitle = packText(
                         "settings.showThinkingHint",

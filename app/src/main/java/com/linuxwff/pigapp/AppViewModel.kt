@@ -27,6 +27,7 @@ import java.util.zip.ZipInputStream
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("pig", Context.MODE_PRIVATE)
+    private val notifications by lazy { SessionNotifications(getApplication()) }
 
     val port: Int = prefs.getInt("port", 8791)
     val token: String = prefs.getString("token", null) ?: newToken().also {
@@ -122,6 +123,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             contextOverrides = loadContextOverrides(),
             collapsedWidgets = prefs.getStringSet("collapsedWidgets", emptySet())
                 ?.toSet() ?: emptySet(),
+            notifyDone = prefs.getBoolean("notifyDone", true),
+            notifyAttention = prefs.getBoolean("notifyAttention", true),
+            notifyError = prefs.getBoolean("notifyError", true),
+            notifyCompacted = prefs.getBoolean("notifyCompacted", false),
         )
         refreshLocalPacks()
         // Restore an imported pack without waiting for the relay push.
@@ -204,6 +209,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Called from Activity.onResume: resume the relay/session after a lock or process freeze. */
     fun onForeground() {
         foreground = true
+        notifications.clear()
         if (liveActive) {
             val id = currentAssistant
             if (id != null) {
@@ -278,6 +284,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         liveThinking.setLength(0)
         liveThinkingText = ""
         liveThinkingDirty = false
+    }
+
+    fun setNotifyPref(name: String, enabled: Boolean) {
+        prefs.edit().putBoolean(name, enabled).apply()
+        ui = when (name) {
+            "notifyDone" -> ui.copy(notifyDone = enabled)
+            "notifyAttention" -> ui.copy(notifyAttention = enabled)
+            "notifyError" -> ui.copy(notifyError = enabled)
+            "notifyCompacted" -> ui.copy(notifyCompacted = enabled)
+            else -> ui
+        }
+    }
+
+    private fun sessionLabel(): String =
+        ui.sessions.firstOrNull { it.path == ui.sessionFile }?.name?.takeIf { it.isNotBlank() }
+            ?: str("notification.session", "Pig 会话")
+
+    /** First line of [text], clipped: a notification is not a transcript. */
+    private fun preview(text: String, max: Int = 160): String {
+        val line = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+        return if (line.length > max) line.take(max - 1) + "…" else line
+    }
+
+    private fun notifySession(kind: SessionNotifications.Kind, title: String, text: String) {
+        if (foreground || text.isBlank()) return
+        notifications.notify(kind, ui.sessionFile.ifBlank { ui.sessionId }, title, text)
     }
 
     private fun markVisited(path: String) {
@@ -1878,6 +1910,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             "relay_error" -> {
                 val message = event.optString("message", "relay error")
+                if (ui.notifyError && !message.startsWith("unknown relay frame")) {
+                    notifySession(
+                        SessionNotifications.Kind.ERROR,
+                        str("notification.error", "出错了") + " · " + sessionLabel(),
+                        preview(message),
+                    )
+                }
                 if (message.contains("relay_restart")) {
                     restartInFlight = false
                     ui = ui.copy(status = "")
@@ -1996,6 +2035,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 requestStats()
                 refreshCommands()
                 refreshDataSources("agent_end")
+                if (type == "agent_settled" && !event.optBoolean("aborted", false) && ui.notifyDone) {
+                    val last = ui.messages.lastOrNull { it.role == Role.ASSISTANT }?.text.orEmpty()
+                    notifySession(
+                        SessionNotifications.Kind.DONE,
+                        str("notification.done", "回复完成") + " · " + sessionLabel(),
+                        preview(last),
+                    )
+                }
                 if (ui.pendingAgentRestart) {
                     // Let pig finish flushing the session file before the relay
                     // replaces the process.
@@ -2023,6 +2070,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 ui = ui.copy(status = "", contextCompacted = true)
                 requestStats()
                 refreshDataSources("compaction_end")
+                if (ui.notifyCompacted) {
+                    notifySession(
+                        SessionNotifications.Kind.COMPACTED,
+                        str("notification.compacted", "上下文已压缩"),
+                        sessionLabel(),
+                    )
+                }
                 if (ui.pendingAgentRestart) {
                     viewModelScope.launch {
                         delay(700)
@@ -2034,6 +2088,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val message = event.optString("message", event.optString("error", "unknown error"))
                 appendNotice(message)
                 ui = ui.copy(busy = false, status = "")
+                if (ui.notifyError) {
+                    notifySession(
+                        SessionNotifications.Kind.ERROR,
+                        str("notification.error", "出错了") + " · " + sessionLabel(),
+                        preview(message),
+                    )
+                }
             }
             else -> if (type.startsWith("auto_retry")) ui = ui.copy(status = "retrying")
         }
@@ -3092,6 +3153,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val options = event.optJSONArray("options")?.let { array ->
                     (0 until array.length()).map { array.optString(it) }
                 } ?: emptyList()
+                if (ui.notifyAttention) {
+                    notifySession(
+                        SessionNotifications.Kind.ATTENTION,
+                        str("notification.attention", "需要你的操作") + " · " + sessionLabel(),
+                        preview(
+                            event.optString("title").ifBlank {
+                                event.optString("message")
+                            }.ifBlank { str("notification.attentionBody", "扩展正在等待输入") },
+                        ),
+                    )
+                }
                 ui = ui.copy(
                     pending = UiRequest(
                         id = event.optString("id"),
@@ -3104,7 +3176,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     ),
                 )
             }
-            "notify" -> ui = ui.copy(toast = event.optString("message", ""))
+            "notify" -> {
+                val message = event.optString("message", "")
+                ui = ui.copy(toast = message)
+                val kind = when (event.optString("notifyType")) {
+                    "error" -> SessionNotifications.Kind.ERROR
+                    "warning" -> SessionNotifications.Kind.ATTENTION
+                    else -> SessionNotifications.Kind.INFO
+                }
+                val enabled = when (kind) {
+                    SessionNotifications.Kind.ERROR -> ui.notifyError
+                    SessionNotifications.Kind.ATTENTION -> ui.notifyAttention
+                    else -> ui.notifyDone
+                }
+                if (enabled) {
+                    notifySession(
+                        kind,
+                        sessionLabel(),
+                        preview(message),
+                    )
+                }
+            }
             "setStatus" -> {
                 // Protocol: a status line is keyed, and an empty text clears
                 // only that key. Keeping them apart from the activity status
