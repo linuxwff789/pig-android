@@ -13,7 +13,12 @@ an API key. All agent work happens in the original `pig` binary.
                                           └── watches ~/.pig/android-ui and pushes UI packs
 ```
 
-## Status (M0)
+## Status (1.0)
+
+**1.0.0** is the first minified release: launcher icon, session notifications
+(with a selectable sound), thinking blocks, plan widgets, usage statistics and
+the performance work (history builds off the main thread, incremental relay
+reads). See [Release build](#release-build).
 
 - App launches `pig-relay` through Termux `RUN_COMMAND` (no pairing screen).
 - Streams assistant text, renders Markdown (GFM headings, lists, code fences,
@@ -85,6 +90,23 @@ See [docs/install.md](docs/install.md) for the manual route and troubleshooting.
 cd relay
 go build -trimpath -ldflags="-s -w" -o "$PREFIX/bin/pig-relay" .
 ```
+
+## Release build
+
+```bash
+./gradlew :app:assembleRelease -PversionCode=100 -PversionName=1.0.0
+```
+
+R8 + resource shrinking are on, so the APK is ~1.5 MB instead of ~17 MB (debug)
+and starts in ~240 ms instead of ~880 ms on this device. CI builds it on every
+push and uploads `pig-release-apk` next to the debug artifact.
+
+Signing: `PIG_RELEASE_STORE_FILE` / `PIG_RELEASE_STORE_PASSWORD` /
+`PIG_RELEASE_KEY_ALIAS` / `PIG_RELEASE_KEY_PASSWORD` switch to the store key.
+Without them the build uses the CI key, which is the same key the debug APK
+uses, so a release build installs over an existing debug install (`pm install
+-r`) and can be performance-tested. Publishing to other people requires the
+store key, because the signature must stay stable across updates.
 
 ## Build the app
 
