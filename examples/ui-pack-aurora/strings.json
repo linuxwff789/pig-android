@@ -139,5 +139,9 @@
   },
   "dialog": {
     "save": "保存"
+  },
+  "plan": {
+    "title": "计划",
+    "progress": "{done}/{total}"
   }
 }

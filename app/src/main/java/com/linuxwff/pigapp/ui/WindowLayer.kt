@@ -176,6 +176,13 @@ fun WidgetPane(widgets: List<AppWidget>, placement: String, vm: AppViewModel) {
     if (items.isEmpty()) return
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         items.forEach { widget ->
+            // Extensions that follow the plan contract (docs/plan-widget.md)
+            // get a checklist card; everyone else keeps the plain pane.
+            val plan = parsePlanWidget(widget.key, widget.lines)
+            if (plan != null) {
+                PlanCard(plan)
+                return@forEach
+            }
             Surface(
                 color = MaterialTheme.colorScheme.surface,
                 shape = RoundedCornerShape((vm.ui.uiPack.theme.cornerRadius / 2).coerceAtLeast(6).dp),

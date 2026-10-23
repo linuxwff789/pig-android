@@ -250,7 +250,11 @@ shows them next to its own activity label (`处理中 · ⚡ 38.2 tok/s`), and a
 `statusText` clears only that key. Extension lines outlive the turn that wrote
 them, so they are shown as a plain label — the spinner belongs to the app's own
 activity (thinking/working/compacting) and stops with it. Widgets
-(`ctx.ui.setWidget`) render above or below the composer as before.
+(`ctx.ui.setWidget`) render above or below the composer as before. A widget
+whose key is `plan` / `plan-todos` / `todos` and whose lines follow the plan
+contract becomes a checklist card (title, progress bar, `☑/☐` steps) — any
+extension can opt in, so users can pick our optional plan extension or a
+third-party one. See [docs/plan-widget.md](docs/plan-widget.md).
 
 Failures are part of the transcript instead of a toast: pig's own failed turns
 are stored in the session file (`errorMessage`) and are replayed on load, while

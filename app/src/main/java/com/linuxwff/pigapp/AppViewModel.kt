@@ -1554,7 +1554,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "aboveEditor"
         }
         val next = ui.widgets.filterNot { it.key == key }.toMutableList()
-        if (lines != null) {
+        // An empty list means "remove": RPC mode reports a cleared widget as an
+        // empty widgetLines array rather than omitting the field.
+        if (lines != null && lines.length() > 0) {
             next.add(
                 AppWidget(
                     key = key,

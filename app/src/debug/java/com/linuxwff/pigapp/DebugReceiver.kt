@@ -106,6 +106,38 @@ class DebugReceiver : BroadcastReceiver() {
                 Log.i(TAG, "thinking: $level")
                 vm.setThinkingLevel(level)
             }
+            "com.linuxwff.pigapp.DEBUG_PLAN" -> {
+                // Render one sample plan widget through the same path a real
+                // extension uses, and log what the parser made of it.
+                val form = intent.getStringExtra("form") ?: "json"
+                val lines = if (form == "text") {
+                    listOf(
+                        "Plan: 让 pin 立刻生效",
+                        "2/3",
+                        "☑ 查清 models.json 的读取时机",
+                        "☑ 加 relay_restart",
+                        "☐ 写文档",
+                    )
+                } else {
+                    listOf(
+                        """{"plan":{"title":"让 pin 立刻生效","steps":["查清 models.json 的读取时机","加 relay_restart","写文档"]}}""",
+                    )
+                }
+                com.linuxwff.pigapp.ui.parsePlanWidget("plan", lines)?.let {
+                    Log.i(TAG, "plan parse: title=${it.title} steps=${it.steps}")
+                } ?: Log.w(TAG, "plan parse: not a plan widget")
+                val widgets = org.json.JSONArray()
+                lines.forEach { widgets.put(it) }
+                vm.handleDebugEvent(
+                    org.json.JSONObject()
+                        .put("type", "extension_ui_request")
+                        .put("method", "setWidget")
+                        .put("widgetKey", "plan")
+                        .put("widgetLines", widgets)
+                        .put("widgetPlacement", "aboveEditor")
+                        .toString(),
+                )
+            }
             "com.linuxwff.pigapp.DEBUG_EVENT" -> {
                 val json = intent.getStringExtra("json") ?: ""
                 Log.i(TAG, "event: ${json.take(120)}")

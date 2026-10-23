@@ -561,6 +561,13 @@ unchanged.
 The existing `components.json` controls remain for visibility and line counts;
 these new keys are for deeper visual tuning.
 
+## Plan widgets
+
+Extension widgets are rendered generically, except for the plan contract:
+`plan` / `plan-todos` / `todos` keys with a JSON step list or a `☐/☑` text
+checklist become a native card. The key grammar, the JSON shape and the fallback
+rules live in [plan-widget.md](plan-widget.md).
+
 ## RPC data sources, bindings and actions
 
 A pack can read PiG RPC data and run a small, safe set of RPC actions. The App
