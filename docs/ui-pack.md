@@ -561,6 +561,49 @@ unchanged.
 The existing `components.json` controls remain for visibility and line counts;
 these new keys are for deeper visual tuning.
 
+### Thinking (`chat.thinking`)
+
+The reasoning block above an assistant answer. It is display-only: collapsing,
+expansion and the char count never change what the model sees or does.
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `show` | `true` | `false` hides thinking blocks entirely (same effect as pig's `hideThinkingBlock`) |
+| `collapsedByDefault` | `true` | start collapsed |
+| `expandWhileStreaming` | `true` | open while the block is still streaming; a tap wins over this |
+| `showCount` | `true` | show `N 字` next to the title |
+| `title` | `""` | overrides the `chat.thinking` string (`思考`) |
+| `fontSize` | `0` | body text size; `0` = the app's body-small |
+| `italic` | `false` | italic body text |
+| `background` | `surfaceVariant` | `surface`, `surfaceVariant`, `background`, `transparent` |
+| `backgroundAlpha` | 0.42 | background opacity |
+| `titleColor` | `secondary` | theme token for the title |
+| `textColor` | `onSurfaceVariant` | theme token for the count, glyph and body |
+| `radius` | -1 | block radius; `-1` = 10dp |
+| `paddingH` / `paddingV` | 10 / 7 | header padding (body reuses `paddingH`) |
+| `maxHeight` | 240 | body scroll height cap in dp |
+| `collapsedGlyph` / `expandedGlyph` | `▸` / `▾` | header chevrons |
+
+```json
+"chat": {
+  "thinking": {
+    "collapsedByDefault": true,
+    "expandWhileStreaming": true,
+    "showCount": true,
+    "background": "surfaceVariant",
+    "backgroundAlpha": 0.42,
+    "italic": true,
+    "fontSize": 12,
+    "maxHeight": 240
+  }
+}
+```
+
+Two switches can hide the block and both are intentional: `chat.thinking.show`
+(the pack's opinion) and `hideThinkingBlock` in `settings.json` (the user's,
+also toggled from **设置 → 会话行为 → 显示思考过程**). Either hides it; there is no
+state in which one forces it visible.
+
 ## Plan widgets
 
 Extension widgets are rendered generically, except for the plan contract:

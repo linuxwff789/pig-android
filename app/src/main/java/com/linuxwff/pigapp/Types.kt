@@ -86,6 +86,33 @@ data class UiBubbleAppearance(
     val assistantTextColor: String = "onSurface",
 )
 
+/** `chat.thinking`: the reasoning block above an assistant answer. */
+data class UiThinkingAppearance(
+    val show: Boolean = true,
+    val collapsedByDefault: Boolean = true,
+    /** Open automatically while the block is still streaming. */
+    val expandWhileStreaming: Boolean = true,
+    val showCount: Boolean = true,
+    /** Overrides the `chat.thinking` pack string when set. */
+    val title: String = "",
+    /** Zero keeps the app's body-small size. */
+    val fontSize: Int = 0,
+    val italic: Boolean = false,
+    /** surface | surfaceVariant | background | transparent */
+    val background: String = "surfaceVariant",
+    val backgroundAlpha: Float = 0.42f,
+    val titleColor: String = "secondary",
+    val textColor: String = "onSurfaceVariant",
+    /** -1 uses 10dp. */
+    val radius: Int = -1,
+    val paddingH: Int = 10,
+    val paddingV: Int = 7,
+    val maxHeight: Int = 240,
+    /** Glyphs for the collapsed / expanded header. */
+    val collapsedGlyph: String = "▸",
+    val expandedGlyph: String = "▾",
+)
+
 data class UiToolCardAppearance(
     /** surface | surfaceVariant | background | transparent */
     val background: String = "surface",

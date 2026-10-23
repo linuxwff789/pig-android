@@ -219,6 +219,9 @@ transcript, not a notification:
   bubbles.
 - `hideThinkingBlock` in `settings.json` hides them; **设置 → 会话行为 → 显示思考过程**
   flips it through `relay_settings` and applies immediately.
+- The block is pack-configurable (`chat.thinking` in `layout/chat.json`): title,
+  font size/italic, colours, radius, padding, max height, default collapse and
+  the streaming auto-expand. See [docs/ui-pack.md](docs/ui-pack.md).
 - A provider that redacts reasoning sends an empty block with `redacted: true`;
   the app shows `（提供方已隐藏思考内容）` instead of a blank section.
 - `thinking_level_changed` updates the header, so a level changed by pig or an

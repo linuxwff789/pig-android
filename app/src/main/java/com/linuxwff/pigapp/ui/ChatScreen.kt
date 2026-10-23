@@ -119,6 +119,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -2807,18 +2808,33 @@ private fun CopyButton(onClick: () -> Unit) {
  */
 @Composable
 private fun ThinkingBlock(id: String, text: String, streaming: Boolean) {
+    val style = LocalUiPack.current.layout.thinking
+    if (!style.show) return
     val scheme = MaterialTheme.colorScheme
-    var open by rememberSaveable(id) { mutableStateOf(streaming) }
+    var open by rememberSaveable(id) { mutableStateOf(!style.collapsedByDefault) }
     var userChoice by rememberSaveable(id) { mutableStateOf(false) }
     // Follow the stream until the user taps; after that their choice wins.
     LaunchedEffect(streaming) {
-        if (!userChoice) open = streaming
+        if (userChoice) return@LaunchedEffect
+        open = if (streaming) style.expandWhileStreaming else !style.collapsedByDefault
+    }
+    val radius = if (style.radius >= 0) style.radius else 10
+    val background = when (style.background) {
+        "surface" -> scheme.surface
+        "background" -> scheme.background
+        "transparent" -> Color.Transparent
+        else -> scheme.surfaceVariant
+    }
+    val textStyle = if (style.fontSize > 0) {
+        MaterialTheme.typography.bodySmall.copy(fontSize = style.fontSize.sp)
+    } else {
+        MaterialTheme.typography.bodySmall
     }
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(scheme.surfaceVariant.copy(alpha = 0.42f)),
+            .clip(RoundedCornerShape(radius.dp))
+            .background(background.copy(alpha = style.backgroundAlpha)),
     ) {
         Row(
             Modifier
@@ -2827,26 +2843,28 @@ private fun ThinkingBlock(id: String, text: String, streaming: Boolean) {
                     userChoice = true
                     open = !open
                 }
-                .padding(horizontal = 10.dp, vertical = 7.dp),
+                .padding(horizontal = style.paddingH.dp, vertical = style.paddingV.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                packText("chat.thinking", "思考"),
+                style.title.ifBlank { packText("chat.thinking", "思考") },
                 style = MaterialTheme.typography.labelSmall,
-                color = scheme.secondary,
+                color = packColor(style.titleColor),
             )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                packText("chat.thinkingSize", "{count} 字")
-                    .replace("{count}", text.length.toString()),
-                style = MaterialTheme.typography.labelSmall,
-                color = scheme.onSurfaceVariant.copy(alpha = 0.8f),
-            )
+            if (style.showCount) {
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    packText("chat.thinkingSize", "{count} 字")
+                        .replace("{count}", text.length.toString()),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = packColor(style.textColor).copy(alpha = 0.8f),
+                )
+            }
             Spacer(Modifier.weight(1f))
             Text(
-                if (open) "▾" else "▸",
+                if (open) style.expandedGlyph else style.collapsedGlyph,
                 style = MaterialTheme.typography.labelSmall,
-                color = scheme.onSurfaceVariant,
+                color = packColor(style.textColor),
             )
         }
         AnimatedVisibility(visible = open) {
@@ -2854,11 +2872,16 @@ private fun ThinkingBlock(id: String, text: String, streaming: Boolean) {
                 text,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 240.dp)
+                    .heightIn(max = style.maxHeight.dp)
                     .verticalScroll(rememberScrollState())
-                    .padding(start = 10.dp, end = 10.dp, bottom = 8.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
+                    .padding(
+                        start = style.paddingH.dp,
+                        end = style.paddingH.dp,
+                        bottom = style.paddingV.dp,
+                    ),
+                style = textStyle,
+                fontStyle = if (style.italic) FontStyle.Italic else null,
+                color = packColor(style.textColor),
             )
         }
     }

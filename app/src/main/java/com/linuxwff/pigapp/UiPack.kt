@@ -141,6 +141,7 @@ data class UiLayout(
     val drawer: UiDrawerAppearance = UiDrawerAppearance(),
     val bubble: UiBubbleAppearance = UiBubbleAppearance(),
     val toolCard: UiToolCardAppearance = UiToolCardAppearance(),
+    val thinking: UiThinkingAppearance = UiThinkingAppearance(),
     /** Skin switcher: show, where and how (chips/list). */
     val showSkinSwitcher: Boolean = true,
     val skinSwitcherPlacement: String = "drawer",
@@ -501,6 +502,7 @@ object UiPackParser {
             drawer = parseDrawer(drawerJson, warnings),
             bubble = parseBubble(bubbleJson, warnings),
             toolCard = parseToolCard(toolCardJson, warnings),
+            thinking = parseThinking(chat?.optJSONObject("thinking"), warnings),
             showSkinSwitcher = skinSwitcher?.optBoolean("show", d.showSkinSwitcher)
                 ?: d.showSkinSwitcher,
             skinSwitcherPlacement = placement.takeIf { it in placements } ?: d.skinSwitcherPlacement,
@@ -579,6 +581,40 @@ object UiPackParser {
                 d.assistantBorderAlpha.toDouble(),
             ).toFloat().coerceIn(0f, 1f),
             assistantTextColor = json.optString("assistantTextColor", d.assistantTextColor),
+        )
+    }
+
+    private fun parseThinking(
+        json: JSONObject?,
+        warnings: MutableList<String>,
+    ): UiThinkingAppearance {
+        if (json == null) return UiThinkingAppearance()
+        val d = UiThinkingAppearance()
+        val backgrounds = setOf("surface", "surfaceVariant", "background", "transparent")
+        val background = json.optString("background", d.background)
+        if (background !in backgrounds) warnings.add("chat.thinking.background=$background 无效")
+        return UiThinkingAppearance(
+            show = json.optBoolean("show", d.show),
+            collapsedByDefault = json.optBoolean("collapsedByDefault", d.collapsedByDefault),
+            expandWhileStreaming = json.optBoolean("expandWhileStreaming", d.expandWhileStreaming),
+            showCount = json.optBoolean("showCount", d.showCount),
+            title = json.optString("title", d.title).trim(),
+            fontSize = json.optInt("fontSize", d.fontSize).coerceIn(0, 24),
+            italic = json.optBoolean("italic", d.italic),
+            background = background.takeIf { it in backgrounds } ?: d.background,
+            backgroundAlpha = json.optDouble("backgroundAlpha", d.backgroundAlpha.toDouble())
+                .toFloat().coerceIn(0f, 1f),
+            titleColor = json.optString("titleColor", d.titleColor)
+                .takeIf { it.isNotBlank() } ?: d.titleColor,
+            textColor = json.optString("textColor", d.textColor)
+                .takeIf { it.isNotBlank() } ?: d.textColor,
+            radius = json.optInt("radius", d.radius)
+                .let { if (it < 0) -1 else it.coerceIn(0, 40) },
+            paddingH = json.optInt("paddingH", d.paddingH).coerceIn(0, 40),
+            paddingV = json.optInt("paddingV", d.paddingV).coerceIn(0, 40),
+            maxHeight = json.optInt("maxHeight", d.maxHeight).coerceIn(60, 800),
+            collapsedGlyph = json.optString("collapsedGlyph", d.collapsedGlyph),
+            expandedGlyph = json.optString("expandedGlyph", d.expandedGlyph),
         )
     }
 

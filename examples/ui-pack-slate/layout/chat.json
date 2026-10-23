@@ -45,6 +45,21 @@
       "chipAlpha": 0.12,
       "groupRadius": 6,
       "groupPadding": 8
+    },
+    "thinking": {
+      "show": true,
+      "collapsedByDefault": true,
+      "expandWhileStreaming": true,
+      "showCount": true,
+      "background": "surfaceVariant",
+      "backgroundAlpha": 0.42,
+      "titleColor": "secondary",
+      "textColor": "onSurfaceVariant",
+      "radius": 10,
+      "paddingH": 10,
+      "paddingV": 7,
+      "maxHeight": 240,
+      "italic": false
     }
   },
   "composer": {
