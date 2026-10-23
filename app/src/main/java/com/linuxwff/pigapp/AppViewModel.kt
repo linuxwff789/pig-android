@@ -10,6 +10,7 @@ import android.content.Intent
 import android.provider.DocumentsContract
 import android.provider.Settings
 import android.util.Base64
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -2456,10 +2457,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val live = if (liveAtRequest) liveBuffer.toString() else null
                     val notices = readNotices()
                     val redacted = str("chat.thinkingRedacted", "（提供方已隐藏思考内容）")
+                    val startedAt = System.nanoTime()
                     viewModelScope.launch {
                         val build = withContext(Dispatchers.Default) {
                             buildHistory(history, pending, live, notices, redacted)
                         }
+                        Log.i(
+                            "PigPerf",
+                            "history build ${(System.nanoTime() - startedAt) / 1_000_000}ms, " +
+                                "${build.items.size} items",
+                        )
                         // A newer get_messages (session switch, heal) may have
                         // been issued while this one was building.
                         if (requestId.isNotBlank() && requestId != lastMessagesRequestId) {

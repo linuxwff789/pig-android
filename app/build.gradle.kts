@@ -46,8 +46,13 @@ android {
         }
 
         release {
+            // A store key comes from PIG_RELEASE_STORE_FILE. Without one, sign
+            // with the CI key so the artifact installs over a debug build and
+            // can be performance-tested; distribution uses the real key.
             signingConfig = signingConfigs.findByName("release")
-            isMinifyEnabled = false
+                ?: signingConfigs.getByName("ci")
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
