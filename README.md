@@ -346,6 +346,8 @@ Which states notify:
   需要处理, `error` → 需要处理.
 
 All four are toggles in **设置 → 会话行为** (完成 / 需要操作 / 出错 / 压缩).
+The 完成 switch also covers plain extension `info` messages, since both land on
+the same channel.
 Tap opens the app; returning to the foreground cancels the notifications the
 app raised. Android 13+ asks for the notification permission on first launch.
 
