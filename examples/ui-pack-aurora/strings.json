@@ -30,7 +30,8 @@
     "expand": "展开全部",
     "groupHeader": "{tool} × {count}",
     "groupCount": "{count} 次执行",
-    "groupErrors": "{count} 次出错"
+    "groupErrors": "{count} 次出错",
+    "showAll": "显示全部 {count} 个"
   },
   "composer": {
     "steerPlaceholder": "插一句…",

@@ -2349,6 +2349,9 @@ private sealed interface ChatListItem {
     }
 }
 
+/** Cards rendered at once when a tool group is expanded. */
+private const val GROUP_PAGE = 25
+
 private fun buildChatListItems(messages: List<ChatMsg>, group: Boolean): List<ChatListItem> {
     if (!group) return messages.map { ChatListItem.Single(it) }
     val out = mutableListOf<ChatListItem>()
@@ -2405,6 +2408,9 @@ private fun ToolGroupCard(
     val running = tools.any { it.running }
     val errors = tools.count { it.isError }
     var expanded by remember(tools.first().id) { mutableStateOf(false) }
+    // Expanding a 130-call run must not build 130 cards (each parses its args
+    // and result) on the frame that handles the tap.
+    var showAll by remember(tools.first().id) { mutableStateOf(false) }
     val groupRadius = if (appearance.groupRadius >= 0) appearance.groupRadius else cornerRadius
     val shape = RoundedCornerShape(groupRadius.dp)
     val groupBorder = if (appearance.borderWidth > 0) {
@@ -2514,9 +2520,19 @@ private fun ToolGroupCard(
             }
             if (expanded) {
                 Spacer(Modifier.height(6.dp))
-                tools.forEachIndexed { index, tool ->
+                val limit = if (showAll) tools.size else GROUP_PAGE
+                tools.take(limit).forEachIndexed { index, tool ->
                     if (index > 0) Spacer(Modifier.height(6.dp))
                     ToolCard(tool, toolMode, cornerRadius, onToolModeAll)
+                }
+                if (!showAll && tools.size > limit) {
+                    TextButton(onClick = { showAll = true }) {
+                        Text(
+                            packText("tool.showAll", "显示全部 {count} 个")
+                                .replace("{count}", tools.size.toString()),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
                 }
             }
         }

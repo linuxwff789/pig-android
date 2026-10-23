@@ -54,7 +54,8 @@
     "expand": "展开",
     "groupHeader": "{tool} × {count}",
     "groupCount": "{count} 次",
-    "groupErrors": "{count} 失败"
+    "groupErrors": "{count} 失败",
+    "showAll": "显示全部 {count} 个"
   },
   "markdown": {
     "code": "code",

@@ -81,6 +81,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var restoreChecked = false
     private val liveBuffer = StringBuilder()
     private val liveThinking = StringBuilder()
+    // Rebuilding a multi-KB reasoning string 20×/s while only the answer text
+    // streams is pure garbage: keep the last materialised value.
+    private var liveThinkingText = ""
+    private var liveThinkingDirty = false
+    private val toolPartialRaw = mutableMapOf<String, JSONObject>()
+    private var toolFlushScheduled = false
     private var liveActive = false
     private var liveFlushScheduled = false
     private val pendingToolPartials = mutableMapOf<String, String>()
@@ -201,8 +207,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (liveActive) {
             val id = currentAssistant
             if (id != null) {
-                update(id) { it.copy(text = liveBuffer.toString(), thinking = liveThinking.toString()) }
+                update(id) { it.copy(text = liveBuffer.toString(), thinking = liveThinkingValue()) }
             }
+        }
+        if (toolPartialRaw.isNotEmpty()) {
+            flushToolPartials()
         }
         val ctx = getApplication<Application>()
         if (prefs.getBoolean("keepalive", true)) {
@@ -267,6 +276,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         liveActive = false
         liveBuffer.setLength(0)
         liveThinking.setLength(0)
+        liveThinkingText = ""
+        liveThinkingDirty = false
     }
 
     private fun markVisited(path: String) {
@@ -1329,6 +1340,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         markVisited(path)
         desiredSessionPath = path
         restorePending = false
+        toolPartialRaw.clear()
         ui = ui.copy(
             status = "switching",
             extensionStatuses = emptyMap(),
@@ -1349,6 +1361,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun newSession() {
         currentAssistant = null
+        toolPartialRaw.clear()
         ui = ui.copy(
             readOnly = false,
             extensionStatuses = emptyMap(),
@@ -1737,6 +1750,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun appendNotice(text: String) {
         if (text.isBlank()) return
         append(ChatMsg(id = "n${nextId++}", role = Role.NOTICE, text = text, isError = true))
+        noticesCache = null
         val key = noticeKey() ?: return
         runCatching {
             noticesDir.mkdirs()
@@ -1761,6 +1775,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val markers = listOf(text, "上下文长度仅在本机生效").filter { it.isNotBlank() }
         fun stale(candidate: String) = candidate.isNotBlank() && markers.any { candidate.contains(it) }
         resolvedNotices.addAll(markers)
+        noticesCache = null
         ui = ui.copy(messages = ui.messages.filterNot { it.role == Role.NOTICE && stale(it.text) })
         val key = noticeKey() ?: return
         val file = File(noticesDir, "$key.jsonl")
@@ -1773,12 +1788,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Per-session cache: a history render must not hit the disk. */
+    private var noticesCache: Pair<String, List<ChatMsg>>? = null
+
     /** Notices written earlier for the current session, oldest first. */
     private fun readNotices(): List<ChatMsg> {
         val key = noticeKey() ?: return emptyList()
+        noticesCache?.let { (cachedKey, cached) -> if (cachedKey == key) return cached }
         val file = File(noticesDir, "$key.jsonl")
         if (!file.isFile) return emptyList()
-        return runCatching {
+        val loaded = runCatching {
             file.useLines { lines ->
                 lines.mapIndexedNotNull { index, line ->
                     val item = runCatching { JSONObject(line) }.getOrNull()
@@ -1797,6 +1816,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }.toList()
             }
         }.getOrDefault(emptyList())
+        noticesCache = key to loaded
+        return loaded
     }
 
     private fun update(id: String, block: (ChatMsg) -> ChatMsg) {
@@ -2481,6 +2502,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun renderHistory(messages: org.json.JSONArray) {
         val out = mutableListOf<ChatMsg>()
         val toolIds = mutableMapOf<String, String>()
+        // id -> position in `out`, so a toolResult does not scan the whole
+        // transcript. A 2000-message session has ~1800 of them.
+        val indexById = HashMap<String, Int>()
         val lastInputRole = if (messages.length() > 0) {
             messages.optJSONObject(messages.length() - 1)?.optString("role")
         } else {
@@ -2528,6 +2552,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             toolMsgIds[callId] = id
                         }
                         val pending = if (callId.isBlank()) null else pendingToolPartials.remove(callId)
+                        indexById[id] = out.size
                         out.add(
                             ChatMsg(
                                 id = id,
@@ -2543,7 +2568,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 "toolResult" -> {
                     val text = contentText(message)
                     val id = toolIds[message.optString("toolCallId")]
-                    val position = out.indexOfFirst { it.id == id }
+                    val position = id?.let { indexById[it] } ?: -1
                     val meta = JSONObject()
                     message.optJSONObject("details")?.let { meta.put("details", it) }
                     message.optJSONObject("structuredContent")?.let { meta.put("structured", it) }
@@ -2741,6 +2766,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         liveBuffer.append(text)
         liveThinking.setLength(0)
         liveThinking.append(thinking)
+        liveThinkingText = thinking
+        liveThinkingDirty = false
         liveActive = true
         val id = currentAssistant ?: "a${nextId++}".also {
             currentAssistant = it
@@ -2758,6 +2785,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val delta = update.optString("delta", "")
                 if (delta.isEmpty()) return
                 liveThinking.append(delta)
+                liveThinkingDirty = true
                 if (currentAssistant == null) {
                     currentAssistant = "a${nextId++}".also {
                         append(ChatMsg(id = it, role = Role.ASSISTANT))
@@ -2775,6 +2803,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 if (content.isNotEmpty()) {
                     liveThinking.setLength(0)
                     liveThinking.append(content)
+                    liveThinkingDirty = true
                     liveActive = true
                     scheduleLiveFlush()
                 }
@@ -2814,10 +2843,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             liveFlushScheduled = false
             if (!liveActive) return@launch
             val text = liveBuffer.toString()
-            val thinking = liveThinking.toString()
+            val thinking = liveThinkingValue()
             val id = currentAssistant ?: return@launch
             update(id) { it.copy(text = text, thinking = thinking) }
         }
+    }
+
+    /** Materialise the reasoning buffer only when it actually changed. */
+    private fun liveThinkingValue(): String {
+        if (liveThinkingDirty) {
+            liveThinkingText = liveThinking.toString()
+            liveThinkingDirty = false
+        }
+        return liveThinkingText
     }
 
     /** Relay replayed the assistant text that was streamed before the reconnect. */
@@ -2913,10 +2951,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /**
+     * Bash and long-running tools stream their output. Applying every frame
+     * meant parsing the whole partial result and copying the message list at
+     * event rate; keep the newest raw payload and render at ~20 fps instead.
+     */
     private fun handleToolUpdate(event: JSONObject) {
-        val id = toolMsgIds[event.optString("toolCallId")] ?: return
-        val partial = contentText(event.optJSONObject("partialResult"))
-        if (partial.isNotEmpty()) update(id) { it.copy(toolResult = partial) }
+        val callId = event.optString("toolCallId")
+        if (callId.isEmpty()) return
+        val partial = event.optJSONObject("partialResult") ?: return
+        toolPartialRaw[callId] = partial
+        scheduleToolFlush()
+    }
+
+    private fun scheduleToolFlush() {
+        if (!foreground) return
+        if (toolFlushScheduled) return
+        toolFlushScheduled = true
+        viewModelScope.launch {
+            delay(50)
+            toolFlushScheduled = false
+            flushToolPartials()
+        }
+    }
+
+    private fun flushToolPartials() {
+        if (toolPartialRaw.isEmpty()) return
+        val raw = toolPartialRaw.toMap()
+        toolPartialRaw.clear()
+        val byMessage = HashMap<String, String>(raw.size)
+        raw.forEach { (callId, partial) ->
+            val text = contentText(partial)
+            if (text.isEmpty()) return@forEach
+            pendingToolPartials[callId] = text
+            toolMsgIds[callId]?.let { byMessage[it] = text }
+        }
+        if (byMessage.isEmpty()) return
+        ui = ui.copy(
+            messages = ui.messages.map { message ->
+                byMessage[message.id]?.let { message.copy(toolResult = it) } ?: message
+            },
+        )
     }
 
     private fun handleToolEnd(event: JSONObject) {
