@@ -3718,7 +3718,7 @@ private fun PendingDialog(request: UiRequest, vm: AppViewModel) {
 @Composable
 private fun StatusBar(status: String, extensionStatuses: Map<String, String>) {
     val scheme = MaterialTheme.colorScheme
-    val label = when (status) {
+    val activity = when (status) {
         "thinking" -> packText("status.thinking", "思考中")
         "working" -> packText("status.working", "处理中")
         "compacting" -> packText("status.compacting", "压缩中")
@@ -3726,8 +3726,12 @@ private fun StatusBar(status: String, extensionStatuses: Map<String, String>) {
         "switching" -> packText("status.switching", "切换中")
         "restoring" -> packText("status.restoring", "恢复中")
         else -> status
-    }.ifBlank { extensionStatuses.values.firstOrNull().orEmpty() }
-    val extras = extensionStatuses.values.filter { it.isNotBlank() && it != label }
+    }.trim()
+    // Extension lines (⏱ rate, 🔒 permission mode, ...) outlive the turn they
+    // were written in. They are labels, not activity: no spinner once the agent
+    // has stopped, otherwise the ring keeps turning forever.
+    val extras = extensionStatuses.values.filter { it.isNotBlank() && it != activity }
+    val label = (listOf(activity) + extras).filter { it.isNotBlank() }.joinToString(" · ")
     Row(
         Modifier
             .padding(horizontal = 14.dp, vertical = 5.dp)
@@ -3736,14 +3740,16 @@ private fun StatusBar(status: String, extensionStatuses: Map<String, String>) {
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(11.dp),
-            strokeWidth = 1.5.dp,
-            color = scheme.secondary,
-        )
-        Spacer(Modifier.width(9.dp))
+        if (activity.isNotBlank()) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(11.dp),
+                strokeWidth = 1.5.dp,
+                color = scheme.secondary,
+            )
+            Spacer(Modifier.width(9.dp))
+        }
         Text(
-            (listOf(label) + extras).filter { it.isNotBlank() }.joinToString(" · "),
+            label,
             style = MaterialTheme.typography.labelSmall,
             color = scheme.onSurfaceVariant,
             maxLines = 1,

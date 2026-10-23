@@ -1970,6 +1970,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         val command = event.optString("command")
         // These commands carry no data but still change UI state.
+        if (command == "abort") {
+            // Stopping is immediate for the UI even if pig's agent_end arrives
+            // later; a spinner that outlives the stop is the classic symptom.
+            ui = ui.copy(busy = false, status = "", streamingId = null, pendingMessages = 0)
+            return
+        }
         if (command == "compact" && !event.optBoolean("success", true)) {
             ui = ui.copy(status = "", toast = str("toast.compactFailed", "压缩失败"))
             return

@@ -246,9 +246,11 @@ line (e.g. `ctx 57% / 1M ⏳`); it disappears as soon as pig reports the new
 window. Clearing the pin removes the key and restarts pig the same way.
 
 Extension status lines (`ctx.ui.setStatus(key, text)`) keep their key: the app
-shows them next to its own activity label (`工作中 · ⚡ 38.2 tok/s`), and an empty
-`statusText` clears only that key. Widgets (`ctx.ui.setWidget`) render above or
-below the composer as before.
+shows them next to its own activity label (`处理中 · ⚡ 38.2 tok/s`), and an empty
+`statusText` clears only that key. Extension lines outlive the turn that wrote
+them, so they are shown as a plain label — the spinner belongs to the app's own
+activity (thinking/working/compacting) and stops with it. Widgets
+(`ctx.ui.setWidget`) render above or below the composer as before.
 
 Failures are part of the transcript instead of a toast: pig's own failed turns
 are stored in the session file (`errorMessage`) and are replayed on load, while
