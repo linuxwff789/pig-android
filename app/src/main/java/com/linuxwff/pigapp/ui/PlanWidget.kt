@@ -1,6 +1,7 @@
 package com.linuxwff.pigapp.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
 
@@ -158,10 +160,20 @@ private const val MAX_STEPS = 200
  * logic) and re-emit the widget.
  */
 @Composable
-fun PlanCard(spec: PlanSpec) {
+fun PlanCard(
+    spec: PlanSpec,
+    collapsed: Boolean,
+    onToggle: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     val scheme = MaterialTheme.colorScheme
     val radius = (LocalUiPack.current.theme.cornerRadius / 2).coerceAtLeast(8).dp
     val current = spec.steps.indexOfFirst { !it.done }
+    val collapseLabel = if (collapsed) {
+        packText("plan.expand", "展开计划")
+    } else {
+        packText("plan.collapse", "收起计划")
+    }
     Surface(
         color = scheme.surface,
         shape = RoundedCornerShape(radius),
@@ -171,7 +183,18 @@ fun PlanCard(spec: PlanSpec) {
             .padding(vertical = 2.dp),
     ) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClickLabel = collapseLabel) { onToggle() },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    if (collapsed) "▸" else "▾",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = scheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(4.dp))
                 Text(
                     spec.title.ifBlank { packText("plan.title", "计划") },
                     style = MaterialTheme.typography.labelLarge,
@@ -189,6 +212,33 @@ fun PlanCard(spec: PlanSpec) {
                         scheme.onSurfaceVariant
                     },
                 )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "✕",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .clickable(
+                            onClickLabel = packText("plan.dismiss", "隐藏计划"),
+                        ) { onDismiss() }
+                        .padding(horizontal = 4.dp),
+                )
+            }
+            if (collapsed) {
+                val next = spec.steps.getOrNull(current)
+                Text(
+                    when {
+                        spec.total == 0 -> ""
+                        next == null -> packText("plan.done", "全部完成")
+                        else -> next.text
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                return@Column
             }
             if (spec.total > 0) {
                 LinearProgressIndicator(

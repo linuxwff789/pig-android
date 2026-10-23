@@ -269,7 +269,9 @@ activity (thinking/working/compacting) and stops with it. Widgets
 whose key is `plan` / `plan-todos` / `todos` and whose lines follow the plan
 contract becomes a checklist card (title, progress bar, `☑/☐` steps) — any
 extension can opt in, so users can pick our optional plan extension or a
-third-party one. See [docs/plan-widget.md](docs/plan-widget.md).
+third-party one. The card collapses to a single line (remembered per key) and
+can be dismissed until its content changes. See
+[docs/plan-widget.md](docs/plan-widget.md).
 
 Failures are part of the transcript instead of a toast: pig's own failed turns
 are stored in the session file (`errorMessage`) and are replayed on load, while

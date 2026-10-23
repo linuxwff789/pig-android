@@ -110,6 +110,23 @@ class DebugReceiver : BroadcastReceiver() {
                 // Render one sample plan widget through the same path a real
                 // extension uses, and log what the parser made of it.
                 val form = intent.getStringExtra("form") ?: "json"
+                if (form == "dismiss") {
+                    vm.dismissWidget("plan")
+                    Log.i(TAG, "plan widget dismissed")
+                    return
+                }
+                if (form == "clear") {
+                    Log.i(TAG, "plan widget cleared")
+                    vm.handleDebugEvent(
+                        org.json.JSONObject()
+                            .put("type", "extension_ui_request")
+                            .put("method", "setWidget")
+                            .put("widgetKey", "plan")
+                            .put("widgetLines", org.json.JSONArray())
+                            .toString(),
+                    )
+                    return
+                }
                 val lines = if (form == "text") {
                     listOf(
                         "Plan: 让 pin 立刻生效",

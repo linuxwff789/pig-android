@@ -94,6 +94,20 @@ Other rules:
 - The list scrolls inside a 180 dp box, so a long plan cannot push the composer
   off screen.
 
+## Collapse and dismiss
+
+Both are app-side and local; the extension is not told about them (widgets have
+no reply channel):
+
+- **▾ / ▸** in the card header collapses the list to one line — title, progress
+  and the current step. The state is remembered per widget key across launches.
+- **✕** hides the card. It comes back the next time the extension sends
+  *different* content, so hiding never swallows a real update. `/plan clear`
+  (or the extension's own clear) removes it for good.
+
+Dismissals are cleared when the session is switched, because widgets belong to
+the agent of the session that wrote them.
+
 ## Status line is separate
 
 Plan mode / progress chips are not part of this contract. Extensions may set any

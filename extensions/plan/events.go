@@ -160,7 +160,14 @@ func onAgentEnd(ctx sdk.Context, data map[string]any) (any, error) {
 	if !snapshot().Enabled {
 		return nil, nil
 	}
-	steps := extractSteps(lastAssistantText(data))
+	text, stopReason := lastAssistant(data)
+	// An aborted or failed reply is a fragment: never let it overwrite the plan
+	// the user already has. This is what keeps the card intact when the user
+	// stops generation halfway through writing a plan.
+	if stopReason == "aborted" || stopReason == "error" || stopReason == "pending" {
+		return nil, nil
+	}
+	steps := extractSteps(text)
 	if len(steps) == 0 {
 		return nil, nil
 	}
@@ -198,8 +205,10 @@ func onAgentEnd(ctx sdk.Context, data map[string]any) (any, error) {
 	return nil, nil
 }
 
-// lastAssistantText picks the last assistant message out of agent_end's payload.
-func lastAssistantText(data map[string]any) string {
+// lastAssistant picks the last assistant message out of agent_end's payload and
+// reports why it stopped, so a partial (aborted) reply can be told apart from a
+// finished one.
+func lastAssistant(data map[string]any) (string, string) {
 	messages, _ := data["messages"].([]any)
 	for index := len(messages) - 1; index >= 0; index-- {
 		message, ok := messages[index].(map[string]any)
@@ -209,11 +218,14 @@ func lastAssistantText(data map[string]any) string {
 		if role, _ := message["role"].(string); role != "assistant" {
 			continue
 		}
-		if text := sdk.MessageText(map[string]any{"message": message}); text != "" {
-			return text
+		text := sdk.MessageText(map[string]any{"message": message})
+		if text == "" {
+			continue
 		}
+		stopReason, _ := message["stopReason"].(string)
+		return text, stopReason
 	}
-	return ""
+	return "", ""
 }
 
 // loadState reads the newest plan-state entry of the session.

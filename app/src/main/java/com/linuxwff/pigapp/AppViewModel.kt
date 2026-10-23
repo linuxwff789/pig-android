@@ -113,6 +113,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             skinId = prefs.getString("skinId", "").orEmpty(),
             activePackId = prefs.getString("activePackId", "").orEmpty(),
             contextOverrides = loadContextOverrides(),
+            collapsedWidgets = prefs.getStringSet("collapsedWidgets", emptySet())
+                ?.toSet() ?: emptySet(),
         )
         refreshLocalPacks()
         // Restore an imported pack without waiting for the relay push.
@@ -1286,7 +1288,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         markVisited(path)
         desiredSessionPath = path
         restorePending = false
-        ui = ui.copy(status = "switching", extensionStatuses = emptyMap(), pendingAgentRestart = false)
+        ui = ui.copy(
+            status = "switching",
+            extensionStatuses = emptyMap(),
+            pendingAgentRestart = false,
+            // Widgets belong to the agent of the session that wrote them.
+            widgets = emptyList(),
+            dismissedWidgets = emptyMap(),
+        )
         // The relay parks the current pig and attaches/reads the target
         // session, so switching during a running turn is safe.
         client.send(
@@ -1299,7 +1308,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun newSession() {
         currentAssistant = null
-        ui = ui.copy(readOnly = false, extensionStatuses = emptyMap(), pendingAgentRestart = false)
+        ui = ui.copy(
+            readOnly = false,
+            extensionStatuses = emptyMap(),
+            pendingAgentRestart = false,
+            widgets = emptyList(),
+            dismissedWidgets = emptyMap(),
+        )
         client.send(JSONObject().put("type", "new_session"))
     }
 
@@ -1342,6 +1357,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearLocal() {
         ui = ui.copy(messages = emptyList(), extensionStatuses = emptyMap())
+    }
+
+    /**
+     * Hide a widget until the extension sends different content. There is no
+     * reply channel for widgets, so this is local-only by design: an extension
+     * cannot be told that its card was dismissed.
+     */
+    fun dismissWidget(key: String) {
+        val widget = ui.widgets.firstOrNull { it.key == key } ?: return
+        ui = ui.copy(
+            widgets = ui.widgets.filterNot { it.key == key },
+            dismissedWidgets = ui.dismissedWidgets + (key to widget.lines.joinToString("\n")),
+        )
+    }
+
+    /** Collapse/expand a widget card. Stored in prefs so it survives a restart. */
+    fun toggleWidgetCollapsed(key: String) {
+        if (key.isBlank()) return
+        val next = if (key in ui.collapsedWidgets) {
+            ui.collapsedWidgets - key
+        } else {
+            ui.collapsedWidgets + key
+        }
+        ui = ui.copy(collapsedWidgets = next)
+        prefs.edit().putStringSet("collapsedWidgets", next).apply()
     }
 
     fun injectWindow(text: String) {
@@ -1554,18 +1594,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "aboveEditor"
         }
         val next = ui.widgets.filterNot { it.key == key }.toMutableList()
+        val dismissed = ui.dismissedWidgets.toMutableMap()
         // An empty list means "remove": RPC mode reports a cleared widget as an
         // empty widgetLines array rather than omitting the field.
         if (lines != null && lines.length() > 0) {
-            next.add(
-                AppWidget(
-                    key = key,
-                    lines = (0 until lines.length()).map { lines.optString(it) },
-                    placement = placement,
-                ),
-            )
+            val items = (0 until lines.length()).map { lines.optString(it) }
+            val content = items.joinToString("\n")
+            // A dismissed card stays hidden until the extension says something
+            // new; hiding it must not swallow the next update.
+            if (dismissed[key] == content) {
+                ui = ui.copy(widgets = next, dismissedWidgets = dismissed)
+                return
+            }
+            dismissed.remove(key)
+            next.add(AppWidget(key = key, lines = items, placement = placement))
+        } else {
+            dismissed.remove(key)
         }
-        ui = ui.copy(widgets = next)
+        ui = ui.copy(widgets = next, dismissedWidgets = dismissed)
     }
 
     fun assetHash(path: String): String = packAssetHashes[path] ?: ""

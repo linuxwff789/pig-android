@@ -226,6 +226,12 @@ data class AppUiState(
 
     /** A pin landed while a turn was running; restart pig when it settles. */
     val pendingAgentRestart: Boolean = false,
+
+    /** Widget keys the user collapsed (plan cards). Persisted across launches. */
+    val collapsedWidgets: Set<String> = emptySet(),
+
+    /** Widget key -> content the user dismissed; the card returns when it changes. */
+    val dismissedWidgets: Map<String, String> = emptyMap(),
     val model: String = "",
     val sessionId: String = "",
     val pending: UiRequest? = null,

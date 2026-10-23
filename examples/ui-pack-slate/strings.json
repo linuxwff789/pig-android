@@ -246,6 +246,10 @@
   },
   "plan": {
     "title": "计划",
-    "progress": "{done}/{total}"
+    "progress": "{done}/{total}",
+    "done": "全部完成",
+    "expand": "展开计划",
+    "collapse": "收起计划",
+    "dismiss": "隐藏计划"
   }
 }

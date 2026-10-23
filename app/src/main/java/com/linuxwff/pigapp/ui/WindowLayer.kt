@@ -180,7 +180,12 @@ fun WidgetPane(widgets: List<AppWidget>, placement: String, vm: AppViewModel) {
             // get a checklist card; everyone else keeps the plain pane.
             val plan = parsePlanWidget(widget.key, widget.lines)
             if (plan != null) {
-                PlanCard(plan)
+                PlanCard(
+                    plan,
+                    collapsed = widget.key in vm.ui.collapsedWidgets,
+                    onToggle = { vm.toggleWidgetCollapsed(widget.key) },
+                    onDismiss = { vm.dismissWidget(widget.key) },
+                )
                 return@forEach
             }
             Surface(
