@@ -2943,9 +2943,10 @@ private fun MessageRow(
             Text(
                 message.text,
                 modifier = Modifier
-                    .clip(CircleShape)
+                    .widthIn(max = 340.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = if (message.isError) {
                     MaterialTheme.colorScheme.error

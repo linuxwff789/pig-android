@@ -1572,6 +1572,61 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(messages = ui.messages + message)
     }
 
+    /** Errors written by the app itself (relay/transport), kept per session. */
+    private val noticesDir: File
+        get() = File(getApplication<Application>().filesDir, "notices")
+
+    private fun noticeKey(): String? {
+        val session = ui.sessionFile.ifBlank { ui.sessionId }
+        if (session.isBlank()) return null
+        return session.substringAfterLast('/').removeSuffix(".jsonl").ifBlank { null }
+    }
+
+    /**
+     * A failure is part of the transcript, not a toast: append it as a notice
+     * and keep it on disk so a restart or a session switch still shows it.
+     */
+    private fun appendNotice(text: String) {
+        if (text.isBlank()) return
+        append(ChatMsg(id = "n${nextId++}", role = Role.NOTICE, text = text, isError = true))
+        val key = noticeKey() ?: return
+        runCatching {
+            noticesDir.mkdirs()
+            File(noticesDir, "$key.jsonl").appendText(
+                JSONObject()
+                    .put("text", text)
+                    .put("ts", System.currentTimeMillis())
+                    .toString() + "\n",
+            )
+        }
+    }
+
+    /** Notices written earlier for the current session, oldest first. */
+    private fun readNotices(): List<ChatMsg> {
+        val key = noticeKey() ?: return emptyList()
+        val file = File(noticesDir, "$key.jsonl")
+        if (!file.isFile) return emptyList()
+        return runCatching {
+            file.useLines { lines ->
+                lines.mapIndexedNotNull { index, line ->
+                    val item = runCatching { JSONObject(line) }.getOrNull()
+                        ?: return@mapIndexedNotNull null
+                    val text = item.optString("text")
+                    if (text.isBlank()) {
+                        null
+                    } else {
+                        ChatMsg(
+                            id = "n${item.optLong("ts")}-$index",
+                            role = Role.NOTICE,
+                            text = text,
+                            isError = true,
+                        )
+                    }
+                }.toList()
+            }
+        }.getOrDefault(emptyList())
+    }
+
     private fun update(id: String, block: (ChatMsg) -> ChatMsg) {
         ui = ui.copy(messages = ui.messages.map { if (it.id == id) block(it) else it })
     }
@@ -1622,10 +1677,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     // section read-only instead of surfacing a connection error.
                     ui = ui.copy(settingsRemote = false)
                 } else if (message.contains("relay_model_override")) {
-                    // Older relay: the pin stays display-only, nothing to show.
-                    ui = ui.copy(
-                        toast = str("toast.contextWindowLocalOnly", "relay 版本过旧，上下文长度仅在本机生效"),
-                    )
+                    // Older relay: the pin stays display-only; say so once, in
+                    // the transcript.
+                    appendNotice(str("toast.contextWindowLocalOnly", "relay 版本过旧，上下文长度仅在本机生效"))
                 } else {
                     ui = ui.copy(error = message, setup = true, setupHint = message)
                 }
@@ -1668,9 +1722,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // The optimistic toast from setContextWindow already covered it.
             }
             "relay_model_override_error" -> {
-                ui = ui.copy(
-                    toast = str("toast.contextWindowLocalOnly", "relay 版本过旧，上下文长度仅在本机生效"),
-                )
+                val message = event.optString("message").takeIf { it.isNotBlank() }
+                    ?: str("toast.contextWindowLocalOnly", "relay 版本过旧，上下文长度仅在本机生效")
+                appendNotice(message)
             }
             "relay_sessions" -> handleSessions(event)
             "relay_session_renamed" -> {
@@ -1719,7 +1773,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             "error" -> {
                 val message = event.optString("message", event.optString("error", "unknown error"))
-                append(ChatMsg(id = "n${nextId++}", role = Role.NOTICE, text = message, isError = true))
+                appendNotice(message)
                 ui = ui.copy(busy = false, status = "")
             }
             else -> if (type.startsWith("auto_retry")) ui = ui.copy(status = "retrying")
@@ -1781,14 +1835,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 requestMessages()
                 requestStats()
             }
-            append(
-                ChatMsg(
-                    id = "n${nextId++}",
-                    role = Role.NOTICE,
-                    text = "${event.optString("command")} failed: ${event.optString("error")}",
-                    isError = true,
-                ),
-            )
+            appendNotice("${event.optString("command")} failed: ${event.optString("error")}")
             return
         }
         val command = event.optString("command")
@@ -2220,6 +2267,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 "assistant" -> {
                     val text = contentText(message)
                     if (text.isNotBlank()) out.add(ChatMsg("h${counter++}", Role.ASSISTANT, text = text))
+                    // Pig stores failed turns as an assistant message with
+                    // errorMessage; without this they vanish on reload.
+                    val failure = message.optString("errorMessage")
+                    if (failure.isNotBlank()) {
+                        out.add(ChatMsg("h${counter++}", Role.NOTICE, text = failure, isError = true))
+                    }
                     val blocks = message.optJSONArray("content") ?: continue
                     for (blockIndex in 0 until blocks.length()) {
                         val block = blocks.optJSONObject(blockIndex) ?: continue
@@ -2294,6 +2347,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 currentAssistant = id
             }
         }
+        // App-recorded failures (relay/transport) are not in pig's file, so
+        // replay them from the per-session log; nothing above is duplicated.
+        val known = out.filter { it.role == Role.NOTICE }.mapTo(HashSet()) { it.text }
+        out += readNotices().filterNot { it.text in known }
         ui = ui.copy(messages = out)
         bindResumedAssistant()
     }

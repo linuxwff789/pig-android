@@ -68,6 +68,11 @@ Control frames:
 Everything else is a pig RPC frame (`response`, `message_update`,
 `extension_ui_request`, ...).
 
+The app keeps relay-level failures as notices in the transcript: they are
+appended to `files/notices/<session>.jsonl` and replayed with the history, so
+they survive a reconnect. Failures pig itself records (an assistant message with
+`errorMessage`) are replayed from pig's history instead.
+
 ## Settings
 
 `relay_settings` without `set` returns the raw `~/.pig/agent/settings.json`

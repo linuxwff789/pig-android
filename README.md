@@ -241,6 +241,13 @@ that file at start, so the pinned window becomes the window used for
 compaction in newly spawned agents; until then the header shows both values,
 e.g. `ctx 57% / 1M (pig 128K)`. Clearing the pin removes the key.
 
+Failures are part of the transcript instead of a toast: pig's own failed turns
+are stored in the session file (`errorMessage`) and are replayed on load, while
+relay/transport failures the app sees are kept per session in
+`files/notices/<session>.jsonl` and merged into the history. Both render as a
+notice row between the messages, so scrolling back or restarting the app still
+shows what went wrong.
+
 **设置 → 压缩与重试** also offers **自动压缩阈值** as a share of the window
 (60/70/80/88/90 %). PiG only knows the absolute headroom, so the app converts
 the picked value with `reserveTokens = window × (1 − threshold)` and writes it
