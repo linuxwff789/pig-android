@@ -1831,7 +1831,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 requestStats()
                 refreshCommands()
                 refreshDataSources("agent_end")
-                if (ui.pendingAgentRestart) restartAgent()
+                if (ui.pendingAgentRestart) {
+                    // Let pig finish flushing the session file before the relay
+                    // replaces the process.
+                    viewModelScope.launch {
+                        delay(700)
+                        if (ui.pendingAgentRestart) restartAgent()
+                    }
+                }
             }
             "message_start" -> handleMessageStart(event.optJSONObject("message"))
             "message_update" -> handleMessageUpdate(event)
