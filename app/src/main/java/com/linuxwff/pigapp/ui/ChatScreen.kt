@@ -2773,7 +2773,6 @@ private fun CopyButton(onClick: () -> Unit) {
     }
 }
 
-@Composable
 /**
  * The model's visible reasoning. Collapsed by default (a phone screen is not
  * the place for a 3k-character chain of thought), auto-expanded while the block
@@ -2836,6 +2835,7 @@ private fun ThinkingBlock(id: String, text: String, streaming: Boolean) {
     }
 }
 
+@Composable
 private fun MessageRow(
     message: ChatMsg,
     assistantLabel: String,
