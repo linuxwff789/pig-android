@@ -73,12 +73,14 @@ class SessionNotifications(private val context: Context) {
      * the shade still shows stale cards.
      */
     fun clear() {
-        val system = context.getSystemService(NotificationManager::class.java)
-        if (system != null) {
-            system.activeNotifications
-                .filter { it.id in KIND_IDS }
-                .forEach { runCatching { system.cancel(it.tag, it.id) } }
-        }
+        val system = context.getSystemService(NotificationManager::class.java) ?: return
+        val active = system.activeNotifications
+        val ours = active.filter { it.id in KIND_IDS }
+        ours.forEach { runCatching { system.cancel(it.tag, it.id) } }
+        android.util.Log.i(
+            "PigNotifications",
+            "clear: active=${active.size} ours=${ours.size} ids=${ours.map { it.id }}",
+        )
         posted.clear()
     }
 

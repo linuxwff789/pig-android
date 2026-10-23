@@ -286,6 +286,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         liveThinkingDirty = false
     }
 
+    /** Debug entry point: drop session notifications without foregrounding. */
+    fun clearNotifications() {
+        notifications.clear()
+    }
+
     fun setNotifyPref(name: String, enabled: Boolean) {
         prefs.edit().putBoolean(name, enabled).apply()
         ui = when (name) {

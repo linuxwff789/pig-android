@@ -106,6 +106,10 @@ class DebugReceiver : BroadcastReceiver() {
                 Log.i(TAG, "thinking: $level")
                 vm.setThinkingLevel(level)
             }
+            "com.linuxwff.pigapp.DEBUG_NOTIF_CLEAR" -> {
+                vm.clearNotifications()
+                Log.i(TAG, "notifications cleared")
+            }
             "com.linuxwff.pigapp.DEBUG_PLAN" -> {
                 // Render one sample plan widget through the same path a real
                 // extension uses, and log what the parser made of it.
