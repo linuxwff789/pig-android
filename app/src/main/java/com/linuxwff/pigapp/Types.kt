@@ -8,6 +8,8 @@ data class ChatMsg(
     val id: String,
     val role: Role,
     val text: String = "",
+    /** Visible reasoning ("thinking") blocks of an assistant message. */
+    val thinking: String = "",
     val toolName: String? = null,
     val toolArgs: String = "",
     val toolResult: String = "",
@@ -287,6 +289,9 @@ data class AppUiState(
     val followUpMode: String = "one-at-a-time",
     /** True once the relay answered `relay_settings`; older relays do not. */
     val settingsRemote: Boolean = false,
+
+    /** `hideThinkingBlock` from settings.json: hide reasoning in the transcript. */
+    val hideThinkingBlock: Boolean = false,
     /** `compaction.reserveTokens` from settings.json (0 = unknown). */
     val compactionReserveTokens: Int = 0,
     /** `compaction.keepRecentTokens` from settings.json (0 = unknown). */

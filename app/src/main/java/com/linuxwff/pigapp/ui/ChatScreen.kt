@@ -397,6 +397,7 @@ fun PigApp(vm: AppViewModel) {
                         messages = ui.messages,
                         busy = ui.busy,
                         streamingId = ui.streamingId,
+                        hideThinking = ui.hideThinkingBlock,
                         toolMode = ui.toolMode.ifBlank { ui.uiPack.layout.toolCards },
                         assistantLabel = ui.uiPack.layout.assistantLabel,
                         chatPaddingH = ui.uiPack.layout.chatPaddingH,
@@ -943,6 +944,15 @@ private fun SettingsDialog(
                     ),
                     value = ui.followUpMode,
                     onPick = { vm.setQueueMode(followUp = true, mode = it) },
+                )
+                SettingToggle(
+                    title = packText("settings.showThinking", "显示思考过程"),
+                    subtitle = packText(
+                        "settings.showThinkingHint",
+                        "在回答上方折叠显示模型的可见思考内容（写入 settings.json 的 hideThinkingBlock）",
+                    ),
+                    checked = !ui.hideThinkingBlock,
+                    onCheckedChange = { vm.setHideThinkingBlock(!it) },
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -2493,6 +2503,7 @@ private fun MessageList(
     messages: List<ChatMsg>,
     busy: Boolean,
     streamingId: String?,
+    hideThinking: Boolean,
     toolMode: String,
     assistantLabel: String,
     chatPaddingH: Int,
@@ -2520,7 +2531,7 @@ private fun MessageList(
     val showTyping = busy && (
         last == null ||
             last.role == Role.USER ||
-            (last.role == Role.ASSISTANT && last.text.isBlank())
+            (last.role == Role.ASSISTANT && last.text.isBlank() && last.thinking.isBlank())
         )
 
     // Follow new output only while the user is parked at the bottom. A manual
@@ -2541,6 +2552,7 @@ private fun MessageList(
     LaunchedEffect(
         messages.size,
         last?.text?.length,
+        last?.thinking?.length,
         last?.toolResult?.length,
         showTyping,
     ) {
@@ -2588,6 +2600,7 @@ private fun MessageList(
                         codeBlockRadius = codeBlockRadius,
                         codeBlockBorderAlpha = codeBlockBorderAlpha,
                         streaming = item.message.id == streamingId,
+                        hideThinking = hideThinking,
                         avatarShadow = avatarShadow,
                         bubbleShadow = bubbleShadow,
                         onCopy = onCopy,
@@ -2761,6 +2774,68 @@ private fun CopyButton(onClick: () -> Unit) {
 }
 
 @Composable
+/**
+ * The model's visible reasoning. Collapsed by default (a phone screen is not
+ * the place for a 3k-character chain of thought), auto-expanded while the block
+ * is still streaming so the wait has something to show. Tapping remembers the
+ * choice for that message only.
+ */
+@Composable
+private fun ThinkingBlock(id: String, text: String, streaming: Boolean) {
+    val scheme = MaterialTheme.colorScheme
+    var toggled by rememberSaveable(id) { mutableStateOf(false) }
+    var expanded by rememberSaveable(id) { mutableStateOf(false) }
+    val open = if (toggled) expanded else streaming
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(scheme.surfaceVariant.copy(alpha = 0.42f)),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable {
+                    toggled = true
+                    expanded = !open
+                }
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                packText("chat.thinking", "思考"),
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.secondary,
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                packText("chat.thinkingSize", "{count} 字")
+                    .replace("{count}", text.length.toString()),
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant.copy(alpha = 0.8f),
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                if (open) "▾" else "▸",
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+            )
+        }
+        AnimatedVisibility(visible = open) {
+            Text(
+                text,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 240.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 10.dp, end = 10.dp, bottom = 8.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 private fun MessageRow(
     message: ChatMsg,
     assistantLabel: String,
@@ -2770,6 +2845,7 @@ private fun MessageRow(
     codeBlockRadius: Int,
     codeBlockBorderAlpha: Float,
     streaming: Boolean,
+    hideThinking: Boolean,
     avatarShadow: Boolean,
     bubbleShadow: Boolean,
     onCopy: (String) -> Unit,
@@ -2948,6 +3024,14 @@ private fun MessageRow(
                     } else {
                         content()
                     }
+                }
+                if (!hideThinking && message.thinking.isNotBlank()) {
+                    ThinkingBlock(
+                        id = message.id,
+                        text = message.thinking,
+                        streaming = streaming,
+                    )
+                    Spacer(Modifier.height(4.dp))
                 }
                 Box(
                     Modifier

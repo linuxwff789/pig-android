@@ -80,6 +80,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var restorePending = false
     private var restoreChecked = false
     private val liveBuffer = StringBuilder()
+    private val liveThinking = StringBuilder()
     private var liveActive = false
     private var liveFlushScheduled = false
     private val pendingToolPartials = mutableMapOf<String, String>()
@@ -199,7 +200,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         foreground = true
         if (liveActive) {
             val id = currentAssistant
-            if (id != null) update(id) { it.copy(text = liveBuffer.toString()) }
+            if (id != null) {
+                update(id) { it.copy(text = liveBuffer.toString(), thinking = liveThinking.toString()) }
+            }
         }
         val ctx = getApplication<Application>()
         if (prefs.getBoolean("keepalive", true)) {
@@ -263,6 +266,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun clearLive() {
         liveActive = false
         liveBuffer.setLength(0)
+        liveThinking.setLength(0)
     }
 
     private fun markVisited(path: String) {
@@ -869,6 +873,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         client.send(JSONObject().put("id", "settings-${nextId++}").put("type", "relay_settings"))
     }
 
+    /** Show/hide reasoning blocks. Display-only, so no "new session" toast. */
+    fun setHideThinkingBlock(hide: Boolean) {
+        ui = ui.copy(hideThinkingBlock = hide)
+        client.send(
+            JSONObject()
+                .put("id", "settings-set-${nextId++}")
+                .put("type", "relay_settings")
+                .put("set", JSONObject().put("hideThinkingBlock", hide)),
+        )
+    }
+
     /** Writes allow-listed keys into ~/.pig/agent/settings.json via the relay. */
     fun updateRelaySettings(vararg patch: Pair<String, Any>) {
         val set = JSONObject()
@@ -888,6 +903,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             cacheWarming = (patch.toMap()["cacheWarming"] as? String) ?: ui.cacheWarming,
             retryMaxRetries = (patch.toMap()["retry.maxRetries"] as? Int)
                 ?: ui.retryMaxRetries,
+            hideThinkingBlock = (patch.toMap()["hideThinkingBlock"] as? Boolean)
+                ?: ui.hideThinkingBlock,
             toast = str("toast.settingsSaved", "设置已保存，新会话生效"),
         )
     }
@@ -1864,6 +1881,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     compactionKeepRecentTokens = compaction.optInt("keepRecentTokens", 0),
                     cacheWarming = settings.optString("cacheWarming", ""),
                     retryMaxRetries = retry.optInt("maxRetries", 0),
+                    hideThinkingBlock = settings.optBoolean("hideThinkingBlock", false),
                 )
             }
             "relay_settings_error" -> {
@@ -1953,6 +1971,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "tool_execution_update" -> handleToolUpdate(event)
             "tool_execution_end" -> handleToolEnd(event)
             "extension_ui_request" -> handleUiRequest(event)
+            "thinking_level_changed" -> {
+                // pig also changes the level on its own (cycle_thinking_level,
+                // extensions); without this the header keeps the old value.
+                val level = event.optString("level")
+                if (level.isNotBlank()) ui = ui.copy(thinkingLevel = level)
+            }
             "compaction_start" -> ui = ui.copy(status = "compacting")
             "compaction_end" -> {
                 ui = ui.copy(status = "", contextCompacted = true)
@@ -2466,7 +2490,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 "assistant" -> {
                     val text = contentText(message)
-                    if (text.isNotBlank()) out.add(ChatMsg("h${counter++}", Role.ASSISTANT, text = text))
+                    val thinking = contentThinking(message)
+                    if (text.isNotBlank() || thinking.isNotBlank()) {
+                        out.add(
+                            ChatMsg(
+                                "h${counter++}",
+                                Role.ASSISTANT,
+                                text = text,
+                                thinking = thinking,
+                            ),
+                        )
+                    }
                     // Pig stores failed turns as an assistant message with
                     // errorMessage; without this they vanish on reload.
                     val failure = message.optString("errorMessage")
@@ -2694,21 +2728,53 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun handleMessageStart(message: JSONObject?) {
         if (message == null || message.optString("role") != "assistant") return
         val text = contentText(message)
+        val thinking = contentThinking(message)
         liveBuffer.setLength(0)
         liveBuffer.append(text)
+        liveThinking.setLength(0)
+        liveThinking.append(thinking)
         liveActive = true
         val id = currentAssistant ?: "a${nextId++}".also {
             currentAssistant = it
-            append(ChatMsg(id = it, role = Role.ASSISTANT, text = text))
+            append(ChatMsg(id = it, role = Role.ASSISTANT, text = text, thinking = thinking))
         }
-        if (text.isNotEmpty()) update(id) { it.copy(text = text) }
+        update(id) { it.copy(text = text, thinking = thinking) }
         ui = ui.copy(streamingId = id)
     }
 
     private fun handleMessageUpdate(event: JSONObject?) {
         if (event == null) return
         val update = event.optJSONObject("assistantMessageEvent") ?: return
-        if (update.optString("type") != "text_delta") return
+        when (update.optString("type")) {
+            "thinking_delta" -> {
+                val delta = update.optString("delta", "")
+                if (delta.isEmpty()) return
+                liveThinking.append(delta)
+                if (currentAssistant == null) {
+                    currentAssistant = "a${nextId++}".also {
+                        append(ChatMsg(id = it, role = Role.ASSISTANT))
+                        ui = ui.copy(streamingId = it)
+                    }
+                }
+                liveActive = true
+                scheduleLiveFlush()
+                return
+            }
+            "thinking_end" -> {
+                // The end event carries the complete block; trust it over the
+                // accumulated deltas (providers can rewrite earlier text).
+                val content = update.optString("content", "")
+                if (content.isNotEmpty()) {
+                    liveThinking.setLength(0)
+                    liveThinking.append(content)
+                    liveActive = true
+                    scheduleLiveFlush()
+                }
+                return
+            }
+            "text_delta" -> Unit
+            else -> return
+        }
         val delta = update.optString("delta", "")
         if (delta.isEmpty()) return
         // liveText holds the text including the prefix replayed by relay_resume,
@@ -2740,8 +2806,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             liveFlushScheduled = false
             if (!liveActive) return@launch
             val text = liveBuffer.toString()
+            val thinking = liveThinking.toString()
             val id = currentAssistant ?: return@launch
-            update(id) { it.copy(text = text) }
+            update(id) { it.copy(text = text, thinking = thinking) }
         }
     }
 
@@ -2796,10 +2863,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val text = contentText(message)
-        update(id) { it.copy(text = text.ifBlank { it.text }) }
+        val thinking = contentThinking(message)
+        update(id) {
+            it.copy(
+                text = text.ifBlank { it.text },
+                thinking = thinking.ifBlank { it.thinking },
+            )
+        }
         // Tool-call-only assistant messages have no text; the tool card is the
         // visible representation, so drop the empty bubble.
-        if (ui.messages.firstOrNull { it.id == id }?.text.isNullOrBlank()) remove(id)
+        val finished = ui.messages.firstOrNull { it.id == id }
+        if (finished != null && finished.text.isBlank() && finished.thinking.isBlank()) remove(id)
         currentAssistant = null
         clearLive()
         ui = ui.copy(streamingId = null)
@@ -2880,6 +2954,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "setWidget" -> handleWidget(event)
             else -> Unit // setWidget/setTitle/set_editor_text are not rendered in M0.
         }
+    }
+
+    /**
+     * Reasoning blocks of an assistant message. A redacted block keeps its
+     * signature only, so say so instead of rendering an empty section.
+     */
+    private fun contentThinking(object0: JSONObject?): String {
+        if (object0 == null) return ""
+        val blocks = object0.optJSONArray("content") ?: return ""
+        val builder = StringBuilder()
+        for (index in 0 until blocks.length()) {
+            val block = blocks.optJSONObject(index) ?: continue
+            if (block.optString("type") != "thinking") continue
+            if (block.optBoolean("redacted", false)) {
+                if (builder.isNotEmpty()) builder.append("\n\n")
+                builder.append(str("chat.thinkingRedacted", "（提供方已隐藏思考内容）"))
+                continue
+            }
+            val text = block.optString("thinking", "")
+            if (text.isNotBlank()) {
+                if (builder.isNotEmpty()) builder.append("\n\n")
+                builder.append(text)
+            }
+        }
+        return builder.toString()
     }
 
     private fun contentText(object0: JSONObject?): String {

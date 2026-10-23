@@ -203,6 +203,23 @@ prompt-cache hit rate (`缓存 78%`). After `/compact`, PiG returns a null conte
 usage until the next model call, so the header shows `已压缩` instead of a
 misleading `0%`; the real number reappears after the next turn.
 
+## Thinking
+
+Reasoning blocks (`content: [{"type":"thinking", …}]`) are part of the
+transcript, not a notification:
+
+- They stream in live (`thinking_delta` / `thinking_end`) while the model is
+  thinking and are replayed from history on reload.
+- Each block renders above the answer as a collapsed `思考 · N 字` section; it
+  auto-expands while streaming and collapses when the answer starts. Tap the
+  header to toggle, per message.
+- `hideThinkingBlock` in `settings.json` hides them; **设置 → 会话行为 → 显示思考过程**
+  flips it through `relay_settings` and applies immediately.
+- A provider that redacts reasoning sends an empty block with `redacted: true`;
+  the app shows `（提供方已隐藏思考内容）` instead of a blank section.
+- `thinking_level_changed` updates the header, so a level changed by pig or an
+  extension does not leave a stale value.
+
 ## Slash commands
 
 The composer recognises `/name args`:

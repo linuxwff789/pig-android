@@ -67,7 +67,10 @@
   },
   "chat": {
     "done": "完成",
-    "jumpBottom": "回到底部"
+    "jumpBottom": "回到底部",
+    "thinking": "思考",
+    "thinkingSize": "{count} 字",
+    "thinkingRedacted": "（提供方已隐藏思考内容）"
   },
   "banner": {
     "readOnly": "历史会话 · 发送消息后启动",
@@ -162,7 +165,9 @@
     "warmingStreaming": "始终",
     "restartPig": "重启 pig",
     "restartPigHint": "安装或更新扩展后，重启才会加载新命令；运行中会等本轮结束",
-    "restartAction": "重启"
+    "restartAction": "重启",
+    "showThinking": "显示思考过程",
+    "showThinkingHint": "在回答上方折叠显示模型的可见思考内容（写入 settings.json 的 hideThinkingBlock）"
   },
   "toast": {
     "copied": "已复制",
