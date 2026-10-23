@@ -822,7 +822,6 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
     )
 }
 
-@Composable
 /** Cumulative counters for the whole session file, straight from pig. */
 @Composable
 private fun StatsDialog(
@@ -933,6 +932,7 @@ private fun statCount(tokens: Long): String = when {
 private fun statCost(cost: Double): String =
     if (cost <= 0.0) "—" else "\$" + "%.4f".format(cost).trimEnd('0').trimEnd('.')
 
+@Composable
 private fun SettingsDialog(
     vm: AppViewModel,
     ui: AppUiState,
