@@ -233,7 +233,14 @@ The composer recognises `/name args`:
 - **打断消息 / 追问消息** → `set_steering_mode` / `set_follow_up_mode`
   (`one-at-a-time` or `all`).
 
-**设置 → 压缩与重试** edits values that only live in
+**设置 → 压缩与重试** also offers **自动压缩阈值** as a share of the window
+(60/70/80/88/90 %). PiG only knows the absolute headroom, so the app converts
+the picked value with `reserveTokens = window × (1 − threshold)` using the
+*effective* window (a pinned context length included) and writes it through
+`relay_settings`. The row shows the resulting numbers, and the absolute
+`压缩预留 tokens` entry below stays available for exact values.
+
+The section edits values that only live in
 `~/.pig/agent/settings.json` (`compaction.reserveTokens`,
 `compaction.keepRecentTokens`, `retry.maxRetries`, `cacheWarming`). The app has
 no RPC for these, so it asks the relay — `relay_settings` reads the file and

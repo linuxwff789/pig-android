@@ -78,3 +78,40 @@ private fun displayRpcValue(value: Any?): String = when (value) {
     is Float -> displayRpcValue(value.toDouble())
     else -> value.toString()
 }
+
+/** `1000000` → `1M`, `128000` → `128K`, `16384` → `16K`. */
+fun formatTokenLabel(tokens: Int): String = when {
+    tokens >= 1_000_000 ->
+        "%.2f".format(tokens / 1_000_000f).trimEnd('0').trimEnd('.') + "M"
+    tokens >= 1000 -> "${tokens / 1000}K"
+    else -> tokens.toString()
+}
+
+/**
+ * Resolve a pack binding path against live app state first.
+ *
+ * `context` (and its `context.*` children) is computed by the app rather than
+ * taken from an RPC reply, so packs can show the *effective* window/usage —
+ * including the user's pinned context length and the last known usage while a
+ * relay is attached without a live pig.
+ */
+fun resolveUiPath(ui: AppUiState, path: String): Any? {
+    val root = path.substringBefore('.')
+    if (root == "context" && !ui.rpcData.containsKey(root)) {
+        val percent = ui.contextPercent
+        val ctx = JSONObject()
+            .put("percent", percent ?: JSONObject.NULL)
+            .put(
+                "percentLabel",
+                percent?.let { "%.1f".format(it).trimEnd('0').trimEnd('.') + "%" } ?: "—",
+            )
+            .put("tokens", ui.contextTokens)
+            .put("tokensLabel", formatTokenLabel(ui.contextTokens))
+            .put("window", ui.contextWindow)
+            .put("windowLabel", if (ui.contextWindow > 0) formatTokenLabel(ui.contextWindow) else "—")
+        val key = path.removePrefix("context").removePrefix(".")
+        if (key.isEmpty()) return ctx
+        return if (ctx.has(key) && !ctx.isNull(key)) ctx.opt(key) else null
+    }
+    return resolveRpcPath(ui.rpcData, path)
+}

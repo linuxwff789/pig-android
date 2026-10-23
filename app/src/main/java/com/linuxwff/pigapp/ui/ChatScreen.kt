@@ -124,6 +124,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -948,6 +949,44 @@ private fun SettingsDialog(
                         color = scheme.onSurfaceVariant,
                     )
                 }
+                val ctxWindow = ui.contextWindow
+                val reserveTokens = ui.compactionReserveTokens
+                val thresholdPct = if (ctxWindow > 0 && reserveTokens in 1 until ctxWindow) {
+                    ((ctxWindow - reserveTokens) * 100.0 / ctxWindow).roundToInt()
+                } else {
+                    0
+                }
+                QueueModeRow(
+                    title = packText("settings.compactionThreshold", "自动压缩阈值"),
+                    hint = if (ctxWindow > 0 && reserveTokens in 1 until ctxWindow) {
+                        packText(
+                            "settings.compactionThresholdHint",
+                            "上下文用到 {percent}%（{used} / {window}）时自动总结，预留 {reserve}",
+                        )
+                            .replace("{percent}", thresholdPct.toString())
+                            .replace("{used}", formatTokens(ctxWindow - reserveTokens))
+                            .replace("{window}", formatTokens(ctxWindow))
+                            .replace("{reserve}", formatTokens(reserveTokens))
+                    } else {
+                        packText(
+                            "settings.compactionThresholdUnknown",
+                            "需要先拿到上下文窗口和当前的预留值",
+                        )
+                    },
+                    value = if (thresholdPct > 0) thresholdPct.toString() else "",
+                    onPick = if (ui.settingsRemote) {
+                        { picked -> vm.setCompactionThreshold(picked.toIntOrNull() ?: 80) }
+                    } else {
+                        {}
+                    },
+                    options = listOf(
+                        "60" to "60%",
+                        "70" to "70%",
+                        "80" to "80%",
+                        "88" to "88%",
+                        "90" to "90%",
+                    ),
+                )
                 SettingNumberRow(
                     title = packText("settings.reserveTokens", "压缩预留 tokens"),
                     hint = packText(

@@ -141,8 +141,8 @@
         },
         {
           "type": "text",
-          "bind": "stats.contextUsage",
-          "format": "ctx {percent}%",
+          "bind": "context",
+          "format": "ctx {percentLabel} / {windowLabel}",
           "style": "label"
         },
         {

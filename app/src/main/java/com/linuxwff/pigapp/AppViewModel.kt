@@ -890,6 +890,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /**
+     * Auto-compaction threshold expressed as a share of the effective window.
+     * PiG only knows `compaction.reserveTokens` (tokens held back), so the
+     * percentage is converted here: reserve = window * (1 - percent).
+     */
+    fun setCompactionThreshold(percent: Int) {
+        val window = ui.contextWindow
+        if (window <= 0) {
+            ui = ui.copy(
+                toast = str("toast.contextUnknown", "未知上下文窗口，先切到一个可用会话"),
+            )
+            return
+        }
+        val pct = percent.coerceIn(10, 99)
+        val reserve = ((window.toLong() * (100 - pct)) / 100).toInt().coerceAtLeast(1)
+        updateRelaySettings("compaction.reserveTokens" to reserve)
+    }
+
     fun requestSessions() {
         ui = ui.copy(sessionsLoading = true)
         client.send(JSONObject().put("id", "sessions-${nextId++}").put("type", "relay_sessions"))

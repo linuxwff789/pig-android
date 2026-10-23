@@ -625,6 +625,31 @@ Window nodes can bind too:
 { "type": "code", "bind": "entries", "format": "{value}", "maxLines": 20 }
 ```
 
+### `context` bindings
+
+`context` is not an RPC source: it is computed by the app from live state, so it
+reflects the **effective** window (including a context length pinned in the
+model picker) and keeps the last known usage while a relay is attached without a
+live pig. Both header elements and window nodes can bind it.
+
+| path | type | meaning |
+| --- | --- | --- |
+| `context` | object | whole object, for `format` templates |
+| `context.percent` | number | usage percentage, `null` when unknown |
+| `context.percentLabel` | string | e.g. `10.4%`, `—` when unknown |
+| `context.tokens` | number | tokens currently in the context |
+| `context.tokensLabel` | string | e.g. `104K` |
+| `context.window` | number | effective max context length (0 when unknown) |
+| `context.windowLabel` | string | e.g. `1M`, `128K`, `—` when unknown |
+
+```json
+{ "type": "text", "bind": "context", "format": "ctx {percentLabel} / {windowLabel}" }
+```
+
+That renders e.g. `ctx 10.4% / 1M`. Prefer it over `stats.contextUsage` when the
+pack should follow a pinned window or survive a reconnect. A `dataSources` entry
+named `context` takes precedence over the computed object.
+
 ### actions
 
 `actions` defines named safe actions. A window button or nav entry calls

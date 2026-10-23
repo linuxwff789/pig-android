@@ -164,8 +164,8 @@
             },
             {
               "type": "text",
-              "bind": "stats.contextUsage",
-              "format": "{percent}%",
+              "bind": "context",
+              "format": "{percentLabel} / {windowLabel}",
               "style": "muted"
             },
             {

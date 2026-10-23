@@ -31,9 +31,9 @@ import com.linuxwff.pigapp.AppUiState
 import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.UiHeader
 import com.linuxwff.pigapp.UiHeaderElement
+import com.linuxwff.pigapp.resolveUiPath
 import com.linuxwff.pigapp.UiHeaderRow
 import com.linuxwff.pigapp.formatRpcValue
-import com.linuxwff.pigapp.resolveRpcPath
 
 /**
  * Renders `layout/chat.json` → `header`. Every element is opt-in here, so a
@@ -185,7 +185,7 @@ private fun HeaderElement(
     val modifier = Modifier.padding(element.padding.dp)
     val bindText = element.bind.takeIf { it.isNotBlank() }?.let { path ->
         formatRpcValue(
-            resolveRpcPath(ui.rpcData, path),
+            resolveUiPath(ui, path),
             element.format,
             element.text.ifBlank { element.label },
         )

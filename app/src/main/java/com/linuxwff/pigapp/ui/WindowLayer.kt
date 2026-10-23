@@ -65,7 +65,7 @@ import com.linuxwff.pigapp.AppWidget
 import com.linuxwff.pigapp.AppWindow
 import com.linuxwff.pigapp.UiNode
 import com.linuxwff.pigapp.formatRpcValue
-import com.linuxwff.pigapp.resolveRpcPath
+import com.linuxwff.pigapp.resolveUiPath
 
 @Composable
 fun WindowLayer(windows: List<AppWindow>, vm: AppViewModel) {
@@ -311,7 +311,7 @@ internal fun UiNodeView(
     if (!node.visible || !nodeVisibleWhen(node.visibleWhen, vm)) return
     val pad = Modifier.padding(node.padding.dp)
     val boundText = node.bind.takeIf { it.isNotBlank() }?.let { path ->
-        formatRpcValue(resolveRpcPath(vm.ui.rpcData, path), node.format, node.text)
+        formatRpcValue(resolveUiPath(vm.ui, path), node.format, node.text)
     }
 
     when (node.type) {
