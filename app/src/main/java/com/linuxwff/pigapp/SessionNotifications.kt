@@ -66,9 +66,19 @@ class SessionNotifications(private val context: Context) {
         posted.add(tag to kind.id)
     }
 
-    /** The user is looking at the app again; drop what we raised for them. */
+    /**
+     * The user is looking at the app again; drop what we raised for them.
+     * Enumerate the live notifications instead of remembering tags: the tag is
+     * the session path, and a recreated process would have an empty list while
+     * the shade still shows stale cards.
+     */
     fun clear() {
-        posted.forEach { (tag, id) -> runCatching { manager.cancel(tag, id) } }
+        val system = context.getSystemService(NotificationManager::class.java)
+        if (system != null) {
+            system.activeNotifications
+                .filter { it.id in KIND_IDS }
+                .forEach { runCatching { system.cancel(it.tag, it.id) } }
+        }
         posted.clear()
     }
 
@@ -108,5 +118,6 @@ class SessionNotifications(private val context: Context) {
     private companion object {
         const val CHANNEL_UPDATES = "pig_updates"
         const val CHANNEL_ALERTS = "pig_alerts"
+        val KIND_IDS = setOf(1001, 1002, 1003, 1004, 1005)
     }
 }
