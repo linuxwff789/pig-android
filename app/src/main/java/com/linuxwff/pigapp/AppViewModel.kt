@@ -63,6 +63,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var nextId = 1
     private var lastStateRequestId = ""
     private var lastMessagesRequestId = ""
+    private var lastMessagesRequestAt = 0L
+    // True until this connection has loaded the transcript it should show.
+    private var needsHistory = false
+    private var historyHealTried = false
     private var lastCommandsAt = 0L
     private var modelSwitchAccepted = false
     private val pendingRpcSources = mutableMapOf<String, String>()
@@ -1168,6 +1172,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun requestMessages() {
         val id = "msgs-${nextId++}"
         lastMessagesRequestId = id
+        lastMessagesRequestAt = System.currentTimeMillis()
         client.send(JSONObject().put("id", id).put("type", "get_messages"))
     }
 
@@ -1549,13 +1554,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 restoreChecked = false
                 restorePending = false
                 desiredSessionPath = null
+                // A freshly restarted relay has no session attached yet, so it
+                // answers get_messages with an empty history. Wait for
+                // get_state to settle the session (and restore it if needed)
+                // before asking for messages, otherwise that empty answer
+                // would wipe the transcript we are showing.
+                needsHistory = true
+                historyHealTried = false
                 clearLive()
                 ui = ui.copy(streamingId = null, pendingMessages = 0)
                 pendingToolPartials.clear()
                 // The relay may have kept the previous pig alive (mid-turn
                 // reconnect). Ask it what it is doing before switching sessions.
                 requestState()
-                requestMessages()
                 requestStats()
                 requestSessions()
                 requestRelaySettings()
@@ -1776,6 +1787,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
             clearLive()
             pendingToolPartials.clear()
+            needsHistory = false
+            historyHealTried = false
             requestState()
             requestMessages()
             requestStats()
@@ -1840,6 +1853,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     rememberSession(sessionFile)
                     if (sessionFile == desiredSessionPath) desiredSessionPath = null
                 }
+                if (needsHistory && !restorePending && sessionFile.isNotBlank()) {
+                    needsHistory = false
+                    requestMessages()
+                }
+                // Recovery: the relay reports a session with messages but the
+                // transcript is empty (a lost or dropped history reply).
+                if (!historyHealTried && !restorePending && ui.messages.isEmpty() &&
+                    data.optInt("messageCount", -1) > 0 &&
+                    System.currentTimeMillis() - lastMessagesRequestAt > 2500
+                ) {
+                    historyHealTried = true
+                    requestMessages()
+                }
 
                 if (!live) {
                     // Shown by the static read-only banner; the status bar is
@@ -1853,16 +1879,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     busy = streaming,
                     readOnly = !live,
                     messages = if (switched) emptyList() else ui.messages,
-                    contextWindow = if (live) {
-                        effectiveContextWindow(
-                            model?.optInt("contextWindow", ui.contextWindow) ?: ui.contextWindow,
-                            label,
-                        )
-                    } else {
-                        0
-                    },
-                    contextPercent = if (live) ui.contextPercent else null,
-                    contextTokens = if (live) ui.contextTokens else 0,
+                    contextWindow = effectiveContextWindow(
+                        model?.optInt("contextWindow", ui.contextWindow) ?: ui.contextWindow,
+                        label,
+                    ),
+                    // A relay without an attached pig still describes the same
+                    // session; keep the last known usage instead of showing 0.
+                    contextPercent = ui.contextPercent,
+                    contextTokens = ui.contextTokens,
                     thinkingLevel = data.optString("thinkingLevel", ui.thinkingLevel),
                     pendingMessages = data.optInt("pendingMessageCount", ui.pendingMessages),
                     autoCompaction = data.optBoolean(
@@ -1945,7 +1969,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
             }
-            "get_messages" -> data.optJSONArray("messages")?.let { renderHistory(it) }
+            "get_messages" -> data.optJSONArray("messages")?.let { history ->
+                val foreignEmpty = history.length() == 0 && ui.messages.isNotEmpty() &&
+                    (taggedPath.isBlank() || taggedPath == ui.sessionFile)
+                if (foreignEmpty) {
+                    // The relay has no session attached yet; keep what is on
+                    // screen and retry once get_state tells us the session.
+                    needsHistory = true
+                } else {
+                    needsHistory = false
+                    historyHealTried = true
+                    renderHistory(history)
+                }
+            }
             "get_commands" -> {
                 val array = data.optJSONArray("commands")
                 val list = buildList {

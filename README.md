@@ -148,6 +148,12 @@ The app is designed to survive screen locks, Doze and process death:
   handshake the app sends `switch_session` for that file and reloads its
   transcript. If the session can no longer be opened the app falls back to a
   new session.
+- **History is requested only after `get_state` settles the session.** A relay
+  that has no session attached yet answers `get_messages` with an empty list;
+  treating that as "the session is empty" wiped the visible transcript right
+  after a relay restart. The app now ignores an empty history for an
+  unqualified (or current) session, and if `get_state` reports `messageCount`
+  while the transcript is empty it re-requests the history once.
 - `relay_exit` (pig crashed or was killed) also triggers the reconnect loop.
 - **Lossless mid-turn reattach**: the relay owns the pig and no longer kills it
   when the app disconnects. A reconnect attaches to the same `pig --mode rpc`

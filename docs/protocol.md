@@ -110,6 +110,11 @@ streaming is not aborted. A new client attaches to the same pig:
   `extension_ui_request`;
 - the client resyncs its transcript with `get_state`/`get_messages` and must not
   call `switch_session` while `isStreaming` is true.
+- a relay that has no session attached yet answers `get_messages` with
+  `{"messages": []}` and `sessionPath: ""`. Clients must not clear the
+  transcript on that answer: wait for `get_state` (and restore the remembered
+  session with `switch_session`) before rendering history. `get_state` carries
+  `messageCount`, which lets a client notice that it is missing messages.
 
 If the pig exits, the relay sends `relay_exit`; the next attach starts a fresh
 pig. `relay_restart` explicitly stops and replaces it. `--no-session` is not
