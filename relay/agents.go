@@ -654,7 +654,9 @@ func scanMessages(path string, offset int64) ([]json.RawMessage, error) {
 	out := []json.RawMessage{}
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64*1024), 32*1024*1024)
-	messageMarker := []byte(`"type":"message"`)
+	// Match the key, not a serialized spelling: pig writes compact JSON, but a
+	// spaced `"type": "message"` (older files, hand edits) must not be dropped.
+	messageMarker := []byte(`"message"`)
 	for sc.Scan() {
 		line := sc.Bytes()
 		if !bytes.Contains(line, messageMarker) {

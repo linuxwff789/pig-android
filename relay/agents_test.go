@@ -39,10 +39,12 @@ func TestScanMessagesSkipsMetadata(t *testing.T) {
 		`{"type":"model_change","provider":"eu"}`,
 		`{"type":"message","message":{"role":"user","content":"hi"}}`,
 		`{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"there"}]}}`,
+		// Spaced JSON must not be skipped by the raw-line prefilter.
+		`{"type": "message", "message": {"role": "user", "content": "spaced"}}`,
 	})
 	messages := readSessionMessages(path)
-	if len(messages) != 2 {
-		t.Fatalf("want 2 messages, got %d", len(messages))
+	if len(messages) != 3 {
+		t.Fatalf("want 3 messages, got %d", len(messages))
 	}
 }
 
