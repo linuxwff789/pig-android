@@ -106,6 +106,11 @@ class DebugReceiver : BroadcastReceiver() {
                 Log.i(TAG, "thinking: $level")
                 vm.setThinkingLevel(level)
             }
+            "com.linuxwff.pigapp.DEBUG_NOTIFY_SOUND" -> {
+                val value = intent.getStringExtra("value") ?: "system"
+                vm.setNotifySound(value)
+                Log.i(TAG, "notify sound: $value")
+            }
             "com.linuxwff.pigapp.DEBUG_NOTIF_CLEAR" -> {
                 vm.clearNotifications()
                 Log.i(TAG, "notifications cleared")

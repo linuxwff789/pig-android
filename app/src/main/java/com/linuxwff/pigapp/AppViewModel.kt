@@ -6,7 +6,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.content.Intent
 import android.provider.DocumentsContract
+import android.provider.Settings
 import android.util.Base64
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -127,6 +129,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             notifyAttention = prefs.getBoolean("notifyAttention", true),
             notifyError = prefs.getBoolean("notifyError", true),
             notifyCompacted = prefs.getBoolean("notifyCompacted", false),
+            notifySound = prefs.getString("notifySound", "system") ?: "system",
         )
         refreshLocalPacks()
         // Restore an imported pack without waiting for the relay push.
@@ -289,6 +292,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Debug entry point: drop session notifications without foregrounding. */
     fun clearNotifications() {
         notifications.clear()
+    }
+
+    fun setNotifySound(choice: String) {
+        notifications.setSoundChoice(choice)
+        ui = ui.copy(notifySound = notifications.soundChoice())
+    }
+
+    /** The channel settings page: custom sounds, vibration, importance. */
+    fun openNotificationSettings() {
+        val context = getApplication<Application>()
+        val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .putExtra(Settings.EXTRA_CHANNEL_ID, notifications.alertsChannelId())
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(intent) }
     }
 
     fun setNotifyPref(name: String, enabled: Boolean) {

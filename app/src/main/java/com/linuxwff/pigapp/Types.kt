@@ -328,6 +328,8 @@ data class AppUiState(
     val notifyAttention: Boolean = true,
     val notifyError: Boolean = true,
     val notifyCompacted: Boolean = false,
+    /** `system`, `silent`, `alarm` or `ringtone`. */
+    val notifySound: String = "system",
     /** `compaction.reserveTokens` from settings.json (0 = unknown). */
     val compactionReserveTokens: Int = 0,
     /** `compaction.keepRecentTokens` from settings.json (0 = unknown). */

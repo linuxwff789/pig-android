@@ -345,6 +345,13 @@ Which states notify:
 - Extension `notify` calls map by level: `info` → 会话进展, `warning` →
   需要处理, `error` → 需要处理.
 
+Notification sound follows Android's channel model, so the app offers the
+practical choices in **设置 → 会话行为 → 通知提示音**: 系统默认 / 静音 / 闹钟 /
+铃声. Picking one creates the channels for that sound and deletes the previous
+variants (Android binds the sound to the channel). **打开系统通知设置…** opens the
+channel page for a custom sound, vibration and importance — a channel the user
+customized in the system stays customized until the in-app choice changes.
+
 All four are toggles in **设置 → 会话行为** (完成 / 需要操作 / 出错 / 压缩).
 The 完成 switch also covers plain extension `info` messages, since both land on
 the same channel.

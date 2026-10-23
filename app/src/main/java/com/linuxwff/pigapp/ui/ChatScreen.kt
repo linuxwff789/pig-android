@@ -982,6 +982,49 @@ private fun SettingsDialog(
                     checked = ui.notifyCompacted,
                     onCheckedChange = { vm.setNotifyPref("notifyCompacted", it) },
                 )
+                Column {
+                    Text(
+                        packText("settings.notifySound", "通知提示音"),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        packText(
+                            "settings.notifySoundHint",
+                            "Android 把提示音绑定在渠道上；改这里会换一个同名渠道。更多选项在系统设置里。",
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        listOf(
+                            "system" to packText("settings.soundSystem", "系统默认"),
+                            "silent" to packText("settings.soundSilent", "静音"),
+                            "alarm" to packText("settings.soundAlarm", "闹钟"),
+                            "ringtone" to packText("settings.soundRingtone", "铃声"),
+                        ).forEach { (value, label) ->
+                            FilterChip(
+                                selected = ui.notifySound == value,
+                                onClick = { vm.setNotifySound(value) },
+                                label = { Text(label) },
+                                shape = CircleShape,
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = scheme.primary.copy(alpha = 0.18f),
+                                    selectedLabelColor = scheme.primary,
+                                ),
+                            )
+                        }
+                    }
+                    TextButton(onClick = vm::openNotificationSettings) {
+                        Text(
+                            packText("settings.notifySettings", "打开系统通知设置…"),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
                 SettingToggle(
                     title = packText("settings.showThinking", "显示思考过程"),
                     subtitle = packText(
