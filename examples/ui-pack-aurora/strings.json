@@ -129,7 +129,8 @@
     "autoRetryOn": "已开启自动重试",
     "autoRetryOff": "已关闭自动重试",
     "settingsSaved": "设置已保存，新会话生效",
-    "settingsUnsupported": "relay 版本过旧，无法读写 settings.json"
+    "settingsUnsupported": "relay 版本过旧，无法读写 settings.json",
+    "thinkingStatus": "思考档位：{current} · 可选 {levels}"
   },
   "model": {
     "switching": "切换中…",
@@ -158,5 +159,8 @@
     "thinking": "思考",
     "thinkingSize": "{count} 字",
     "thinkingRedacted": "（提供方已隐藏思考内容）"
+  },
+  "commands": {
+    "thinking": "思考档位：/thinking <级别>"
   }
 }

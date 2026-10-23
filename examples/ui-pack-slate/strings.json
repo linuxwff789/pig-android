@@ -223,7 +223,8 @@
     "restartIdle": "没有正在运行的 pig，下次启动时按新长度执行",
     "restartUnsupported": "relay 版本过旧，无法重启 pig；上下文长度在重启后生效",
     "restartOffline": "relay 未连接，上下文长度在下次连接后生效",
-    "contextWindowOffline": "relay 未连接，上下文长度只在本机生效"
+    "contextWindowOffline": "relay 未连接，上下文长度只在本机生效",
+    "thinkingStatus": "思考档位：{current} · 可选 {levels}"
   },
   "a11y": {
     "menu": "菜单",
@@ -260,5 +261,8 @@
     "expand": "展开计划",
     "collapse": "收起计划",
     "dismiss": "隐藏计划"
+  },
+  "commands": {
+    "thinking": "思考档位：/thinking <级别>"
   }
 }

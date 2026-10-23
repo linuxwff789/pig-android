@@ -91,7 +91,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         UiCommand("name", pack.strings.get("commands.name", "重命名会话：/name 名称")),
         UiCommand(
             "thinking",
-            pack.strings.get("commands.thinking", "思考档位：/thinking off|low|medium|high"),
+            pack.strings.get("commands.thinking", "思考档位：/thinking <级别>"),
         ),
         UiCommand("model", pack.strings.get("commands.model", "选择模型")),
         UiCommand("stop", pack.strings.get("commands.stop", "中止当前输出")),
@@ -703,10 +703,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             "thinking" -> {
                 if (args.isBlank()) {
-                    ui = ui.copy(toast = str("toast.usageThinking", "用法：/thinking off|low|medium|high"))
+                    // Levels are model metadata: show what this model accepts
+                    // instead of a hard-coded list that drifts (max/minimal).
+                    val levels = ui.thinkingLevels.joinToString("|")
+                        .ifBlank { "off|low|medium|high|max" }
+                    ui = ui.copy(
+                        toast = str("toast.thinkingStatus", "思考档位：{current} · 可选 {levels}")
+                            .replace("{current}", ui.thinkingLevel.ifBlank { "—" })
+                            .replace("{levels}", levels),
+                    )
                 } else {
                     append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = text))
-                    setThinkingLevel(args)
+                    setThinkingLevel(args.trim().lowercase())
                 }
             }
             else -> {
