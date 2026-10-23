@@ -16,7 +16,11 @@ git clone https://github.com/linuxwff789/pig-android
 pig install ./pig-android/extensions/plan
 ```
 
-Restart the running agent (or run `/reload`) so the command shows up.
+Restart the running agent so the command shows up. In the Android app:
+**设置 → 会话行为 → 重启 pig** (it waits for a running turn to finish).
+`/reload-runtime` is not enough: it rebuilds the extensions it already resolved
+at startup and does not pick up a package added to `settings.json` afterwards
+(verified against the current PiG).
 
 Uninstall: `pig install --help` lists nothing to remove a package, so edit
 `~/.pig/agent/settings.json` and drop the `extensions/plan` entry, or keep it

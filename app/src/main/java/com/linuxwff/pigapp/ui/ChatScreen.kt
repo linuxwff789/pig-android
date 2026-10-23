@@ -933,6 +933,28 @@ private fun SettingsDialog(
                     value = ui.followUpMode,
                     onPick = { vm.setQueueMode(followUp = true, mode = it) },
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            packText("settings.restartPig", "重启 pig"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            packText(
+                                "settings.restartPigHint",
+                                "安装或更新扩展后，重启才会加载新命令；运行中会等本轮结束",
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = vm::restartAgentNow) {
+                        Text(packText("settings.restartAction", "重启"))
+                    }
+                }
 
                 HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
                 Text(

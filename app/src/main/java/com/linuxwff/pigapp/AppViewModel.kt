@@ -940,6 +940,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         restartAgent()
     }
 
+    /**
+     * Restart pig on demand. Installing or updating an extension only changes
+     * settings.json; the running agent keeps its old set (`/reload` reuses the
+     * startup inputs), so a restart is what makes new commands appear.
+     */
+    fun restartAgentNow() {
+        if (ui.busy || ui.status == "compacting") {
+            ui = ui.copy(
+                pendingAgentRestart = true,
+                toast = str("toast.restartQueued", "本轮结束后重启 pig"),
+            )
+            return
+        }
+        restartAgent()
+    }
+
     private fun restartAgent() {
         if (restartInFlight) return
         if (!client.connected.value) {

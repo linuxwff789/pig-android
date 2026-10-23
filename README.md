@@ -230,7 +230,9 @@ the steps off. Install it with:
 pig install ./extensions/plan        # after cloning this repo
 ```
 
-Then `/reload-runtime` (or restart pig). The app does not depend on this
+Then restart pig (**设置 → 会话行为 → 重启 pig**). `/reload-runtime` rebuilds
+the extensions it already knew about at startup; a package added to
+`settings.json` afterwards needs the restart. The app does not depend on this
 extension — any extension that emits the [plan widget contract](docs/plan-widget.md)
 gets the same card.
 

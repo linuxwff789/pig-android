@@ -80,7 +80,10 @@
     "cacheWarmingHint": "空闲时提前刷新 prompt 缓存：off 关闭 · idle 仅在空闲时 · streaming 也在输出时",
     "warmingOff": "关闭",
     "warmingIdle": "空闲",
-    "warmingStreaming": "始终"
+    "warmingStreaming": "始终",
+    "restartPig": "重启 pig",
+    "restartPigHint": "安装或更新扩展后，重启才会加载新命令；运行中会等本轮结束",
+    "restartAction": "重启"
   },
   "pack": {
     "title": "UI pack",
