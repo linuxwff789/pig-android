@@ -284,7 +284,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (path.isBlank()) return
         val current = prefs.getStringSet("visitedSessions", emptySet()) ?: emptySet()
         if (path in current) return
-        prefs.edit().putStringSet("visitedSessions", current + path).apply()
+        val next = current + path
+        if (next.size <= 400 || ui.sessions.isEmpty()) {
+            prefs.edit().putStringSet("visitedSessions", next).apply()
+            return
+        }
+        // Keep only sessions the list still knows about (plus the current one);
+        // otherwise the set grows for the lifetime of the install.
+        val known = ui.sessions.mapTo(mutableSetOf()) { it.path }
+        known.add(path)
+        if (ui.sessionFile.isNotBlank()) known.add(ui.sessionFile)
+        prefs.edit()
+            .putStringSet("visitedSessions", next.filterTo(mutableSetOf()) { it in known })
+            .apply()
     }
 
     fun reconnect() {
@@ -2375,16 +2387,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             "get_available_models" -> {
                 val array = data.optJSONArray("models")
-                val list = buildList {
-                    if (array != null) {
-                        for (index in 0 until array.length()) {
-                            array.optJSONObject(index)?.let { add(modelInfo(it)) }
+                // 100+ models with capabilities; parsing this in the event loop
+                // is a visible stall right when the picker opens.
+                viewModelScope.launch {
+                    val list = withContext(Dispatchers.Default) {
+                        if (array == null) {
+                            emptyList()
+                        } else {
+                            (0 until array.length())
+                                .mapNotNull { index -> array.optJSONObject(index)?.let { modelInfo(it) } }
+                                .sortedWith(compareBy({ it.provider }, { it.id }))
                         }
                     }
+                    models = list
+                    modelsLoading = false
+                    ui = ui.copy(availableModelCount = list.size)
                 }
-                models = list.sortedWith(compareBy({ it.provider }, { it.id }))
-                modelsLoading = false
-                ui = ui.copy(availableModelCount = models.size)
             }
             "get_available_thinking_levels" -> {
                 val levels = data.optJSONArray("levels")
