@@ -128,10 +128,18 @@ fun toolPresentation(
             metrics = text("tool.metrics.lines", "{count} 行")
                 .replace("{count}", lineCount(result).toString()),
             summary = result.lineSequence().take(4).joinToString("\n"),
-            expanded = result.ifBlank { argsJson },
+            // History stores args compactly; indent only the card that shows
+            // them (a handful of visible cards, not 1800 per session load).
+            expanded = result.ifBlank { prettyArgs(argsJson) },
             error = isError,
         )
     }
+}
+
+/** Indent JSON for display; keep pathological blobs as they are. */
+private fun prettyArgs(raw: String): String {
+    if (raw.isBlank() || raw.length > 64 * 1024) return raw
+    return runCatching { JSONObject(raw).toString(2) }.getOrDefault(raw)
 }
 
 private fun headlineFor(tool: String, args: JSONObject?): String = when (tool) {

@@ -2618,7 +2618,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 id = id,
                                 role = Role.TOOL,
                                 toolName = block.optString("name", "tool"),
-                                toolArgs = block.optJSONObject("arguments")?.toString(2) ?: "",
+                                // Compact here: pretty-printing ~1800 argument
+                                // objects per history load is wasted work; the
+                                // tool card indents the ones it actually shows.
+                                toolArgs = block.optJSONObject("arguments")?.toString() ?: "",
                                 toolResult = partial ?: "",
                                 running = partial != null,
                             ),
