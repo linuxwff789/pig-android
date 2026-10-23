@@ -165,7 +165,7 @@
             {
               "type": "text",
               "bind": "context",
-              "format": "{percentLabel} / {windowLabel}{mismatch}",
+              "format": "{percentLabel} / {windowLabel}",
               "style": "muted"
             },
             {

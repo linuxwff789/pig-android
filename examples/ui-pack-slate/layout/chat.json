@@ -142,7 +142,7 @@
         {
           "type": "text",
           "bind": "context",
-          "format": "ctx {percentLabel} / {windowLabel}{mismatch}",
+          "format": "ctx {percentLabel} / {windowLabel}",
           "style": "label"
         },
         {
