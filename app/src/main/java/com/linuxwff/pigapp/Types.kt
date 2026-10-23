@@ -19,6 +19,28 @@ data class ChatMsg(
     val expanded: Boolean = true,
 )
 
+/** Cumulative counters from `get_session_stats` (whole session file). */
+data class SessionUsage(
+    val input: Long = 0,
+    val output: Long = 0,
+    val cacheRead: Long = 0,
+    val cacheWrite: Long = 0,
+    val total: Long = 0,
+    val cost: Double = 0.0,
+    val userMessages: Int = 0,
+    val assistantMessages: Int = 0,
+    val toolCalls: Int = 0,
+    val toolResults: Int = 0,
+    val totalMessages: Int = 0,
+) {
+    /** Cache hit share of the prompt, same formula as the header. */
+    val cacheRate: Double?
+        get() {
+            val denominator = input + cacheRead + cacheWrite
+            return if (denominator > 0) cacheRead * 100.0 / denominator else null
+        }
+}
+
 data class SessionInfo(
     val path: String,
     val id: String,
@@ -288,6 +310,8 @@ data class AppUiState(
     val contextCompacted: Boolean = false,
     /** Cumulative prompt-cache hit rate (cacheRead / (input + cacheRead + cacheWrite)). */
     val cacheHitRate: Double? = null,
+    /** Full-session counters, refreshed by `get_session_stats`. */
+    val usage: SessionUsage = SessionUsage(),
     val cacheReadTokens: Long = 0,
     val cacheInputTokens: Long = 0,
     val sessions: List<SessionInfo> = emptyList(),

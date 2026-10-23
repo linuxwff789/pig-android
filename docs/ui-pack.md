@@ -705,6 +705,37 @@ window has not reached pig yet. Prefer it over `stats.contextUsage` when the pac
 should follow a pinned window or survive a reconnect. A `dataSources` entry
 named `context` takes precedence over the computed object.
 
+### `stats` bindings
+
+Like `context`, `stats` is computed by the app so packs can show session totals
+without declaring a data source. It comes from the last `get_session_stats`
+reply, which covers the **whole session file** (not just the 2000 messages the
+app loads).
+
+| path | type | meaning |
+| --- | --- | --- |
+| `stats` | object | whole object, for `format` templates |
+| `stats.input` / `stats.output` | number | cumulative prompt / completion tokens |
+| `stats.cacheRead` / `stats.cacheWrite` | number | prompt-cache counters |
+| `stats.total` | number | sum reported by pig |
+| `stats.*Label` | string | `58.9M`, `1.6M`, … for the five counters above |
+| `stats.cacheRate` | number | cache hit share, `null` when unknown |
+| `stats.cacheRateLabel` | string | e.g. `88%` |
+| `stats.cost` | number | cumulative cost in USD |
+| `stats.costLabel` | string | e.g. `$0.0613`, `—` when zero |
+| `stats.userMessages`, `stats.assistantMessages`, `stats.toolCalls`, `stats.toolResults`, `stats.totalMessages` | number | message counters |
+| `stats.summary` | string | `58.9M in · 1.6M out · $0.0613` |
+
+```json
+{ "type": "text", "bind": "stats", "format": "{summary}" }
+```
+
+A `dataSources` entry named `stats` takes precedence, exactly like `context`;
+in that case the pack sees pig's raw reply (`tokens`, `contextUsage`, `cost`,
+counters) and not the computed labels.
+
+The **设置 → 数据 → 使用统计** dialog renders the same numbers.
+
 ### actions
 
 `actions` defines named safe actions. A window button or nav entry calls

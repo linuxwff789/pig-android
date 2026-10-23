@@ -102,7 +102,10 @@
     "soundSystem": "系统默认",
     "soundSilent": "静音",
     "soundAlarm": "闹钟",
-    "soundRingtone": "铃声"
+    "soundRingtone": "铃声",
+    "usage": "使用统计",
+    "usageHint": "本会话的 token、缓存命中与费用（来自 pig 的会话统计）",
+    "view": "查看"
   },
   "pack": {
     "title": "UI pack",
@@ -191,5 +194,20 @@
     "attentionBody": "扩展正在等待输入",
     "error": "出错了",
     "compacted": "上下文已压缩"
+  },
+  "stats": {
+    "title": "使用统计",
+    "messages": "消息",
+    "messagesValue": "用户 {user} · 助手 {assistant} · 工具 {tools}/{results} · 合计 {total}",
+    "tokens": "Tokens",
+    "tokensValue": "输入 {input} · 输出 {output} · 合计 {total}",
+    "cache": "缓存",
+    "cacheValue": "读 {read} · 写 {write} · 命中 {rate}%",
+    "cost": "费用",
+    "context": "上下文",
+    "contextValue": "{used} / {window} · {percent}%",
+    "hint": "数字来自 pig 的会话统计，覆盖整个会话文件，不受历史只加载最近 2000 条的限制。",
+    "close": "关闭",
+    "refresh": "刷新"
   }
 }

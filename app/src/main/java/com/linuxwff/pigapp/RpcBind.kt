@@ -80,6 +80,16 @@ private fun displayRpcValue(value: Any?): String = when (value) {
 }
 
 /** `1000000` → `1M`, `128000` → `128K`, `16384` → `16K`. */
+/** Same shape as [formatTokenLabel] for the cumulative counters (Long). */
+fun formatTokenCount(tokens: Long): String = when {
+    tokens >= 1_000_000 -> "%.2f".format(tokens / 1_000_000.0).trimEnd('0').trimEnd('.') + "M"
+    tokens >= 1000 -> "%.1f".format(tokens / 1000.0).trimEnd('0').trimEnd('.') + "K"
+    else -> tokens.toString()
+}
+
+fun formatCostLabel(cost: Double): String =
+    if (cost <= 0.0) "—" else "\$" + "%.4f".format(cost).trimEnd('0').trimEnd('.')
+
 fun formatTokenLabel(tokens: Int): String = when {
     tokens >= 1_000_000 ->
         "%.2f".format(tokens / 1_000_000f).trimEnd('0').trimEnd('.') + "M"
@@ -140,6 +150,40 @@ fun resolveUiPath(ui: AppUiState, path: String): Any? {
         val key = path.removePrefix("context").removePrefix(".")
         if (key.isEmpty()) return ctx
         return if (ctx.has(key) && !ctx.isNull(key)) ctx.opt(key) else null
+    }
+    if (root == "stats" && !ui.rpcData.containsKey(root)) {
+        val usage = ui.usage
+        val stats = JSONObject()
+            .put("input", usage.input)
+            .put("output", usage.output)
+            .put("cacheRead", usage.cacheRead)
+            .put("cacheWrite", usage.cacheWrite)
+            .put("total", usage.total)
+            .put("inputLabel", formatTokenCount(usage.input))
+            .put("outputLabel", formatTokenCount(usage.output))
+            .put("cacheReadLabel", formatTokenCount(usage.cacheRead))
+            .put("cacheWriteLabel", formatTokenCount(usage.cacheWrite))
+            .put("totalLabel", formatTokenCount(usage.total))
+            .put("cacheRate", usage.cacheRate ?: JSONObject.NULL)
+            .put(
+                "cacheRateLabel",
+                usage.cacheRate?.let { "%.0f%%".format(it) } ?: "—",
+            )
+            .put("cost", usage.cost)
+            .put("costLabel", formatCostLabel(usage.cost))
+            .put("userMessages", usage.userMessages)
+            .put("assistantMessages", usage.assistantMessages)
+            .put("toolCalls", usage.toolCalls)
+            .put("toolResults", usage.toolResults)
+            .put("totalMessages", usage.totalMessages)
+            .put(
+                "summary",
+                "${formatTokenCount(usage.input)} in · ${formatTokenCount(usage.output)} out · " +
+                    formatCostLabel(usage.cost),
+            )
+        val key = path.removePrefix("stats").removePrefix(".")
+        if (key.isEmpty()) return stats
+        return if (stats.has(key) && !stats.isNull(key)) stats.opt(key) else null
     }
     return resolveRpcPath(ui.rpcData, path)
 }

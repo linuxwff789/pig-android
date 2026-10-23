@@ -199,7 +199,11 @@ the value reported by the provider.
 ## Context and cache
 
 The header shows the current context percentage/tokens and the cumulative
-prompt-cache hit rate (`缓存 78%`). After `/compact`, PiG returns a null context
+prompt-cache hit rate (`缓存 78%`). **设置 → 数据 → 使用统计** opens the full
+session counters from `get_session_stats` — input/output/cache tokens, cache
+hit share, cost, message/tool counts — covering the whole session file, not just
+the loaded history. Packs can bind the same numbers through `stats.*`
+(see [docs/ui-pack.md](docs/ui-pack.md)). After `/compact`, PiG returns a null context
 usage until the next model call, so the header shows `已压缩` instead of a
 misleading `0%`; the real number reappears after the next turn.
 

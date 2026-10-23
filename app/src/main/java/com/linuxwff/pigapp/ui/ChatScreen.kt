@@ -166,6 +166,7 @@ fun PigApp(vm: AppViewModel) {
         }
     }
     var showSettings by remember { mutableStateOf(false) }
+    var showStats by remember { mutableStateOf(false) }
     var showPackManager by remember { mutableStateOf(false) }
     val components = packComponents()
     val bindings = ui.uiPack.layout.bindings
@@ -424,10 +425,22 @@ fun PigApp(vm: AppViewModel) {
         WindowLayer(ui.windows, vm)
         SheetWindows(ui.windows, vm)
         if (showSettings) {
-            SettingsDialog(vm, ui, onOpenPacks = {
-                showSettings = false
-                showPackManager = true
-            }) { showSettings = false }
+            SettingsDialog(
+                vm,
+                ui,
+                onOpenPacks = {
+                    showSettings = false
+                    showPackManager = true
+                },
+                onOpenStats = {
+                    showSettings = false
+                    vm.refreshStats()
+                    showStats = true
+                },
+            ) { showSettings = false }
+        }
+        if (showStats) {
+            StatsDialog(ui, onRefresh = vm::refreshStats) { showStats = false }
         }
         if (showPackManager) {
             PackManagerDialog(vm, ui) { showPackManager = false }
@@ -810,10 +823,121 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
 }
 
 @Composable
+/** Cumulative counters for the whole session file, straight from pig. */
+@Composable
+private fun StatsDialog(
+    ui: AppUiState,
+    onRefresh: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val usage = ui.usage
+    val cacheRate = usage.cacheRate
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(ui.uiPack.theme.cornerRadius.dp),
+        containerColor = scheme.surface,
+        title = { Text(packText("stats.title", "使用统计")) },
+        text = {
+            Column(
+                Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                StatRow(
+                    packText("stats.messages", "消息"),
+                    packText(
+                        "stats.messagesValue",
+                        "用户 {user} · 助手 {assistant} · 工具 {tools}/{results} · 合计 {total}",
+                    )
+                        .replace("{user}", usage.userMessages.toString())
+                        .replace("{assistant}", usage.assistantMessages.toString())
+                        .replace("{tools}", usage.toolCalls.toString())
+                        .replace("{results}", usage.toolResults.toString())
+                        .replace("{total}", usage.totalMessages.toString()),
+                )
+                StatRow(
+                    packText("stats.tokens", "Tokens"),
+                    packText("stats.tokensValue", "输入 {input} · 输出 {output} · 合计 {total}")
+                        .replace("{input}", statCount(usage.input))
+                        .replace("{output}", statCount(usage.output))
+                        .replace("{total}", statCount(usage.total)),
+                )
+                StatRow(
+                    packText("stats.cache", "缓存"),
+                    packText("stats.cacheValue", "读 {read} · 写 {write} · 命中 {rate}%")
+                        .replace("{read}", statCount(usage.cacheRead))
+                        .replace("{write}", statCount(usage.cacheWrite))
+                        .replace("{rate}", cacheRate?.let { "%.0f".format(it) } ?: "—"),
+                )
+                StatRow(
+                    packText("stats.cost", "费用"),
+                    statCost(usage.cost),
+                )
+                StatRow(
+                    packText("stats.context", "上下文"),
+                    packText("stats.contextValue", "{used} / {window} · {percent}%")
+                        .replace("{used}", formatTokens(ui.contextTokens))
+                        .replace(
+                            "{window}",
+                            if (ui.contextWindow > 0) formatTokens(ui.contextWindow) else "—",
+                        )
+                        .replace(
+                            "{percent}",
+                            ui.contextPercent?.let { "%.1f".format(it) } ?: "—",
+                        ),
+                )
+                Text(
+                    packText(
+                        "stats.hint",
+                        "数字来自 pig 的会话统计，覆盖整个会话文件，不受历史只加载最近 2000 条的限制。",
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(packText("stats.close", "关闭"))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onRefresh) {
+                Text(packText("stats.refresh", "刷新"))
+            }
+        },
+    )
+}
+
+@Composable
+private fun StatRow(label: String, value: String) {
+    val scheme = MaterialTheme.colorScheme
+    Column {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = scheme.onSurfaceVariant,
+        )
+        Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+private fun statCount(tokens: Long): String = when {
+    tokens >= 1_000_000 -> "%.1f".format(tokens / 1_000_000.0).removeSuffix(".0") + "M"
+    tokens >= 1000 -> "%.1f".format(tokens / 1000.0).removeSuffix(".0") + "K"
+    else -> tokens.toString()
+}
+
+private fun statCost(cost: Double): String =
+    if (cost <= 0.0) "—" else "\$" + "%.4f".format(cost).trimEnd('0').trimEnd('.')
+
 private fun SettingsDialog(
     vm: AppViewModel,
     ui: AppUiState,
     onOpenPacks: () -> Unit,
+    onOpenStats: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -1178,6 +1302,25 @@ private fun SettingsDialog(
 
                 HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
                 Text(packText("settings.data", "数据"), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            packText("settings.usage", "使用统计"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            packText(
+                                "settings.usageHint",
+                                "本会话的 token、缓存命中与费用（来自 pig 的会话统计）",
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = onOpenStats) {
+                        Text(packText("settings.view", "查看"))
+                    }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(packText("settings.clearLocal", "清空本地记录"), style = MaterialTheme.typography.bodyMedium)

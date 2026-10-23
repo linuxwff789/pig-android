@@ -1088,6 +1088,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Public refresh for the statistics dialog. */
+    fun refreshStats() = requestStats()
+
     private fun requestStats() {
         client.send(JSONObject().put("id", "stats-${nextId++}").put("type", "get_session_stats"))
     }
@@ -1415,6 +1418,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // Widgets belong to the agent of the session that wrote them.
             widgets = emptyList(),
             dismissedWidgets = emptyMap(),
+            usage = SessionUsage(),
         )
         // The relay parks the current pig and attaches/reads the target
         // session, so switching during a running turn is safe.
@@ -2226,6 +2230,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 contextWindowActual = 0,
                 contextCompacted = false,
                 cacheHitRate = null,
+                usage = SessionUsage(),
                 cacheReadTokens = 0,
                 cacheInputTokens = 0,
             )
@@ -2410,7 +2415,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val cacheRead = totals.optLong("cacheRead")
                     val cacheWrite = totals.optLong("cacheWrite")
                     val denominator = input + cacheRead + cacheWrite
+                    val usage = SessionUsage(
+                        input = input,
+                        output = totals.optLong("output"),
+                        cacheRead = cacheRead,
+                        cacheWrite = cacheWrite,
+                        total = totals.optLong("total"),
+                        cost = data.optDouble("cost", 0.0),
+                        userMessages = data.optInt("userMessages", 0),
+                        assistantMessages = data.optInt("assistantMessages", 0),
+                        toolCalls = data.optInt("toolCalls", 0),
+                        toolResults = data.optInt("toolResults", 0),
+                        totalMessages = data.optInt("totalMessages", 0),
+                    )
                     ui = ui.copy(
+                        usage = usage,
                         cacheReadTokens = cacheRead,
                         cacheInputTokens = input + cacheWrite,
                         cacheHitRate = if (denominator > 0) {
