@@ -1602,6 +1602,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** True between `relay_restart` and its `relay_restarted` reply. */
     private var restartInFlight = false
 
+    /** Notices retired in this process; a history render must not bring them back. */
+    private val resolvedNotices = mutableSetOf<String>()
+
     /** Errors written by the app itself (relay/transport), kept per session. */
     private val noticesDir: File
         get() = File(getApplication<Application>().filesDir, "notices")
@@ -1638,6 +1641,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun resolveNotice(text: String) {
         if (text.isBlank()) return
+        resolvedNotices.add(text)
         ui = ui.copy(messages = ui.messages.filterNot { it.role == Role.NOTICE && it.text == text })
         val key = noticeKey() ?: return
         val file = File(noticesDir, "$key.jsonl")
@@ -1661,7 +1665,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val item = runCatching { JSONObject(line) }.getOrNull()
                         ?: return@mapIndexedNotNull null
                     val text = item.optString("text")
-                    if (text.isBlank()) {
+                    if (text.isBlank() || text in resolvedNotices) {
                         null
                     } else {
                         ChatMsg(
