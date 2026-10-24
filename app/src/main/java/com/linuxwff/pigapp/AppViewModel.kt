@@ -1281,16 +1281,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleDefaultModel(model: ModelInfo) {
         val key = "${model.provider}/${model.id}"
         val next = if (ui.defaultModel == key) "" else key
+        setDefaultModelKey(next)
+    }
+
+    /** Clear the pinned default without touching the running session. */
+    fun clearDefaultModel() = setDefaultModelKey("")
+
+    private fun setDefaultModelKey(key: String) {
         ui = ui.copy(
-            defaultModel = next,
-            toast = if (next.isBlank()) {
+            defaultModel = key,
+            toast = if (key.isBlank()) {
                 str("toast.defaultModelCleared", "已取消默认模型")
             } else {
                 str("toast.defaultModelSet", "默认模型：{model}（新会话使用）")
                     .replace("{model}", key)
             },
         )
-        prefs.edit().putString("defaultModel", next).apply()
+        prefs.edit().putString("defaultModel", key).apply()
     }
 
     /** Applied right after new_session so the fresh session uses the pinned model. */

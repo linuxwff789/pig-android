@@ -91,12 +91,13 @@ fun ModelPickerDialog(vm: AppViewModel) {
                     )
                     if (vm.ui.defaultModel.isNotBlank()) {
                         Text(
-                            packText("model.defaultIs", "默认 {model}")
+                            packText("model.defaultIs", "默认 {model} · 点按清除")
                                 .replace("{model}", vm.ui.defaultModel),
                             style = MaterialTheme.typography.labelSmall,
                             color = scheme.primary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable { vm.clearDefaultModel() },
                         )
                     }
                 }
