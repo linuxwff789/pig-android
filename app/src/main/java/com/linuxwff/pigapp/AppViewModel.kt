@@ -82,10 +82,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var historyHealTried = false
     private var lastCommandsAt = 0L
     private var modelSwitchAccepted = false
-    /** A `new_session` is in flight; the transcript switches when it settles. */
+    /** A `new_session` is in flight; the banner stays until it is ready. */
     private var awaitingNewSession = false
-    /** Messages on screen when `new_session` was sent. */
-    private var newSessionMessageCount = 0
+    /** Prompts typed while the new session was still starting, in send order. */
+    private val pendingNewSessionPrompts = mutableListOf<JSONObject>()
     /** Thinking level to restore once the pending set_model is confirmed. */
     private var pendingThinkingRestore: String? = null
     /** `provider/model` -> last thinking level the user picked for it. */
@@ -1264,7 +1264,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (wasBusy) {
             command.put("streamingBehavior", if (steer) "steer" else "followUp")
         }
-        client.send(command)
+        if (awaitingNewSession) {
+            // The session is still being created. Hold the prompt locally so it
+            // cannot be processed against the old session (or dropped by a
+            // relay that is not prewarmed yet); get_state flushes it in order.
+            pendingNewSessionPrompts += command
+        } else {
+            client.send(command)
+        }
         if (wasBusy) requestState()
     }
 
@@ -1915,24 +1922,45 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         restorePending = false
         needsHistory = false
         historyHealTried = false
-        // Do not blank the transcript here: a relay without a prewarmed pig
-        // needs seconds to replace the session, and the old conversation is
-        // still the only thing worth reading while the user starts typing.
-        // The banner says what is going on; the transcript switches when
-        // get_state confirms the new session.
+        // Open the new conversation right away so the user can start typing;
+        // pig creates the session in the background and the queued prompt runs
+        // as soon as it is ready. The banner explains the wait.
         awaitingNewSession = true
-        newSessionMessageCount = ui.messages.size
+        pendingNewSessionPrompts.clear()
         ui = ui.copy(
+            readOnly = false,
             busy = false,
             streamingId = null,
             status = "starting",
             pendingMessages = 0,
+            messages = emptyList(),
+            sessionId = "",
+            sessionFile = "",
+            extensionStatuses = emptyMap(),
             pendingAgentRestart = false,
+            widgets = emptyList(),
+            dismissedWidgets = emptyMap(),
+            contextPercent = null,
+            contextTokens = 0,
+            contextWindowActual = 0,
+            contextCompacted = false,
+            cacheHitRate = null,
+            usage = SessionUsage(),
+            cacheReadTokens = 0,
+            cacheInputTokens = 0,
         )
         client.send(JSONObject().put("type", "new_session"))
         // New sessions always start on the model pinned in the picker. This is
         // sent behind new_session, so pig/relay applies it to the fresh session.
         applyDefaultModel()
+    }
+
+    /** Send prompts that were typed while the new session was starting. */
+    private fun flushPendingPrompts() {
+        if (pendingNewSessionPrompts.isEmpty()) return
+        val queued = pendingNewSessionPrompts.toList()
+        pendingNewSessionPrompts.clear()
+        queued.forEach { client.send(it) }
     }
 
     /** Rename a session: the live pig renames the current one, the relay appends
@@ -2417,8 +2445,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 historyHealTried = false
                 restartInFlight = false
                 // A reconnect settles whatever was pending; the new-session
-                // hint must not outlive the connection that showed it.
+                // hint must not outlive the connection that showed it. Prompts
+                // typed into that session are delivered rather than lost.
                 awaitingNewSession = false
+                flushPendingPrompts()
                 clearLive()
                 ui = ui.copy(streamingId = null, pendingMessages = 0)
                 pendingToolPartials.clear()
@@ -2670,9 +2700,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             if (command == "new_session") {
-                // The replacement failed: drop the hint and keep what is shown.
-                ui = ui.copy(status = "")
+                // The replacement failed: the prompt the user already typed is
+                // delivered to whatever session is active instead of vanishing.
+                ui = ui.copy(
+                    status = "",
+                    toast = str("toast.newSessionFailed", "新建会话失败"),
+                )
                 awaitingNewSession = false
+                flushPendingPrompts()
             }
             if (command == "switch_session" && restorePending) {
                 // The remembered session was deleted; fall back to a fresh one.
@@ -2799,36 +2834,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     ui.sessionId.isNotBlank() &&
                     sessionId != ui.sessionId
                 if (switched && !liveActive) currentAssistant = null
-                // The reply to the get_state issued after new_session describes
-                // the replacement. Drop the old transcript now but keep messages
-                // the user already typed into the new session; they are the last
-                // ones appended locally.
-                val settledNewSession = awaitingNewSession
-                val kept = if (settledNewSession) {
-                    ui.messages.drop(newSessionMessageCount.coerceAtMost(ui.messages.size))
-                } else {
-                    ui.messages
-                }
-                if (settledNewSession) {
+                // The reply to the get_state issued after new_session means the
+                // backend is ready: the transcript shown above is already the
+                // new one (the user may have typed into it), so only the banner
+                // goes away.
+                if (awaitingNewSession) {
                     awaitingNewSession = false
                     if (!liveActive) currentAssistant = null
-                    ui = ui.copy(
-                        messages = kept,
-                        extensionStatuses = emptyMap(),
-                        widgets = emptyList(),
-                        dismissedWidgets = emptyMap(),
-                        readOnly = !live,
-                        pendingAgentRestart = false,
-                        pendingMessages = 0,
-                        contextPercent = null,
-                        contextTokens = 0,
-                        contextWindowActual = 0,
-                        contextCompacted = false,
-                        cacheHitRate = null,
-                        usage = SessionUsage(),
-                        cacheReadTokens = 0,
-                        cacheInputTokens = 0,
-                    )
+                    flushPendingPrompts()
                 }
                 var status = ui.status
                 var toast = ui.toast
@@ -2894,15 +2907,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     sessionFile = sessionFile,
                     busy = streaming,
                     readOnly = !live,
-                    // A settled new session already filtered the transcript
-                    // down to what the user typed into it.
-                    messages = if (settledNewSession) {
-                        ui.messages
-                    } else if (switched) {
-                        emptyList()
-                    } else {
-                        ui.messages
-                    },
+                    // A new session already cleared the list when it opened;
+                    // anything on screen here was typed into it.
+                    messages = if (switched) emptyList() else ui.messages,
                     contextWindow = effectiveContextWindow(
                         model?.optInt("contextWindow", ui.contextWindow) ?: ui.contextWindow,
                         label,
