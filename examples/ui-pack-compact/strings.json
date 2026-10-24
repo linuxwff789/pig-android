@@ -8,7 +8,7 @@
     "usage": "  ·  {percent}% · {used}/{window}",
     "usagePercent": "  ·  {percent}%",
     "compacted": "  ·  已压缩",
-    "cache": "  ·  缓存 {rate}%"
+    "cache": "{rate}%"
   },
   "drawer": {
     "tagline": "Termux 里的本地 coding agent",
