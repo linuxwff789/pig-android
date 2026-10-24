@@ -63,6 +63,11 @@ usage statistics, performance work). See [Release build](#release-build).
   session is open yet). Tapping 新会话 opens the empty conversation right away
   with a 正在新建对话 banner; whatever you type meanwhile is queued in the app and
   sent as soon as pig reports the new session.
+- A session with no messages yet is not on disk, so the relay lists it from the
+  live process (badge 未发送) and parks that process when you switch away —
+  switching back resumes the same conversation. The composer keeps a draft per
+  session (also persisted), so typing, switching away and coming back never
+  loses text.
 - Settings is a resizable dialog whose sizes come from the UI pack
   (`layout/chat.json` → `settings`, presets + `defaultSize`); a pack can also pin
   one fixed size. It also has a custom auto-compaction threshold (presets
