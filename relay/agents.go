@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -339,7 +340,9 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 
 	go func() {
 		scanner := bufio.NewScanner(stdout)
-		scanner.Buffer(make([]byte, 64*1024), 32*1024*1024)
+		// Image blocks make `get_messages` frames large; the cap has to cover a
+		// transcript with screenshots or pig blocks on a full stdout pipe.
+		scanner.Buffer(make([]byte, 64*1024), 64*1024*1024)
 		for scanner.Scan() {
 			line := scanner.Bytes()
 			if len(line) == 0 {
@@ -349,6 +352,12 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 			a.trackFrame(s, payload)
 			if s.isActive(a) {
 				_ = s.sendRaw(s.tagResponse(a, payload))
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			log.Printf("pig stdout scan: %v", err)
+			if s.isActive(a) {
+				_ = s.sendRaw([]byte(`{"type":"relay_log","message":"pig frame dropped: ` + err.Error() + `"}`))
 			}
 		}
 	}()

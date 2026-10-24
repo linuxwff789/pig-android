@@ -138,6 +138,7 @@ import com.linuxwff.pigapp.AppUiState
 import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.ChatMsg
 import com.linuxwff.pigapp.LocalPackInfo
+import com.linuxwff.pigapp.PendingImage
 import com.linuxwff.pigapp.RelayLauncher
 import com.linuxwff.pigapp.Role
 import com.linuxwff.pigapp.SessionInfo
@@ -168,6 +169,10 @@ fun PigApp(vm: AppViewModel) {
     var showSettings by remember { mutableStateOf(false) }
     var showStats by remember { mutableStateOf(false) }
     var showPackManager by remember { mutableStateOf(false) }
+    // System photo picker: GetMultipleContents needs no storage permission.
+    val imagePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetMultipleContents(),
+    ) { uris -> if (uris.isNotEmpty()) vm.addAttachments(uris) }
     val components = packComponents()
     val bindings = ui.uiPack.layout.bindings
     val boundTitle = bindings["header.title"]?.resolve(ui.rpcData)
@@ -211,7 +216,7 @@ fun PigApp(vm: AppViewModel) {
     val snackbar = remember { SnackbarHostState() }
 
     val sendDraft: (Boolean) -> Unit = { steer ->
-        if (draft.isNotBlank()) {
+        if (draft.isNotBlank() || ui.attachments.isNotEmpty()) {
             vm.sendPrompt(draft, steer = steer)
             draft = ""
         }
@@ -360,12 +365,15 @@ fun PigApp(vm: AppViewModel) {
                             onValueChange = { draft = it },
                             busy = ui.busy,
                             connected = ui.connected,
+                            attachments = ui.attachments,
                             layout = ui.uiPack.layout,
                             cornerRadius = ui.uiPack.theme.cornerRadius,
                             onSubmit = submit,
                             onSteer = { sendDraft(true) },
                             onFollowUp = { sendDraft(false) },
                             onStop = vm::abort,
+                            onPickImages = { imagePicker.launch("image/*") },
+                            onRemoveAttachment = vm::removeAttachment,
                         )
                         WidgetPane(ui.widgets, "belowEditor", vm)
                         InlineWindows(ui.windows, "belowComposer", vm)
@@ -2795,7 +2803,8 @@ private fun MessageList(
     val showTyping = busy && (
         last == null ||
             last.role == Role.USER ||
-            (last.role == Role.ASSISTANT && last.text.isBlank() && last.thinking.isBlank())
+            (last.role == Role.ASSISTANT && last.text.isBlank() && last.thinking.isBlank() &&
+                last.images.isEmpty())
         )
 
     // Follow new output only while the user is parked at the bottom. A manual
@@ -2818,6 +2827,7 @@ private fun MessageList(
         last?.text?.length,
         last?.thinking?.length,
         last?.toolResult?.length,
+        last?.images?.size,
         showTyping,
     ) {
         if (messages.isNotEmpty() && autoScroll) {
@@ -3196,11 +3206,22 @@ private fun MessageRow(
                             vertical = bubbleAppearance.paddingV.dp,
                         ),
                 ) {
-                    Text(
-                        message.text,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = packColor(bubbleAppearance.textColor),
-                    )
+                    Column {
+                        ChatImageStrip(
+                            images = message.images,
+                            omitted = message.imagesOmitted,
+                            cornerRadius = theme.bubbleRadius ?: cornerRadius,
+                            maxHeight = 240.dp,
+                        )
+                        if (message.text.isNotBlank()) {
+                            if (message.images.isNotEmpty()) Spacer(Modifier.height(5.dp))
+                            Text(
+                                message.text,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = packColor(bubbleAppearance.textColor),
+                            )
+                        }
+                    }
                 }
             }
             Box(
@@ -3263,24 +3284,34 @@ private fun MessageRow(
                     Spacer(Modifier.height(6.dp))
                 }
                 val content: @Composable () -> Unit = {
-                    if (streaming) {
-                        // Parsing a growing Markdown document on every delta is
-                        // O(n²); show the raw text while it streams and render
-                        // Markdown once the message is complete.
-                        Text(
-                            message.text.ifBlank { "…" },
-                            modifier = Modifier.fillMaxWidth(),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    } else {
-                        AssistantMarkdown(
-                            text = message.text.ifBlank { "…" },
-                            modifier = Modifier.fillMaxWidth(),
-                            types = types,
-                            cornerRadius = cornerRadius,
-                            codeBlockRadius = codeBlockRadius,
-                            codeBlockBorderAlpha = codeBlockBorderAlpha,
-                        )
+                    Column(Modifier.fillMaxWidth()) {
+                        if (streaming) {
+                            // Parsing a growing Markdown document on every delta is
+                            // O(n²); show the raw text while it streams and render
+                            // Markdown once the message is complete.
+                            Text(
+                                message.text.ifBlank { "…" },
+                                modifier = Modifier.fillMaxWidth(),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        } else {
+                            AssistantMarkdown(
+                                text = message.text.ifBlank { "…" },
+                                modifier = Modifier.fillMaxWidth(),
+                                types = types,
+                                cornerRadius = cornerRadius,
+                                codeBlockRadius = codeBlockRadius,
+                                codeBlockBorderAlpha = codeBlockBorderAlpha,
+                            )
+                        }
+                        if (message.images.isNotEmpty() || message.imagesOmitted > 0) {
+                            ChatImageStrip(
+                                images = message.images,
+                                omitted = message.imagesOmitted,
+                                modifier = Modifier.padding(top = 6.dp),
+                                cornerRadius = cornerRadius,
+                            )
+                        }
                     }
                 }
                 val contentBlock: @Composable () -> Unit = {
@@ -3625,6 +3656,17 @@ private fun ToolCard(
                     }
                 }
             }
+            // Output images (`read` on a picture, screenshots, image models)
+            // are the point of the card, so show them in every mode.
+            if (message.images.isNotEmpty() || message.imagesOmitted > 0) {
+                Spacer(Modifier.height(6.dp))
+                ChatImageStrip(
+                    images = message.images,
+                    omitted = message.imagesOmitted,
+                    maxHeight = 200.dp,
+                    cornerRadius = cornerRadius,
+                )
+            }
         }
     }
 }
@@ -3822,12 +3864,15 @@ private fun Composer(
     onValueChange: (String) -> Unit,
     busy: Boolean,
     connected: Boolean,
+    attachments: List<PendingImage>,
     layout: UiLayout,
     cornerRadius: Int,
     onSubmit: () -> Unit,
     onSteer: () -> Unit,
     onFollowUp: () -> Unit,
     onStop: () -> Unit,
+    onPickImages: () -> Unit,
+    onRemoveAttachment: (String) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val components = packComponents()
@@ -3855,7 +3900,7 @@ private fun Composer(
         "error" -> scheme.error
         else -> scheme.onSurfaceVariant
     }
-    val canSend = connected && value.isNotBlank()
+    val canSend = connected && (value.isNotBlank() || attachments.isNotEmpty())
     val shape = RoundedCornerShape(
         topStart = composerRadius.dp,
         topEnd = composerRadius.dp,
@@ -3875,7 +3920,31 @@ private fun Composer(
                     vertical = layout.composerPaddingV.dp,
                 ),
         ) {
+            if (attachments.isNotEmpty()) {
+                AttachmentStrip(
+                    images = attachments,
+                    onRemove = onRemoveAttachment,
+                    modifier = Modifier
+                        .padding(bottom = 6.dp)
+                        .horizontalScroll(rememberScrollState()),
+                )
+            }
             Row(verticalAlignment = Alignment.Bottom) {
+                Box(
+                    Modifier
+                        .size(buttonSize)
+                        .clip(CircleShape)
+                        .clickable(enabled = connected) { onPickImages() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        packIcon("image", "image"),
+                        contentDescription = packText("a11y.attachImage", "添加图片"),
+                        modifier = Modifier.size(buttonIconSize),
+                        tint = scheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
                 OutlinedTextField(
                     value = value,
                     onValueChange = onValueChange,

@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.content.Intent
+import android.graphics.Bitmap
 import android.provider.DocumentsContract
 import android.provider.Settings
 import android.util.Base64
@@ -23,7 +24,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
 import java.util.zip.ZipInputStream
@@ -831,28 +834,148 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Read picked images, downscale them and keep them for the next prompt.
+     * Runs the decode off the main thread; a 12 MP photo is tens of MB of ARGB.
+     */
+    fun addAttachments(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        if (uris.size + ui.attachments.size > MAX_IMAGES_PER_MESSAGE) {
+            ui = ui.copy(
+                toast = str("toast.imageLimit", "每条消息最多 {n} 张图片")
+                    .replace("{n}", MAX_IMAGES_PER_MESSAGE.toString()),
+            )
+        }
+        val accepted = uris.take((MAX_IMAGES_PER_MESSAGE - ui.attachments.size).coerceAtLeast(0))
+        if (accepted.isEmpty()) return
+        viewModelScope.launch {
+            val added = withContext(Dispatchers.IO) {
+                accepted.mapNotNull { uri -> runCatching { encodeAttachment(uri) }.getOrNull() }
+            }
+            if (added.isEmpty()) {
+                ui = ui.copy(toast = str("toast.imageUnreadable", "无法读取这张图片"))
+                return@launch
+            }
+            ui = ui.copy(attachments = (ui.attachments + added).take(MAX_IMAGES_PER_MESSAGE))
+            val current = models.firstOrNull { "${it.provider}/${it.id}" == ui.model }
+            if (current != null && !current.images) {
+                ui = ui.copy(
+                    toast = str(
+                        "toast.modelNoImages",
+                        "当前模型不支持图片输入，pig 会忽略这张图",
+                    ),
+                )
+            }
+        }
+    }
+
+    fun removeAttachment(id: String) {
+        ui = ui.copy(attachments = ui.attachments.filterNot { it.id == id })
+    }
+
+    /** Downscale + recompress a picked image so the prompt and session stay small. */
+    private fun encodeAttachment(uri: Uri): PendingImage? {
+        val bytes = try {
+            getApplication<Application>().contentResolver.openInputStream(uri)
+                ?.use { it.readBytes() }
+        } catch (e: Exception) {
+            Log.w("PigImages", "read $uri: ${e.message}")
+            null
+        } ?: return null
+        if (bytes.isEmpty()) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= UPLOAD_IMAGE_MAX_DIM) {
+            sample *= 2
+        }
+        val decoded = BitmapFactory.decodeByteArray(
+            bytes,
+            0,
+            bytes.size,
+            BitmapFactory.Options().apply { inSampleSize = sample },
+        ) ?: return null
+        val longest = maxOf(decoded.width, decoded.height)
+        val scaled = if (longest > UPLOAD_IMAGE_MAX_DIM) {
+            val scale = UPLOAD_IMAGE_MAX_DIM.toFloat() / longest
+            Bitmap.createScaledBitmap(
+                decoded,
+                (decoded.width * scale).toInt().coerceAtLeast(1),
+                (decoded.height * scale).toInt().coerceAtLeast(1),
+                true,
+            )
+        } else {
+            decoded
+        }
+        val alpha = scaled.hasAlpha()
+        var quality = 86
+        var encoded = compressImage(scaled, alpha, quality)
+        while (!alpha && encoded.size > UPLOAD_IMAGE_MAX_BYTES && quality > 50) {
+            quality -= 12
+            encoded = compressImage(scaled, alpha, quality)
+        }
+        val mime = if (alpha) "image/png" else "image/jpeg"
+        return PendingImage(
+            id = "img${nextId++}",
+            mimeType = mime,
+            base64 = Base64.encodeToString(encoded, Base64.NO_WRAP),
+            bitmap = scaled.asImageBitmap(),
+        )
+    }
+
+    private fun compressImage(bitmap: Bitmap, png: Boolean, quality: Int): ByteArray {
+        val out = ByteArrayOutputStream()
+        bitmap.compress(if (png) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG, quality, out)
+        return out.toByteArray()
+    }
+
+    /**
      * steer=true injects the message into the running turn (PiG `steer`);
      * steer=false queues it after the turn (`followUp`).
+     *
+     * Picked images travel as RPC `images` blocks; PiG accepts them on
+     * `prompt`, `steer` and `follow_up` alike.
      */
     fun sendPrompt(raw: String, steer: Boolean = true) {
         val text = raw.trim()
-        if (text.isEmpty()) return
+        val attachments = ui.attachments
+        if (text.isEmpty() && attachments.isEmpty()) return
         if (text.startsWith("/")) {
             runSlashCommand(text)
             return
         }
         val wasBusy = ui.busy
-        append(ChatMsg(id = "u${nextId++}", role = Role.USER, text = text))
+        append(
+            ChatMsg(
+                id = "u${nextId++}",
+                role = Role.USER,
+                text = text,
+                images = attachments.map { ChatImage(it.bitmap, it.mimeType) },
+            ),
+        )
         currentAssistant = null
         markVisited(ui.sessionFile)
         ui = ui.copy(
             readOnly = false,
             pendingMessages = if (wasBusy) ui.pendingMessages + 1 else 0,
+            attachments = emptyList(),
         )
         val command = JSONObject()
             .put("id", "p${nextId++}")
             .put("type", "prompt")
             .put("message", text)
+        if (attachments.isNotEmpty()) {
+            val array = JSONArray()
+            attachments.forEach { image ->
+                array.put(
+                    JSONObject()
+                        .put("type", "image")
+                        .put("data", image.base64)
+                        .put("mimeType", image.mimeType),
+                )
+            }
+            command.put("images", array)
+        }
         if (wasBusy) {
             command.put("streamingBehavior", if (steer) "steer" else "followUp")
         }
@@ -2682,23 +2805,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             null
         }
         var counter = 1
+        // Images are decoded here (this runs on Dispatchers.Default) and the
+        // pixel budget keeps a long session from holding hundreds of bitmaps.
+        val imageBudget = ImageBudget(HISTORY_IMAGE_PIXEL_BUDGET)
         for (index in 0 until messages.length()) {
             val message = messages.optJSONObject(index) ?: continue
             when (message.optString("role")) {
                 "user" -> {
                     val text = contentText(message)
-                    if (text.isNotBlank()) out.add(ChatMsg("h${counter++}", Role.USER, text = text))
+                    val decoded = decodeChatImages(message, imageBudget)
+                    if (text.isNotBlank() || decoded.images.isNotEmpty()) {
+                        out.add(
+                            ChatMsg(
+                                "h${counter++}",
+                                Role.USER,
+                                text = text,
+                                images = decoded.images,
+                                imagesOmitted = decoded.omitted,
+                            ),
+                        )
+                    }
                 }
                 "assistant" -> {
                     val text = contentText(message)
                     val thinking = contentThinking(message, redactedLabel)
-                    if (text.isNotBlank() || thinking.isNotBlank()) {
+                    if (text.isNotBlank() || thinking.isNotBlank() || hasImages(message)) {
+                        val decoded = decodeChatImages(message, imageBudget)
                         out.add(
                             ChatMsg(
                                 "h${counter++}",
                                 Role.ASSISTANT,
                                 text = text,
                                 thinking = thinking,
+                                images = decoded.images,
+                                imagesOmitted = decoded.omitted,
                             ),
                         )
                     }
@@ -2740,6 +2880,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 "toolResult" -> {
                     val text = contentText(message)
+                    val decoded = decodeChatImages(message, imageBudget)
                     val id = toolIds[message.optString("toolCallId")]
                     val position = id?.let { indexById[it] } ?: -1
                     val meta = JSONObject()
@@ -2751,6 +2892,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             toolResult = text,
                             toolDetails = meta.toString(),
                             isError = message.optBoolean("isError", false),
+                            images = decoded.images,
+                            imagesOmitted = decoded.omitted,
                         )
                     } else {
                         out.add(
@@ -2760,6 +2903,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 toolName = message.optString("toolName", "tool"),
                                 toolResult = text,
                                 isError = message.optBoolean("isError", false),
+                                images = decoded.images,
+                                imagesOmitted = decoded.omitted,
                             ),
                         )
                     }
@@ -3100,6 +3245,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 thinking = thinking.ifBlank { it.thinking },
             )
         }
+        attachImages(id, message)
         // Some upstreams (DeepSeek "thinking" models behind proxies) answer with
         // reasoning even at level off. Remember that, so the picker can say so
         // instead of leaving the header looking wrong.
@@ -3111,9 +3257,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             ui = ui.copy(upstreamIgnoresOff = false)
         }
         // Tool-call-only assistant messages have no text; the tool card is the
-        // visible representation, so drop the empty bubble.
+        // visible representation, so drop the empty bubble. An image-only
+        // assistant message still has something to show.
         val finished = ui.messages.firstOrNull { it.id == id }
-        if (finished != null && finished.text.isBlank() && finished.thinking.isBlank()) remove(id)
+        if (finished != null && finished.text.isBlank() && finished.thinking.isBlank() &&
+            finished.images.isEmpty() && !hasImages(message)
+        ) {
+            remove(id)
+        }
         currentAssistant = null
         clearLive()
         ui = ui.copy(streamingId = null)
@@ -3193,6 +3344,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 isError = event.optBoolean("isError", false),
             )
         }
+        // Tools such as `read` on an image, screenshots and image models
+        // return image blocks next to the text summary.
+        attachImages(id, resultObject)
     }
 
     private fun handleUiRequest(event: JSONObject) {
@@ -3292,6 +3446,88 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return builder.toString()
     }
 
+    // ─── Images ──────────────────────────────────────────────────────────
+
+    /** Raw image blocks of a message, before decoding. */
+    private fun imageBlocks(message: JSONObject?): List<Pair<String, String>> {
+        val blocks = message?.optJSONArray("content") ?: return emptyList()
+        val out = ArrayList<Pair<String, String>>()
+        for (index in 0 until blocks.length()) {
+            val block = blocks.optJSONObject(index) ?: continue
+            if (block.optString("type") != "image") continue
+            val data = block.optString("data")
+            if (data.isEmpty()) continue
+            out.add(data to block.optString("mimeType", "image/png"))
+        }
+        return out
+    }
+
+    private fun hasImages(message: JSONObject?): Boolean {
+        val blocks = message?.optJSONArray("content") ?: return false
+        for (index in 0 until blocks.length()) {
+            if (blocks.optJSONObject(index)?.optString("type") == "image") return true
+        }
+        return false
+    }
+
+    /** Pixel budget for one history build; screenshots are ~4 bytes/pixel. */
+    private class ImageBudget(var pixels: Long)
+
+    private data class DecodedImages(val images: List<ChatImage>, val omitted: Int)
+
+    /**
+     * Decode a pig image block. Images above [MAX_IMAGE_B64_CHARS] and images
+     * that would blow [budget] are skipped (and reported as omitted).
+     */
+    private fun decodeChatImage(
+        base64: String,
+        mimeType: String,
+        budget: ImageBudget? = null,
+    ): ChatImage? {
+        if (base64.isEmpty() || base64.length > MAX_IMAGE_B64_CHARS) return null
+        val bytes = runCatching { Base64.decode(base64, Base64.DEFAULT) }.getOrNull() ?: return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= TRANSCRIPT_IMAGE_MAX_DIM) {
+            sample *= 2
+        }
+        val pixels = (bounds.outWidth / sample).toLong() * (bounds.outHeight / sample)
+        if (budget != null && pixels > budget.pixels) return null
+        val bitmap = BitmapFactory.decodeByteArray(
+            bytes,
+            0,
+            bytes.size,
+            BitmapFactory.Options().apply { inSampleSize = sample },
+        ) ?: return null
+        if (budget != null) budget.pixels -= bitmap.width.toLong() * bitmap.height
+        return ChatImage(bitmap.asImageBitmap(), mimeType.ifBlank { "image/png" })
+    }
+
+    private fun decodeChatImages(message: JSONObject?, budget: ImageBudget? = null): DecodedImages {
+        val blocks = imageBlocks(message)
+        var omitted = (blocks.size - MAX_IMAGES_PER_MESSAGE).coerceAtLeast(0)
+        val images = ArrayList<ChatImage>()
+        blocks.take(MAX_IMAGES_PER_MESSAGE).forEach { (data, mime) ->
+            val image = decodeChatImage(data, mime, budget)
+            if (image == null) omitted++ else images.add(image)
+        }
+        return DecodedImages(images, omitted)
+    }
+
+    /** Decode off the main thread, then attach to an already-rendered message. */
+    private fun attachImages(id: String, message: JSONObject?) {
+        if (!hasImages(message)) return
+        viewModelScope.launch {
+            val decoded = withContext(Dispatchers.Default) {
+                decodeChatImages(message, ImageBudget(HISTORY_IMAGE_PIXEL_BUDGET))
+            }
+            if (decoded.images.isEmpty() && decoded.omitted == 0) return@launch
+            update(id) { it.copy(images = decoded.images, imagesOmitted = decoded.omitted) }
+        }
+    }
+
     private fun contentText(object0: JSONObject?): String {
         if (object0 == null) return ""
         val blocks = object0.optJSONArray("content") ?: return object0.optString("text", "")
@@ -3328,3 +3564,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             current?.ui?.uiPack?.strings?.values?.get(key) ?: fallback
     }
 }
+
+/** Largest base64 payload accepted from pig (~6 MiB of image bytes). */
+private const val MAX_IMAGE_B64_CHARS = 8_000_000
+
+/** Most images rendered for one message. */
+private const val MAX_IMAGES_PER_MESSAGE = 8
+
+/** Pixel budget for images decoded while rebuilding a transcript (~24 MB). */
+private const val HISTORY_IMAGE_PIXEL_BUDGET = 6_000_000L
+
+/** Long edge of transcript images; 1024 px stays readable and cheap. */
+private const val TRANSCRIPT_IMAGE_MAX_DIM = 1024
+
+/** Long edge of images sent to a model (Claude's documented limit). */
+private const val UPLOAD_IMAGE_MAX_DIM = 1568
+
+/** Target size of an encoded upload before the JPEG quality is lowered. */
+private const val UPLOAD_IMAGE_MAX_BYTES = 1_400_000

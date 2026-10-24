@@ -8,3 +8,4 @@ local.properties
 relay/pig-relay
 .DS_Store
 .kotlin/
+.codegraph/

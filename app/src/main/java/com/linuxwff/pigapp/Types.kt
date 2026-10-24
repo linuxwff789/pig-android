@@ -1,8 +1,30 @@
 package com.linuxwff.pigapp
 
+import androidx.compose.ui.graphics.ImageBitmap
 import org.json.JSONObject
 
 enum class Role { USER, ASSISTANT, TOOL, NOTICE }
+
+/**
+ * One inline image decoded from a transcript block (user attachment, tool
+ * output such as `read`/screenshot, or an assistant image block).
+ *
+ * Images are decoded while the transcript is built (off the main thread) and
+ * downsampled, so a long session does not keep base64 blobs in memory.
+ */
+data class ChatImage(
+    val bitmap: ImageBitmap,
+    /** Wire media type, e.g. `image/png`. */
+    val mimeType: String,
+)
+
+/** An image picked in the composer: base64 for the prompt, bitmap for the thumb. */
+data class PendingImage(
+    val id: String,
+    val mimeType: String,
+    val base64: String,
+    val bitmap: ImageBitmap,
+)
 
 data class ChatMsg(
     val id: String,
@@ -17,6 +39,10 @@ data class ChatMsg(
     val running: Boolean = false,
     val isError: Boolean = false,
     val expanded: Boolean = true,
+    /** Inline images carried by this message (see [ChatImage]). */
+    val images: List<ChatImage> = emptyList(),
+    /** Image blocks dropped by the size/count caps. */
+    val imagesOmitted: Int = 0,
 )
 
 /** Cumulative counters from `get_session_stats` (whole session file). */
@@ -379,6 +405,8 @@ data class AppUiState(
     val streamingId: String? = null,
     /** Steering/follow-up messages still queued in pig. */
     val pendingMessages: Int = 0,
+    /** Images picked in the composer and not sent yet. */
+    val attachments: List<PendingImage> = emptyList(),
     /** Slash commands (built-ins + registered extension commands). */
     val commands: List<UiCommand> = emptyList(),
     /** A model switch is in flight; header shows the actual model until get_state confirms. */

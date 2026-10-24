@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
@@ -47,6 +48,7 @@ fun packIconVector(name: String): ImageVector? = when (name.lowercase()) {
     "search" -> Icons.Default.Search
     "copy" -> Icons.Default.ContentCopy
     "history" -> Icons.Default.History
+    "image", "photo", "attach" -> Icons.Default.Image
     "down" -> Icons.Default.KeyboardArrowDown
     "up" -> Icons.Default.KeyboardArrowUp
     "close" -> Icons.Default.Close

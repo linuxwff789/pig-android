@@ -218,6 +218,33 @@ report a wrong or missing `contextWindow`; the override accepts plain tokens or
 header percentage (`used / override`). `恢复自动` removes it and falls back to
 the value reported by the provider.
 
+## Images
+
+Images travel inline in pig's message content as
+`{"type":"image","data":"<base64>","mimeType":"image/png"}` blocks, and the
+relay forwards them untouched. The app renders them in both directions:
+
+- **Agent → app.** Tool output keeps its images: `read` on a picture,
+  screenshot tools, MCP servers and image models all return an `image` block
+  next to their text. It shows inside the tool card (every mode, including
+  summary), and an assistant message can carry image blocks too. Tap a picture
+  for a full-screen viewer (pinch to zoom, double-tap to reset).
+- **App → agent.** The composer's image button opens the system photo picker
+  (no storage permission). Picked pictures are downscaled to a 1568 px long
+  edge and recompressed (JPEG, or PNG when the source has alpha) before they
+  become RPC `images`, so prompts and session files stay small. They are sent
+  on the next `prompt` / `steer` / `followUp`. Images are allowed without text,
+  and the app warns when the current model does not declare image input.
+- **Markdown.** `![alt](https://…)`, `data:image/…;base64,…` and app-readable
+  `file:` links in assistant Markdown are fetched in the background and drawn
+  by the renderer (12-entry memory cache, 8 MiB / 1600 px caps).
+
+History rebuilds decode images off the main thread (1024 px long edge, ~24 MB
+pixel budget per session) so a 2000-message transcript with screenshots stays
+navigable. Oversized blocks — over ~6 MiB of image bytes, more than eight per
+message, or beyond the budget — are skipped and shown as `N 张图片未显示`.
+Switching sessions discards decoded bitmaps with the transcript.
+
 ## Context and cache
 
 The header shows the current context percentage/tokens and the cumulative

@@ -23,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mikepenz.markdown.compose.components.MarkdownComponentModel
@@ -46,12 +48,35 @@ import com.linuxwff.pigapp.TypeScale
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
+import com.mikepenz.markdown.model.ImageData
+import com.mikepenz.markdown.model.ImageTransformer
 import com.mikepenz.markdown.utils.buildMarkdownAnnotatedString
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.findChildOfType
 import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
+
+/**
+ * Markdown images (`![alt](url)`): the bytes come from [RemoteImages]; a null
+ * return while they are in flight means "nothing to draw yet". The snapshot
+ * map flips when the fetch finishes and the block redraws.
+ */
+private class PigImageTransformer(private val cornerRadius: Int) : ImageTransformer {
+    @Composable
+    override fun transform(link: String): ImageData? {
+        LaunchedEffect(link) { RemoteImages.request(link) }
+        val bitmap = RemoteImages.get(link) ?: return null
+        return ImageData(
+            painter = BitmapPainter(bitmap),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .clip(RoundedCornerShape(cornerRadius.dp)),
+            contentDescription = link,
+        )
+    }
+}
 
 /** Markdown with a GFM table renderer (the m3 renderer has no table component). */
 @Composable
@@ -76,6 +101,7 @@ fun PigMarkdown(
             },
         )
     }
+    val imageTransformer = remember(cornerRadius) { PigImageTransformer(cornerRadius) }
     val themeTypography = MaterialTheme.typography
     val typography = markdownTypography(
         h1 = themeTypography.headlineLarge,
@@ -106,6 +132,7 @@ fun PigMarkdown(
         modifier = modifier,
         typography = typography,
         colors = colors,
+        imageTransformer = imageTransformer,
         components = components,
     )
 }

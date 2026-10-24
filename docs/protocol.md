@@ -142,7 +142,8 @@ streaming is not aborted. A new client attaches to the same pig:
 - the relay sends `relay_hello` with `resumed: true` and the same `pigPid`;
 - after the handshake it replays `relay_resume` with the assistant text
   accumulated so far, `relay_tool` for running tools, and any unanswered
-  `extension_ui_request`;
+  `extension_ui_request`. The replay carries text only, so image blocks
+  (`{"type":"image",…}`) arrive with `get_messages`/`message_end` instead;
 - the client resyncs its transcript with `get_state`/`get_messages` and must not
   call `switch_session` while `isStreaming` is true.
 - a relay that has no session attached yet answers `get_messages` with
