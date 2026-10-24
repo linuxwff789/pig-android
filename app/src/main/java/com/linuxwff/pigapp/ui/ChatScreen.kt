@@ -2092,13 +2092,19 @@ private fun PackManagerDialog(
                     ui.localPacks.forEach { pack ->
                         PackRow(
                             title = pack.name,
-                            subtitle = packText("pack.localHint", "v{version} · {files} files")
-                                .replace("{version}", pack.version.toString())
-                                .replace("{files}", pack.files.toString()),
+                            subtitle = if (pack.bundled) {
+                                packText("pack.bundledHint", "随 App 内置 · v{version} · {files} files")
+                                    .replace("{version}", pack.version.toString())
+                                    .replace("{files}", pack.files.toString())
+                            } else {
+                                packText("pack.localHint", "v{version} · {files} files")
+                                    .replace("{version}", pack.version.toString())
+                                    .replace("{files}", pack.files.toString())
+                            },
                             selected = pack.id == ui.activePackId,
                             cornerRadius = corner,
                             onPick = { vm.selectPack(pack.id) },
-                            onDelete = { deleteTarget = pack },
+                            onDelete = if (pack.bundled) null else ({ deleteTarget = pack }),
                         )
                     }
                 }

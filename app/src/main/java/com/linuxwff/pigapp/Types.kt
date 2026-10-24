@@ -272,6 +272,8 @@ data class LocalPackInfo(
     val version: Int,
     val files: Int,
     val importedAt: Long = 0L,
+    /** Shipped inside the APK (`assets/ui-packs/`); cannot be deleted. */
+    val bundled: Boolean = false,
 )
 
 data class ModelInfo(
