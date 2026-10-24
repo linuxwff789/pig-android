@@ -1105,6 +1105,28 @@ private fun SettingsDialog(
                     }
                     TextButton(onClick = vm::reconnect) { Text(packText("settings.reconnect", "重连 relay")) }
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            packText("settings.restartRelay", "重启 relay"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            packText(
+                                "settings.restartRelayHint",
+                                "更新 Termux 组件后使用；会结束当前 pig 进程并重连",
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(
+                        enabled = !ui.busy && ui.status != "compacting",
+                        onClick = vm::restartRelay,
+                    ) {
+                        Text(packText("settings.restartRelayAction", "重启"))
+                    }
+                }
 
                 HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
                 SettingToggle(
@@ -1694,7 +1716,7 @@ private fun SettingsDialog(
                 Text(
                     packText(
                         "settings.updateTermuxHint",
-                        "App 检查的是 GitHub 最新 Release；pig / pig-relay 用上面的安装命令在 Termux 里更新。",
+                        "App 检查的是 GitHub 最新 Release；pig / pig-relay 用上面的安装命令在 Termux 里更新，更新后到设置顶部点「重启 relay」。",
                     ),
                     style = MaterialTheme.typography.labelSmall,
                     color = scheme.onSurfaceVariant,

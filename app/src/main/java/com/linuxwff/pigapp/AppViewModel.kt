@@ -237,6 +237,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Replace the relay process with the binary on disk. Needed after updating
+     * the Termux side: the running relay keeps its old code until restarted.
+     * The current pig is a child of the relay, so this waits for an idle turn.
+     */
+    fun restartRelay() {
+        if (ui.busy || ui.status == "compacting") {
+            ui = ui.copy(
+                toast = str("toast.relayRestartBusy", "本轮结束后再重启 relay"),
+            )
+            return
+        }
+        val ctx = getApplication<Application>()
+        val error = RelayLauncher.restart(ctx, port, token, cwd)
+        if (error != null) {
+            ui = ui.copy(
+                toast = str("toast.relayRestartFailed", "重启 relay 失败：{error}")
+                    .replace("{error}", error),
+            )
+            return
+        }
+        ui = ui.copy(
+            connected = false,
+            status = "restoring",
+            toast = str("toast.relayRestarting", "relay 已重启，正在重连…"),
+        )
+        client.close()
+        client.connect()
+    }
+
     /** Called from Activity.onResume: resume the relay/session after a lock or process freeze. */
     fun onForeground() {
         foreground = true
