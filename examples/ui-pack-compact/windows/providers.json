@@ -1,0 +1,185 @@
+{
+  "appUI": 1,
+  "autoOpen": false,
+  "body": {
+    "children": [
+      {
+        "style": "muted",
+        "text": "1 个自定义供应商 · 保存后当前会话立即生效",
+        "type": "text"
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "style": "body",
+                    "text": "eu · eu",
+                    "type": "text"
+                  },
+                  {
+                    "style": "label",
+                    "text": "http://linuxwff.eu.cc:8787/v1",
+                    "type": "text"
+                  },
+                  {
+                    "style": "label",
+                    "text": "openai-completions · 129 个模型 · 自动获取",
+                    "type": "text"
+                  }
+                ],
+                "type": "column",
+                "weight": 1
+              },
+              {
+                "children": [
+                  {
+                    "action": "ext:providerui.refresh eu",
+                    "buttonStyle": "outline",
+                    "label": "刷新",
+                    "type": "button"
+                  },
+                  {
+                    "action": "ext:providerui.remove eu",
+                    "buttonStyle": "danger",
+                    "label": "删除",
+                    "type": "button"
+                  }
+                ],
+                "spacing": 4,
+                "type": "row"
+              }
+            ],
+            "spacing": 8,
+            "type": "row"
+          }
+        ],
+        "spacing": 6,
+        "type": "list"
+      },
+      {
+        "style": "label",
+        "text": "models.json 里的 1 个供应商不在这里修改",
+        "type": "text"
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "style": "heading",
+        "text": "添加 / 覆盖供应商",
+        "type": "text"
+      },
+      {
+        "style": "label",
+        "text": "ID、Base URL 必填；API Key 支持 $ENV 变量，会明文写入 custom-endpoints.json",
+        "type": "text"
+      },
+      {
+        "id": "id",
+        "maxLines": 1,
+        "placeholder": "ID，例如 my-endpoint",
+        "type": "textfield",
+        "value": ""
+      },
+      {
+        "id": "name",
+        "maxLines": 1,
+        "placeholder": "显示名称（可留空）",
+        "type": "textfield",
+        "value": ""
+      },
+      {
+        "id": "baseUrl",
+        "maxLines": 1,
+        "placeholder": "Base URL，例如 https://api.example.com/v1",
+        "type": "textfield",
+        "value": ""
+      },
+      {
+        "id": "apiKey",
+        "maxLines": 1,
+        "placeholder": "API Key，例如 sk-... 或 $MY_API_KEY",
+        "type": "textfield",
+        "value": ""
+      },
+      {
+        "id": "api",
+        "options": [
+          {
+            "label": "OpenAI Chat Completions",
+            "value": "openai-completions"
+          },
+          {
+            "label": "OpenAI Responses",
+            "value": "openai-responses"
+          },
+          {
+            "label": "Anthropic Messages",
+            "value": "anthropic-messages"
+          },
+          {
+            "label": "Google Generative AI",
+            "value": "google-generative-ai"
+          }
+        ],
+        "type": "select",
+        "value": "openai-completions"
+      },
+      {
+        "id": "auto",
+        "label": "自动从 {baseUrl}/models 获取模型列表",
+        "type": "toggle",
+        "value": true
+      },
+      {
+        "id": "models",
+        "maxLines": 1,
+        "placeholder": "手动模型 ID，逗号分隔；自动获取时留空",
+        "type": "textfield",
+        "value": ""
+      },
+      {
+        "id": "modelsUrl",
+        "maxLines": 1,
+        "placeholder": "自定义 models 地址（可选）",
+        "type": "textfield",
+        "value": ""
+      },
+      {
+        "children": [
+          {
+            "action": "ext:providerui.save",
+            "label": "保存并应用",
+            "type": "button"
+          },
+          {
+            "action": "ext:provider-ui",
+            "buttonStyle": "outline",
+            "label": "刷新列表",
+            "type": "button"
+          },
+          {
+            "action": "builtin:close",
+            "buttonStyle": "text",
+            "label": "关闭",
+            "type": "button"
+          }
+        ],
+        "spacing": 8,
+        "type": "row"
+      }
+    ],
+    "scroll": true,
+    "spacing": 10,
+    "type": "column"
+  },
+  "dismissible": true,
+  "height": 640,
+  "id": "providers",
+  "placement": "overlay",
+  "title": "模型供应商",
+  "width": 380
+}
