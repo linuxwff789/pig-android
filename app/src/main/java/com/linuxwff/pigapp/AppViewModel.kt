@@ -142,14 +142,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             notifySound = prefs.getString("notifySound", "system") ?: "system",
         )
         refreshLocalPacks()
-        // Restore an imported pack without waiting for the relay push.
+        // Restore a bundled or imported pack without waiting for the relay push.
         ui.activePackId.takeIf { it.isNotBlank() }?.let { id ->
-            val dir = File(packsDir, id)
-            if (dir.isDirectory) {
-                val loaded = runCatching { readPackDir(dir) }.getOrNull()
-                if (loaded != null && loaded.first.isNotEmpty()) {
-                    applyPack(loaded.first, loaded.second, loaded.third, "local:$id", announce = false)
-                }
+            val loaded = loadPackFiles(id)
+            if (loaded != null && loaded.first.isNotEmpty()) {
+                applyPack(loaded.first, loaded.second, loaded.third, "local:$id", announce = false)
             }
         }
         viewModelScope.launch {
@@ -497,31 +494,77 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val packsDir: File
         get() = File(getApplication<Application>().filesDir, "ui-packs")
 
-    /** Rescan `files/ui-packs/` and refresh the manager list. */
-    fun refreshLocalPacks() {
-        val dir = packsDir
-        if (!dir.isDirectory) {
-            ui = ui.copy(localPacks = emptyList())
-            return
+    /** Packs shipped inside the APK under `assets/ui-packs/<id>/`. */
+    private val bundledPackRoot = "ui-packs"
+
+    private fun loadPackFiles(id: String): Triple<Map<String, String>, Map<String, String>, Map<String, String>>? =
+        if (id.startsWith(BUNDLED_PREFIX)) {
+            runCatching {
+                readPackAssets("$bundledPackRoot/${id.removePrefix(BUNDLED_PREFIX)}")
+            }.getOrNull()
+        } else {
+            runCatching { readPackDir(File(packsDir, id)) }.getOrNull()
         }
-        val packs = dir.listFiles()
-            ?.filter { it.isDirectory }
-            ?.mapNotNull { pack ->
-                val manifest = runCatching {
-                    JSONObject(File(pack, "manifest.json").readText())
-                }.getOrNull() ?: return@mapNotNull null
-                var count = 0
-                pack.walkTopDown().forEach { if (it.isFile) count++ }
-                LocalPackInfo(
-                    id = pack.name,
-                    name = manifest.optString("name").ifBlank { pack.name },
-                    version = manifest.optInt("version", 1),
-                    files = count,
-                    importedAt = pack.lastModified(),
-                )
-            }
-            ?.sortedBy { it.name.lowercase() }
-            ?: emptyList()
+
+    /** The packs compiled into the APK, read straight out of `assets/`. */
+    private fun bundledPacks(): List<LocalPackInfo> {
+        val manager = getApplication<Application>().assets
+        val ids = runCatching {
+            manager.list(bundledPackRoot)?.filter { id ->
+                !id.startsWith(".") &&
+                    runCatching { manager.open("$bundledPackRoot/$id/manifest.json").close() }.isSuccess
+            } ?: emptyList()
+        }.getOrDefault(emptyList())
+        return ids.mapNotNull { id ->
+            val manifest = runCatching {
+                manager.open("$bundledPackRoot/$id/manifest.json").use { input ->
+                    JSONObject(input.readBytes().toString(Charsets.UTF_8))
+                }
+            }.getOrNull() ?: return@mapNotNull null
+            LocalPackInfo(
+                id = "$BUNDLED_PREFIX$id",
+                name = manifest.optString("name").ifBlank { id },
+                version = manifest.optInt("version", 1),
+                files = countAssetFiles("$bundledPackRoot/$id"),
+                bundled = true,
+            )
+        }.sortedBy { it.name.lowercase() }
+    }
+
+    private fun countAssetFiles(path: String): Int {
+        val children = runCatching { getApplication<Application>().assets.list(path) }
+            .getOrNull().orEmpty()
+        if (children.isEmpty()) return 1
+        return children.sumOf { countAssetFiles("$path/$it") }
+    }
+
+    /** Rescan bundled + `files/ui-packs/` and refresh the manager list. */
+    fun refreshLocalPacks() {
+        val bundled = bundledPacks()
+        val dir = packsDir
+        val imported = if (!dir.isDirectory) {
+            emptyList()
+        } else {
+            dir.listFiles()
+                ?.filter { it.isDirectory }
+                ?.mapNotNull { pack ->
+                    val manifest = runCatching {
+                        JSONObject(File(pack, "manifest.json").readText())
+                    }.getOrNull() ?: return@mapNotNull null
+                    var count = 0
+                    pack.walkTopDown().forEach { if (it.isFile) count++ }
+                    LocalPackInfo(
+                        id = pack.name,
+                        name = manifest.optString("name").ifBlank { pack.name },
+                        version = manifest.optInt("version", 1),
+                        files = count,
+                        importedAt = pack.lastModified(),
+                    )
+                }
+                ?.sortedBy { it.name.lowercase() }
+                ?: emptyList()
+        }
+        val packs = bundled + imported
         ui = ui.copy(localPacks = packs)
         val active = prefs.getString("activePackId", "").orEmpty()
         if (active.isNotBlank() && packs.none { it.id == active }) {
@@ -529,7 +572,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Switch the active pack: `""` = relay pack, otherwise an imported pack id. */
+    /** Switch the active pack: `""` = relay pack, a bundled id, or an imported pack id. */
     fun selectPack(id: String) {
         if (id == ui.activePackId) return
         prefs.edit().putString("activePackId", id).apply()
@@ -540,9 +583,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             return
         }
-        val dir = File(packsDir, id)
-        val files = runCatching { readPackDir(dir) }.getOrNull()
-        if (files == null) {
+        val files = loadPackFiles(id)
+        if (files == null || files.first.isEmpty()) {
             ui = ui.copy(toast = str("toast.packMissing", "皮肤包不存在：{id}").replace("{id}", id))
             refreshLocalPacks()
             return
@@ -553,6 +595,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Delete an imported pack; if it is active, switch back to the relay pack first. */
     fun deletePack(id: String) {
+        if (id.startsWith(BUNDLED_PREFIX)) {
+            // Bundled packs are part of the APK; only the selection can change.
+            ui = ui.copy(toast = str("pack.bundledReadOnly", "内置 pack 不能删除"))
+            return
+        }
         if (!Regex("^[a-zA-Z0-9._-]{1,64}$").matches(id) || id == "." || id == "..") {
             ui = ui.copy(toast = str("pack.deleteFailed", "删除失败：{error}").replace("{error}", id))
             return
@@ -720,6 +767,41 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 if (text.indexOf('\u0000') < 0) files[rel] = text
             }
         }
+        return Triple(files, assets, hashes)
+    }
+
+    /** Same shape as [readPackDir], but for a pack compiled into `assets/`. */
+    private fun readPackAssets(
+        path: String,
+    ): Triple<Map<String, String>, Map<String, String>, Map<String, String>> {
+        val files = mutableMapOf<String, String>()
+        val assets = mutableMapOf<String, String>()
+        val hashes = mutableMapOf<String, String>()
+        val manager = getApplication<Application>().assets
+
+        fun walk(rel: String) {
+            val dirPath = if (rel.isEmpty()) path else "$path/$rel"
+            val children = runCatching { manager.list(dirPath) }.getOrNull()
+            if (children != null && children.isNotEmpty()) {
+                children.sorted().forEach { walk(if (rel.isEmpty()) it else "$rel/$it") }
+                return
+            }
+            if (rel.isEmpty() || rel.split('/').any { it.startsWith(".") }) return
+            val bytes = runCatching { manager.open("$path/$rel").use { it.readBytes() } }
+                .getOrNull() ?: return
+            if (bytes.size > 512 * 1024) return
+            if (rel.startsWith("assets/")) {
+                assets[rel] = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                hashes[rel] = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(bytes)
+                    .joinToString("") { "%02x".format(it) }
+            } else {
+                val text = bytes.toString(Charsets.UTF_8)
+                if (text.indexOf('\u0000') < 0) files[rel] = text
+            }
+        }
+
+        walk("")
         return Triple(files, assets, hashes)
     }
 
@@ -3703,6 +3785,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             current?.ui?.uiPack?.strings?.values?.get(key) ?: fallback
     }
 }
+
+/** Imported packs live under `files/ui-packs/`; bundled ones under `assets/ui-packs/`. */
+private const val BUNDLED_PREFIX = "builtin:"
 
 /** Largest base64 payload accepted from pig (~6 MiB of image bytes). */
 private const val MAX_IMAGE_B64_CHARS = 8_000_000

@@ -31,6 +31,24 @@ cp -r examples/ui-pack/* ~/.pig/android-ui/
 
 Edit any file and the app restyles within a second.
 
+## Where packs come from
+
+The app knows three sources, in the order the **设置 → UI pack 管理** dialog shows
+them:
+
+| source | lives in | id | notes |
+| --- | --- | --- | --- |
+| relay (default) | `~/.pig/android-ui/` in Termux, pushed by `pig-relay` | `""` | picked up on every change, no import |
+| bundled | `assets/ui-packs/<name>/` inside the APK | `builtin:<name>` | read-only, listed even offline |
+| imported | `files/ui-packs/<id>/` in the app's private dir | `<id>` | from 导入 ZIP / 导入文件夹, deletable |
+
+Bundled packs ship with the APK; the first one is `builtin:compact`
+(`examples/ui-pack-compact/`, copied to `app/src/main/assets/ui-packs/compact/`
+before the build). They cannot be deleted — only selected — and they are read
+straight out of `assets/`, so selecting one does not copy anything to the app's
+files dir. The choice is stored in `activePackId`, so it survives restarts, and
+it still wins over relay pushes until the user picks the built-in pack again.
+
 ## manifest.json
 
 ```json
@@ -726,8 +744,13 @@ source.
 | `session.live` / `session.busy` | boolean | a pig process is attached / is producing a turn |
 
 ```json
-{ "type": "text", "bind": "session.title", "text": "新会话", "style": "heading" }
+{ "type": "text", "bind": "session.title", "text": "新会话", "style": "heading", "lines": 1 }
 ```
+
+`session.title` is clipped to 120 characters before it reaches the header; use
+`session.preview` when a pack wants the untruncated first message. As with
+`context` and `stats`, a `dataSources` entry named `session` takes precedence
+over the computed object.
 
 ### `stats` bindings
 

@@ -305,6 +305,8 @@
     "deleteTitle": "删除 pack？",
     "deleteBody": "将删除「{name}」及其文件，不可恢复。",
     "deleteActive": "这是当前正在使用的 pack，删除后会切回内置 pack。",
-    "deleteFailed": "删除失败：{error}"
+    "deleteFailed": "删除失败：{error}",
+    "bundledHint": "随 App 内置 · v{version} · {files} files",
+    "bundledReadOnly": "内置 pack 不能删除"
   }
 }
