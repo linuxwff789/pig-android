@@ -82,6 +82,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var historyHealTried = false
     private var lastCommandsAt = 0L
     private var modelSwitchAccepted = false
+    /** Thinking level to restore once the pending set_model is confirmed. */
+    private var pendingThinkingRestore: String? = null
+    /** `provider/model` -> last thinking level the user picked for it. */
+    private var thinkingByModel: Map<String, String> = emptyMap()
     private val pendingRpcSources = mutableMapOf<String, String>()
     private var currentAssistant: String? = null
     private val toolMsgIds = mutableMapOf<String, String>()
@@ -142,7 +146,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             notifyError = prefs.getBoolean("notifyError", true),
             notifyCompacted = prefs.getBoolean("notifyCompacted", false),
             notifySound = prefs.getString("notifySound", "system") ?: "system",
+            defaultModel = prefs.getString("defaultModel", "").orEmpty(),
+            settingsSize = prefs.getString("settingsSize", "standard") ?: "standard",
         )
+        thinkingByModel = loadThinkingLevels()
         // Upgrades from builds without `packPinned` treated any stored id as a
         // hand-made choice; a fresh install has no `activePackId` at all.
         val pinned = if (prefs.contains("packPinned")) {
@@ -1180,6 +1187,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             runSlashCommand(text)
             return
         }
+        // First prompt in a fresh app process with no session yet: honour the
+        // pinned default model before the turn starts.
+        if (ui.sessionId.isBlank() && !ui.busy && ui.defaultModel.isNotBlank()) {
+            applyDefaultModel()
+        }
         val wasBusy = ui.busy
         append(
             ChatMsg(
@@ -1240,6 +1252,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectModel(model: ModelInfo) {
         modelSwitchAccepted = false
+        // Restore the level this model was last used with. The set_model reply
+        // sends it after the switch is confirmed, so it cannot be applied to
+        // the previous model by mistake.
+        pendingThinkingRestore = thinkingByModel["${model.provider}/${model.id}"]
         ui = ui.copy(
             modelSwitchPending = true,
             pendingModel = "${model.provider}/${model.id}",
@@ -1258,8 +1274,50 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         selectModel(known ?: ModelInfo(provider, id, id, 0, 0, false, false))
     }
 
+    /**
+     * Mark a model as the one every new session starts with. Tapping the star
+     * on the current default clears it; the running session is left alone.
+     */
+    fun toggleDefaultModel(model: ModelInfo) {
+        val key = "${model.provider}/${model.id}"
+        val next = if (ui.defaultModel == key) "" else key
+        ui = ui.copy(
+            defaultModel = next,
+            toast = if (next.isBlank()) {
+                str("toast.defaultModelCleared", "已取消默认模型")
+            } else {
+                str("toast.defaultModelSet", "默认模型：{model}（新会话使用）")
+                    .replace("{model}", key)
+            },
+        )
+        prefs.edit().putString("defaultModel", next).apply()
+    }
+
+    /** Applied right after new_session so the fresh session uses the pinned model. */
+    private fun applyDefaultModel() {
+        val key = ui.defaultModel.trim()
+        if (key.isBlank()) return
+        val provider = key.substringBefore('/')
+        val id = key.substringAfter('/', "")
+        if (provider.isBlank() || id.isBlank()) return
+        selectModelById(provider, id)
+    }
+
+    fun setSettingsSize(size: String) {
+        if (size == ui.settingsSize) return
+        prefs.edit().putString("settingsSize", size).apply()
+        ui = ui.copy(settingsSize = size)
+    }
+
     fun setThinkingLevel(level: String) {
         if (level.isBlank()) return
+        val key = ui.model
+        if (key.isNotBlank() && key != "/") {
+            thinkingByModel = thinkingByModel + (key to level)
+            prefs.edit()
+                .putString("thinkingByModel", JSONObject(thinkingByModel as Map<*, *>).toString())
+                .apply()
+        }
         client.send(
             JSONObject()
                 .put("id", "think-${nextId++}")
@@ -1453,6 +1511,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun requestStats() {
         client.send(JSONObject().put("id", "stats-${nextId++}").put("type", "get_session_stats"))
+    }
+
+    /** Load `provider/model -> thinking level` choices made in the picker. */
+    private fun loadThinkingLevels(): Map<String, String> {
+        val raw = prefs.getString("thinkingByModel", "").orEmpty()
+        if (raw.isBlank()) return emptyMap()
+        val json = runCatching { JSONObject(raw) }.getOrNull() ?: return emptyMap()
+        val out = LinkedHashMap<String, String>()
+        json.keys().forEach { key ->
+            val level = json.optString(key, "")
+            if (key.isNotBlank() && level.isNotBlank()) out[key] = level
+        }
+        return out
     }
 
     private fun loadContextOverrides(): Map<String, Int> {
@@ -1793,14 +1864,42 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun newSession() {
         currentAssistant = null
         toolPartialRaw.clear()
+        clearLive()
+        pendingToolPartials.clear()
+        prefs.edit().remove("lastSessionFile").apply()
+        desiredSessionPath = null
+        restorePending = false
+        needsHistory = false
+        historyHealTried = false
+        // Clear the transcript immediately. A relay without a prewarmed pig can
+        // take seconds to replace the session; showing the old conversation
+        // until then was the "new session is slow" symptom.
         ui = ui.copy(
             readOnly = false,
+            busy = false,
+            streamingId = null,
+            status = "starting",
+            pendingMessages = 0,
+            messages = emptyList(),
+            sessionId = "",
+            sessionFile = "",
             extensionStatuses = emptyMap(),
             pendingAgentRestart = false,
             widgets = emptyList(),
             dismissedWidgets = emptyMap(),
+            contextPercent = null,
+            contextTokens = 0,
+            contextWindowActual = 0,
+            contextCompacted = false,
+            cacheHitRate = null,
+            usage = SessionUsage(),
+            cacheReadTokens = 0,
+            cacheInputTokens = 0,
         )
         client.send(JSONObject().put("type", "new_session"))
+        // New sessions always start on the model pinned in the picker. This is
+        // sent behind new_session, so pig/relay applies it to the fresh session.
+        applyDefaultModel()
     }
 
     /** Rename a session: the live pig renames the current one, the relay appends
@@ -2524,11 +2623,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val command = event.optString("command")
             if (command == "set_model") {
                 modelSwitchAccepted = false
+                pendingThinkingRestore = null
                 ui = ui.copy(
                     modelSwitchPending = false,
                     pendingModel = "",
                     toast = str("toast.modelSwitchFailed", "模型切换失败"),
                 )
+            }
+            if (command == "new_session") {
+                ui = ui.copy(status = "")
             }
             if (command == "switch_session" && restorePending) {
                 // The remembered session was deleted; fall back to a fresh one.
@@ -2573,6 +2676,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (command == "set_thinking_level") {
             val level = event.optJSONObject("data")?.optString("level").orEmpty()
+            if (responseId.startsWith("think-auto-")) {
+                // Restoring a remembered level: refresh state, but keep the
+                // "model switched" toast from being overwritten.
+                if (level.isNotBlank()) ui = ui.copy(thinkingLevel = level)
+                requestState()
+                return
+            }
             requestState()
             if (level.isNotBlank()) {
                 ui = ui.copy(
@@ -2596,7 +2706,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             ui = ui.copy(
                 messages = emptyList(),
-                status = "",
+                // Keep the spinner until get_state confirms the replacement;
+                // clearing it here leaves a silent gap while pig starts.
+                status = if (ui.status == "starting" || ui.status == "switching") {
+                    ui.status
+                } else {
+                    ""
+                },
                 streamingId = null,
                 pendingMessages = 0,
                 contextPercent = null,
@@ -2640,6 +2756,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 if (switched) currentAssistant = null
                 var status = ui.status
                 var toast = ui.toast
+                if (status == "starting" || status == "switching") status = ""
 
                 if (!restoreChecked) {
                     restoreChecked = true
@@ -2908,6 +3025,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         "$provider/$id",
                     ),
                 )
+                // Apply this model's remembered thinking level only after the
+                // switch is confirmed, so it cannot land on the old model.
+                val restore = pendingThinkingRestore
+                pendingThinkingRestore = null
+                if (!restore.isNullOrBlank()) {
+                    client.send(
+                        JSONObject()
+                            .put("id", "think-auto-${nextId++}")
+                            .put("type", "set_thinking_level")
+                            .put("level", restore),
+                    )
+                }
                 client.send(
                     JSONObject().put("id", "levels-${nextId++}")
                         .put("type", "get_available_thinking_levels"),

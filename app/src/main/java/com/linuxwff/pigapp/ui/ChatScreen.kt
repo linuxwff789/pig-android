@@ -3,6 +3,8 @@ package com.linuxwff.pigapp.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -145,6 +147,8 @@ import com.linuxwff.pigapp.RelayLauncher
 import com.linuxwff.pigapp.Role
 import com.linuxwff.pigapp.SessionInfo
 import com.linuxwff.pigapp.TypeScale
+import com.linuxwff.pigapp.UpdateChecker
+import com.linuxwff.pigapp.UpdateInfo
 import com.linuxwff.pigapp.UiLayout
 import com.linuxwff.pigapp.UiRequest
 import com.linuxwff.pigapp.UiSkin
@@ -961,6 +965,28 @@ private fun SettingsDialog(
     val scheme = MaterialTheme.colorScheme
     val context = LocalContext.current
     var batteryOk by remember { mutableStateOf(RelayLauncher.isIgnoringBatteryOptimizations(context)) }
+    /** Non-null opens the custom auto-compaction threshold editor. */
+    var thresholdEditor by remember { mutableStateOf<Int?>(null) }
+    var updateChecking by remember { mutableStateOf(false) }
+    var updateStatus by remember { mutableStateOf("") }
+    var updateFailed by remember { mutableStateOf(false) }
+    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    val updateScope = rememberCoroutineScope()
+    val appVersion = remember(context) {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull().orEmpty()
+    }
+    // packText is @Composable; onClick/coroutine bodies may not call it, so
+    // resolve the update messages once here.
+    val msgUpdating = packText("settings.updateChecking", "正在检查…")
+    val msgAvailable = packText("settings.updateAvailable", "发现新版本 {tag}（当前 {current}）")
+    val msgLatest = packText("settings.updateLatest", "已是最新版本（{version}）")
+    val msgFailed = packText("settings.updateFailed", "检查失败：{error}")
+    val msgCopied = packText(
+        "settings.updateCommandCopied",
+        "已复制 Termux 更新命令，粘贴到 Termux 执行",
+    )
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -971,18 +997,96 @@ private fun SettingsDialog(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    AlertDialog(
+    val size = when (ui.settingsSize) {
+        "compact" -> 0.78f to 0.60f
+        "large" -> 0.97f to 0.94f
+        "full" -> 1f to 1f
+        else -> 0.92f to 0.82f
+    }
+    Dialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(ui.uiPack.theme.cornerRadius.dp),
-        containerColor = scheme.surface,
-        title = { Text(packText("settings.title", "设置")) },
-        text = {
-            Column(
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
                 modifier = Modifier
-                    .heightIn(max = 460.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                    .fillMaxWidth(size.first)
+                    .fillMaxHeight(size.second),
+                shape = RoundedCornerShape(ui.uiPack.theme.cornerRadius.dp),
+                color = scheme.surface,
+                tonalElevation = 6.dp,
             ) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 20.dp, end = 8.dp, top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            packText("settings.title", "设置"),
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = packText("a11y.close", "关闭"),
+                            )
+                        }
+                    }
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Column {
+                            Text(
+                                packText("settings.window", "窗口大小"),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                packText(
+                                    "settings.windowHint",
+                                    "设置页的显示尺寸；选项会记住，内容仍然可以滚动",
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = scheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                listOf(
+                                    "compact" to packText("settings.windowCompact", "紧凑"),
+                                    "standard" to packText("settings.windowStandard", "标准"),
+                                    "large" to packText("settings.windowLarge", "大"),
+                                    "full" to packText("settings.windowFull", "全屏"),
+                                ).forEach { (value, label) ->
+                                    FilterChip(
+                                        selected = ui.settingsSize == value,
+                                        onClick = { vm.setSettingsSize(value) },
+                                        label = { Text(label) },
+                                        shape = CircleShape,
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = scheme.primary.copy(alpha = 0.18f),
+                                            selectedLabelColor = scheme.primary,
+                                        ),
+                                    )
+                                }
+                            }
+                        }
                 Text(packText("settings.connection", "连接"), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -1258,19 +1362,36 @@ private fun SettingsDialog(
                             "需要先拿到上下文窗口和当前的预留值",
                         )
                     },
-                    value = if (thresholdPct > 0) thresholdPct.toString() else "",
+                    value = if (thresholdPct !in listOf(50, 55, 60, 65, 70, 75, 80) && thresholdPct > 0) {
+                        "custom"
+                    } else {
+                        thresholdPct.toString()
+                    },
                     onPick = if (ui.settingsRemote) {
-                        { picked -> vm.setCompactionThreshold(picked.toIntOrNull() ?: 80) }
+                        { picked ->
+                            if (picked == "custom") {
+                                thresholdEditor = if (thresholdPct in 1..99) thresholdPct else 80
+                            } else {
+                                vm.setCompactionThreshold(picked.toIntOrNull() ?: 80)
+                            }
+                        }
                     } else {
                         {}
                     },
-                    options = listOf(
-                        "60" to "60%",
-                        "70" to "70%",
-                        "80" to "80%",
-                        "88" to "88%",
-                        "90" to "90%",
-                    ),
+                    options = buildList {
+                        listOf(50, 55, 60, 65, 70, 75, 80).forEach { pct ->
+                            add(pct.toString() to "$pct%")
+                        }
+                        add(
+                            "custom" to if (thresholdPct in 1..99 &&
+                                thresholdPct !in listOf(50, 55, 60, 65, 70, 75, 80)
+                            ) {
+                                "$thresholdPct%（自定义）"
+                            } else {
+                                packText("settings.compactionThresholdCustom", "自定义…")
+                            },
+                        )
+                    },
                 )
                 SettingNumberRow(
                     title = packText("settings.reserveTokens", "压缩预留 tokens"),
@@ -1470,6 +1591,114 @@ private fun SettingsDialog(
 
                 HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
                 Text(packText("settings.about", "关于"), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            packText("settings.appVersion", "Pig Android {version}")
+                                .replace("{version}", appVersion.ifBlank { "?" }),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            packText("settings.appVersionHint", "App 版本 · relay {relay} · pig 在 Termux 里运行")
+                                .replace(
+                                    "{relay}",
+                                    if (ui.connected) {
+                                        packText("settings.connected", "已连接")
+                                    } else {
+                                        packText("settings.offline", "离线")
+                                    },
+                                ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(
+                        enabled = !updateChecking,
+                        onClick = {
+                            updateChecking = true
+                            updateFailed = false
+                            updateStatus = msgUpdating
+                            updateScope.launch {
+                                UpdateChecker.check(appVersion)
+                                    .onSuccess { info ->
+                                        updateFailed = false
+                                        if (info.newer) {
+                                            updateStatus = msgAvailable
+                                                .replace("{tag}", info.tag)
+                                                .replace("{current}", appVersion)
+                                            updateInfo = info
+                                        } else {
+                                            updateStatus = msgLatest
+                                                .replace("{version}", appVersion)
+                                        }
+                                    }
+                                    .onFailure { error ->
+                                        updateFailed = true
+                                        updateStatus = msgFailed
+                                            .replace("{error}", error.message ?: error.toString())
+                                    }
+                                updateChecking = false
+                            }
+                        },
+                    ) {
+                        Text(
+                            if (updateChecking) {
+                                packText("settings.updateCheckingShort", "检查中…")
+                            } else {
+                                packText("settings.checkUpdate", "检查更新")
+                            },
+                        )
+                    }
+                }
+                if (updateStatus.isNotBlank()) {
+                    Text(
+                        updateStatus,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (updateFailed) scheme.error else scheme.primary,
+                    )
+                }
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                ) {
+                    TextButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                                as ClipboardManager
+                            clipboard.setPrimaryClip(
+                                ClipData.newPlainText("Pig update", UpdateChecker.INSTALL_COMMAND),
+                            )
+                            updateStatus = msgCopied
+                        },
+                    ) {
+                        Text(
+                            packText("settings.copyInstall", "复制 Termux 更新命令"),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(UpdateChecker.RELEASES_URL))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            }
+                        },
+                    ) {
+                        Text(
+                            packText("settings.github", "GitHub 发布页"),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
+                Text(
+                    packText(
+                        "settings.updateTermuxHint",
+                        "App 检查的是 GitHub 最新 Release；pig / pig-relay 用上面的安装命令在 Termux 里更新。",
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
                 Text(
                     packText("settings.packInfo", "UI pack: {name} v{version} · {files} files")
                         .replace("{name}", ui.uiPack.name)
@@ -1502,10 +1731,155 @@ private fun SettingsDialog(
                 ui.uiPackError?.let {
                     Text(it, style = MaterialTheme.typography.labelSmall, color = scheme.error)
                 }
+                    }
+                    HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = onDismiss) {
+                            Text(packText("settings.done", "完成"))
+                        }
+                    }
+                }
+            }
+        }
+    }
+    thresholdEditor?.let { current ->
+        CompactionThresholdDialog(
+            initial = current,
+            onSave = { percent ->
+                vm.setCompactionThreshold(percent)
+                thresholdEditor = null
+            },
+            onDismiss = { thresholdEditor = null },
+        )
+    }
+    updateInfo?.let { info ->
+        UpdateDialog(
+            info = info,
+            currentVersion = appVersion,
+            onOpen = {
+                runCatching {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(info.url))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            },
+            onDismiss = { updateInfo = null },
+        )
+    }
+}
+
+@Composable
+private fun UpdateDialog(
+    info: UpdateInfo,
+    currentVersion: String,
+    onOpen: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(22.dp),
+        containerColor = scheme.surface,
+        title = { Text(packText("settings.updateDialogTitle", "发现新版本 {tag}").replace("{tag}", info.tag)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    packText("settings.updateDialogCurrent", "当前版本 {current} → {latest}")
+                        .replace("{current}", currentVersion.ifBlank { "?" })
+                        .replace("{latest}", info.version),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+                if (info.notes.isNotBlank()) {
+                    SelectionContainer {
+                        Text(
+                            info.notes,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .heightIn(max = 280.dp)
+                                .verticalScroll(rememberScrollState()),
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(packText("settings.done", "完成")) }
+            TextButton(onClick = { onOpen(); onDismiss() }) {
+                Text(packText("settings.updateOpen", "打开下载页"))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(packText("settings.updateLater", "稍后")) }
+        },
+    )
+}
+
+@Composable
+private fun CompactionThresholdDialog(
+    initial: Int,
+    onSave: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    var text by remember { mutableStateOf(initial.toString()) }
+    val percent = text.filter { it.isDigit() }.take(2).toIntOrNull()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(22.dp),
+        containerColor = scheme.surface,
+        title = { Text(packText("settings.compactionThresholdCustom", "自定义压缩阈值")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    packText(
+                        "settings.compactionThresholdCustomHint",
+                        "上下文用到这个比例时自动总结旧消息。预留 tokens 由「窗口 × (1 − 比例)」换算，范围 1–99%。",
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { input ->
+                        text = input.filter { it.isDigit() }.take(2)
+                    },
+                    singleLine = true,
+                    label = { Text("%") },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = scheme.primary.copy(alpha = 0.7f),
+                        unfocusedBorderColor = scheme.outline.copy(alpha = 0.5f),
+                    ),
+                )
+                Text(
+                    if (percent in 1..99) {
+                        packText("settings.compactionThresholdCustomValue", "= {value}%")
+                            .replace("{value}", percent.toString())
+                    } else {
+                        packText("settings.compactionThresholdCustomInvalid", "请输入 1–99 之间的整数")
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (percent in 1..99) scheme.primary else scheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = percent in 1..99,
+                onClick = { percent?.let(onSave) },
+            ) {
+                Text(packText("dialog.save", "保存"))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(packText("dialog.cancel", "取消")) }
         },
     )
 }
@@ -1531,7 +1905,10 @@ private fun QueueModeRow(
             color = scheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             chips.forEach { (mode, label) ->
                 FilterChip(
                     selected = value == mode,
@@ -4372,6 +4749,7 @@ private fun StatusBar(status: String, extensionStatuses: Map<String, String>) {
         "compacting" -> packText("status.compacting", "压缩中")
         "retrying" -> packText("status.retrying", "重试中")
         "switching" -> packText("status.switching", "切换中")
+        "starting" -> packText("status.starting", "新建会话")
         "restoring" -> packText("status.restoring", "恢复中")
         else -> status
     }.trim()
