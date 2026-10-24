@@ -15,10 +15,11 @@ an API key. All agent work happens in the original `pig` binary.
 
 ## Status (1.0)
 
-**1.0.0** is the first minified release: launcher icon, session notifications
-(with a selectable sound), thinking blocks, plan widgets, usage statistics and
-the performance work (history builds off the main thread, incremental relay
-reads). See [Release build](#release-build).
+**1.1.0** adds images: transcript image blocks from tools and attachments,
+a photo picker in the composer, Markdown images, and a full-screen viewer with
+save-to-gallery. **1.0.0** was the first minified release (launcher icon,
+session notifications with a selectable sound, thinking blocks, plan widgets,
+usage statistics, performance work). See [Release build](#release-build).
 
 - App launches `pig-relay` through Termux `RUN_COMMAND` (no pairing screen).
 - Streams assistant text, renders Markdown (GFM headings, lists, code fences,
