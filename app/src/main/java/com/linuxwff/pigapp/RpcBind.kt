@@ -116,7 +116,9 @@ fun resolveUiPath(ui: AppUiState, path: String): Any? {
         val name = info?.name?.takeIf { it.isNotBlank() }
         val title = name
             ?: ui.titleOverride?.takeIf { it.isNotBlank() }
-            ?: info?.preview?.takeIf { it.isNotBlank() }
+            ?: info?.preview?.takeIf { it.isNotBlank() }?.let {
+                if (it.length > 120) it.take(119) + "…" else it
+            }
         val session = JSONObject()
             .put("title", title ?: JSONObject.NULL)
             .put("name", name ?: JSONObject.NULL)

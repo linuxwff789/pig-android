@@ -451,6 +451,7 @@ Element keys:
 | `bind` + `format` | read RPC data |
 | `action` | `menu`, `model`, `reconnect`, `stop`/`abort`, `settings`, `new`/`new_session`, `header:*`, `pack:<name>` |
 | `avatar` / `avatarSize` / `online` | brand element only |
+| `lines` | max lines for `text` (1–4, default 2); use `1` for titles that must not wrap |
 
 The header is rendered inside `statusBarsPadding()`, so `paddingV` is added
 below the system status bar.
