@@ -977,6 +977,14 @@ still the source of the built-in pack and of hot reloads.
     "maxLines": 6,
     "sendOnEnter": true
   },
+  "settings": {
+    "defaultSize": "standard",
+    "sizes": [
+      { "id": "compact", "label": "紧凑", "width": 0.8, "height": 0.64 },
+      { "id": "standard", "label": "标准", "width": 0.94, "height": 0.86 },
+      { "id": "large", "label": "大", "width": 0.99, "height": 0.96 }
+    ]
+  },
   "skinSwitcher": {
     "show": true,
     "placement": "drawer",
@@ -1037,6 +1045,20 @@ still the source of the built-in pack and of hot reloads.
   the header shows `已压缩` until the next model call provides a fresh usage.
 - `composer.maxLines` is clamped to 1–12.
 - `sendOnEnter` changes the IME action to Send.
+- `settings` sizes the **settings dialog**. Each entry is a preset the user can
+  pick in 设置 → 窗口大小; fractions are of the usable screen and are clamped to
+  0.3–1.
+  - `sizes[]`: `id` (required, unique), `label` (fall back to the
+    `settings.size.<id>` pack string, then the id), `width`, `height`.
+  - `defaultSize`: preset used until the user picks one (unknown ids warn and
+    fall back to the first preset).
+  - `showSizeSwitcher`: `false` hides the chips; defaults to `true` when more
+    than one size is declared.
+  - Giving only `width`/`height` (no `sizes`) pins a single size and hides the
+    chips — that is the way to make the dialog always full screen or always
+    narrow.
+  - The user's pick is stored on the device (`settingsSize`), not in the pack.
+    Renaming or removing an id simply falls back to the pack default.
 - `skinSwitcher.show` hides the switcher entirely; it is also hidden when the
   pack has no `skins.json` entries.
 - `skinSwitcher.placement`: `drawer` (default), `settings`, or `both`.

@@ -61,9 +61,11 @@ usage statistics, performance work). See [Release build](#release-build).
   `pig --mode rpc` spare, so `new_session` can hand over a ready process instead
   of rebuilding the runtime in front of you (also the first prompt when no
   session is open yet).
-- Settings has a resizable window (compact/standard/large/full), a custom
-  auto-compaction threshold (presets 50–80%), and an About section with the app
-  version plus a GitHub release update check.
+- Settings is a resizable dialog whose sizes come from the UI pack
+  (`layout/chat.json` → `settings`, presets + `defaultSize`); a pack can also pin
+  one fixed size. It also has a custom auto-compaction threshold (presets
+  50–80%) and an About section with the app version plus a GitHub release update
+  check.
 - GitHub Actions builds a debug APK on every push.
 
 M1 is in: the app parses the pushed pack and applies `theme/colors.json` and

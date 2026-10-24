@@ -997,12 +997,10 @@ private fun SettingsDialog(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val size = when (ui.settingsSize) {
-        "compact" -> 0.78f to 0.60f
-        "large" -> 0.97f to 0.94f
-        "full" -> 1f to 1f
-        else -> 0.92f to 0.82f
-    }
+    // Geometry comes from the UI pack: `layout/chat.json` → `settings`. The app
+    // only remembers which preset the user picked.
+    val settingsLayout = ui.uiPack.layout.settings
+    val size = settingsLayout.resolve(ui.settingsSize)
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -1017,8 +1015,8 @@ private fun SettingsDialog(
         ) {
             Surface(
                 modifier = Modifier
-                    .fillMaxWidth(size.first)
-                    .fillMaxHeight(size.second),
+                    .fillMaxWidth(size.width)
+                    .fillMaxHeight(size.height),
                 shape = RoundedCornerShape(ui.uiPack.theme.cornerRadius.dp),
                 color = scheme.surface,
                 tonalElevation = 6.dp,
@@ -1050,40 +1048,48 @@ private fun SettingsDialog(
                             .padding(horizontal = 20.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        Column {
-                            Text(
-                                packText("settings.window", "窗口大小"),
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Text(
-                                packText(
-                                    "settings.windowHint",
-                                    "设置页的显示尺寸；选项会记住，内容仍然可以滚动",
-                                ),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = scheme.onSurfaceVariant,
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                listOf(
-                                    "compact" to packText("settings.windowCompact", "紧凑"),
-                                    "standard" to packText("settings.windowStandard", "标准"),
-                                    "large" to packText("settings.windowLarge", "大"),
-                                    "full" to packText("settings.windowFull", "全屏"),
-                                ).forEach { (value, label) ->
-                                    FilterChip(
-                                        selected = ui.settingsSize == value,
-                                        onClick = { vm.setSettingsSize(value) },
-                                        label = { Text(label) },
-                                        shape = CircleShape,
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = scheme.primary.copy(alpha = 0.18f),
-                                            selectedLabelColor = scheme.primary,
-                                        ),
-                                    )
+                        if (settingsLayout.showSizeSwitcher && settingsLayout.sizes.size > 1) {
+                            Column {
+                                Text(
+                                    packText("settings.window", "窗口大小"),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Text(
+                                    packText(
+                                        "settings.windowHint",
+                                        "由 UI pack 提供的尺寸；选项会记住，内容仍然可以滚动",
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = scheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    settingsLayout.sizes.forEach { preset ->
+                                        FilterChip(
+                                            selected = ui.settingsSize == preset.id,
+                                            onClick = { vm.setSettingsSize(preset.id) },
+                                            label = {
+                                                Text(
+                                                    preset.label.ifBlank {
+                                                        packText(
+                                                            "settings.size.${preset.id}",
+                                                            preset.id,
+                                                        )
+                                                    },
+                                                )
+                                            },
+                                            shape = CircleShape,
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = scheme.primary.copy(
+                                                    alpha = 0.18f,
+                                                ),
+                                                selectedLabelColor = scheme.primary,
+                                            ),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -4771,7 +4777,7 @@ private fun StatusBar(status: String, extensionStatuses: Map<String, String>) {
         "compacting" -> packText("status.compacting", "压缩中")
         "retrying" -> packText("status.retrying", "重试中")
         "switching" -> packText("status.switching", "切换中")
-        "starting" -> packText("status.starting", "新建会话")
+        "starting" -> packText("status.starting", "正在新建对话…")
         "restoring" -> packText("status.restoring", "恢复中")
         else -> status
     }.trim()

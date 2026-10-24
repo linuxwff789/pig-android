@@ -105,6 +105,40 @@ data class TypeScale(
     val letterSpacing: Float = 0f,
 )
 
+/** One selectable settings-dialog size, in fractions of the usable screen. */
+data class UiSettingsSize(
+    val id: String,
+    val label: String,
+    val width: Float,
+    val height: Float,
+)
+
+/** The four presets the app shipped before packs could declare their own. */
+val defaultSettingsSizes = listOf(
+    UiSettingsSize("compact", "紧凑", 0.78f, 0.60f),
+    UiSettingsSize("standard", "标准", 0.92f, 0.82f),
+    UiSettingsSize("large", "大", 0.97f, 0.94f),
+    UiSettingsSize("full", "全屏", 1f, 1f),
+)
+
+/**
+ * Settings-dialog geometry from `layout/chat.json`. A pack can either list
+ * `sizes` (the app renders chips and remembers the user's pick) or give a
+ * single `width`/`height`, in which case the dialog is fixed to that size.
+ */
+data class UiSettingsLayout(
+    val defaultSize: String = "standard",
+    val sizes: List<UiSettingsSize> = defaultSettingsSizes,
+    val showSizeSwitcher: Boolean = true,
+) {
+    /** The entry to use for [id], falling back to the pack default, then first. */
+    fun resolve(id: String): UiSettingsSize =
+        sizes.firstOrNull { it.id == id }
+            ?: sizes.firstOrNull { it.id == defaultSize }
+            ?: sizes.firstOrNull()
+            ?: defaultSettingsSizes[1]
+}
+
 data class UiLayout(
     val sidebarWidthDp: Int = 300,
     val assistantLabel: String = "PIG",
@@ -151,6 +185,8 @@ data class UiLayout(
     val packManagerPlacement: String = "both",
     /** Optional fully custom header; null keeps the built-in header. */
     val header: UiHeader? = null,
+    /** Settings-dialog size presets (or one fixed size). */
+    val settings: UiSettingsLayout = UiSettingsLayout(),
     /** RPC data sources, slot bindings and named safe actions. */
     val dataSources: Map<String, UiDataSource> = emptyMap(),
     val bindings: Map<String, UiBinding> = emptyMap(),
@@ -438,6 +474,7 @@ object UiPackParser {
         val packPlacement = packManager?.optString("placement", d.packManagerPlacement)
             ?: d.packManagerPlacement
         if (packPlacement !in placements) warnings.add("packManager.placement=$packPlacement 无效")
+        val settingsLayout = parseSettingsLayout(json.optJSONObject("settings"), warnings)
 
         return UiLayout(
             sidebarWidthDp = (sidebar?.optInt("widthDp", d.sidebarWidthDp)
@@ -512,6 +549,7 @@ object UiPackParser {
             packManagerPlacement = packPlacement.takeIf { it in placements }
                 ?: d.packManagerPlacement,
             header = header,
+            settings = settingsLayout,
             dataSources = dataSources,
             bindings = bindings,
             actions = actions,
@@ -654,6 +692,82 @@ object UiPackParser {
             groupRadius = json.optInt("groupRadius", d.groupRadius)
                 .let { if (it < 0) -1 else it.coerceIn(0, 40) },
             groupPadding = json.optInt("groupPadding", d.groupPadding).coerceIn(0, 40),
+        )
+    }
+
+    /**
+     * `settings` in layout/chat.json:
+     *
+     * ```json
+     * "settings": {
+     *   "defaultSize": "standard",
+     *   "sizes": [
+     *     {"id": "compact", "label": "紧凑", "width": 0.78, "height": 0.6},
+     *     {"id": "wide", "width": 0.98, "height": 0.9}
+     *   ]
+     * }
+     * ```
+     *
+     * `width`/`height` alone pin one size (no chips). Fractions are clamped to
+     * 0.3–1.0 of the usable screen.
+     */
+    private fun parseSettingsLayout(
+        json: JSONObject?,
+        warnings: MutableList<String>,
+    ): UiSettingsLayout {
+        val d = UiSettingsLayout()
+        if (json == null) return d
+        fun fraction(key: String, fallback: Float): Float =
+            json.optDouble(key, fallback.toDouble()).toFloat().coerceIn(0.3f, 1f)
+
+        val array = json.optJSONArray("sizes")
+        val sizes = mutableListOf<UiSettingsSize>()
+        if (array != null) {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val id = item.optString("id").trim()
+                if (id.isBlank()) {
+                    warnings.add("settings.sizes[$index] 缺少 id")
+                    continue
+                }
+                if (sizes.any { it.id == id }) {
+                    warnings.add("settings.sizes 重复 id: $id")
+                    continue
+                }
+                sizes.add(
+                    UiSettingsSize(
+                        id = id,
+                        label = item.optString("label").trim(),
+                        width = item.optDouble("width", 0.92).toFloat().coerceIn(0.3f, 1f),
+                        height = item.optDouble("height", 0.82).toFloat().coerceIn(0.3f, 1f),
+                    ),
+                )
+            }
+        }
+        if (sizes.isEmpty() && (json.has("width") || json.has("height"))) {
+            // A single fixed size: no chips, the dialog is always this big.
+            return UiSettingsLayout(
+                defaultSize = "pack",
+                sizes = listOf(
+                    UiSettingsSize(
+                        "pack",
+                        json.optString("label").trim(),
+                        fraction("width", 0.92f),
+                        fraction("height", 0.82f),
+                    ),
+                ),
+                showSizeSwitcher = false,
+            )
+        }
+        if (sizes.isEmpty()) return d
+        val defaultSize = json.optString("defaultSize", d.defaultSize).trim()
+        if (defaultSize.isNotBlank() && sizes.none { it.id == defaultSize }) {
+            warnings.add("settings.defaultSize=$defaultSize 不在 sizes 中")
+        }
+        return UiSettingsLayout(
+            defaultSize = defaultSize.takeIf { id -> sizes.any { it.id == id } } ?: sizes[0].id,
+            sizes = sizes,
+            showSizeSwitcher = json.optBoolean("showSizeSwitcher", sizes.size > 1),
         )
     }
 
