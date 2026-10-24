@@ -13,8 +13,13 @@ an API key. All agent work happens in the original `pig` binary.
                                           └── watches ~/.pig/android-ui and pushes UI packs
 ```
 
-## Status (1.0)
+## Status (1.1)
 
+**1.1.1** makes a relay token mismatch self-healing: after a reinstall (or
+any app-data restore) the app used to keep talking to a relay that still held
+the old secret, showing `auth failed: bad token` plus the Termux setup card.
+It now re-reads the token from prefs and, if that is already what it sent,
+restarts the relay on its port with the right token.
 **1.1.0** adds images: transcript image blocks from tools and attachments,
 a photo picker in the composer, Markdown images, and a full-screen viewer with
 save-to-gallery. **1.0.0** was the first minified release (launcher icon,
