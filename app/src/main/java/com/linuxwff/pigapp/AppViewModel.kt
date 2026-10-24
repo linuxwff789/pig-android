@@ -87,6 +87,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val toolMsgIds = mutableMapOf<String, String>()
 
     private var foreground = false
+    /** True once the user picked a pack by hand, so relay pushes stop winning. */
+    private var packPinnedByUser = false
     private var autoReconnectJob: kotlinx.coroutines.Job? = null
     private var lastPongAt = 0L
     private var desiredSessionPath: String? = null
@@ -131,7 +133,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 true
             },
             skinId = prefs.getString("skinId", "").orEmpty(),
-            activePackId = prefs.getString("activePackId", "").orEmpty(),
+            activePackId = initialPackId(),
             contextOverrides = loadContextOverrides(),
             collapsedWidgets = prefs.getStringSet("collapsedWidgets", emptySet())
                 ?.toSet() ?: emptySet(),
@@ -141,6 +143,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             notifyCompacted = prefs.getBoolean("notifyCompacted", false),
             notifySound = prefs.getString("notifySound", "system") ?: "system",
         )
+        // Upgrades from builds without `packPinned` treated any stored id as a
+        // hand-made choice; a fresh install has no `activePackId` at all.
+        val pinned = if (prefs.contains("packPinned")) {
+            prefs.getBoolean("packPinned", false)
+        } else {
+            prefs.contains("activePackId")
+        }
+        packPinnedByUser = pinned && ui.activePackId.isNotBlank()
         refreshLocalPacks()
         // Restore a bundled or imported pack without waiting for the relay push.
         ui.activePackId.takeIf { it.isNotBlank() }?.let { id ->
@@ -494,13 +504,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val packsDir: File
         get() = File(getApplication<Application>().filesDir, "ui-packs")
 
-    /** Packs shipped inside the APK under `assets/ui-packs/<id>/`. */
-    private val bundledPackRoot = "ui-packs"
+    /**
+     * Pack used on a fresh install: the bundled theme, so a new APK does not
+     * look plain before Termux pushes anything. It steps aside for the first
+     * relay push (see [packPinnedByUser]).
+     */
+    private val defaultPackId get() = "${BUNDLED_PREFIX}compact"
+
+    private fun initialPackId(): String {
+        prefs.getString("activePackId", null)?.let { return it }
+        val bundled = bundledPacks().any { it.id == defaultPackId }
+        return if (bundled) defaultPackId else ""
+    }
 
     private fun loadPackFiles(id: String): Triple<Map<String, String>, Map<String, String>, Map<String, String>>? =
         if (id.startsWith(BUNDLED_PREFIX)) {
             runCatching {
-                readPackAssets("$bundledPackRoot/${id.removePrefix(BUNDLED_PREFIX)}")
+                readPackAssets("${BUNDLED_PACK_ROOT}/${id.removePrefix(BUNDLED_PREFIX)}")
             }.getOrNull()
         } else {
             runCatching { readPackDir(File(packsDir, id)) }.getOrNull()
@@ -510,14 +530,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun bundledPacks(): List<LocalPackInfo> {
         val manager = getApplication<Application>().assets
         val ids = runCatching {
-            manager.list(bundledPackRoot)?.filter { id ->
+            manager.list(BUNDLED_PACK_ROOT)?.filter { id ->
                 !id.startsWith(".") &&
-                    runCatching { manager.open("$bundledPackRoot/$id/manifest.json").close() }.isSuccess
+                    runCatching { manager.open("${BUNDLED_PACK_ROOT}/$id/manifest.json").close() }.isSuccess
             } ?: emptyList()
         }.getOrDefault(emptyList())
         return ids.mapNotNull { id ->
             val manifest = runCatching {
-                manager.open("$bundledPackRoot/$id/manifest.json").use { input ->
+                manager.open("${BUNDLED_PACK_ROOT}/$id/manifest.json").use { input ->
                     JSONObject(input.readBytes().toString(Charsets.UTF_8))
                 }
             }.getOrNull() ?: return@mapNotNull null
@@ -525,7 +545,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 id = "$BUNDLED_PREFIX$id",
                 name = manifest.optString("name").ifBlank { id },
                 version = manifest.optInt("version", 1),
-                files = countAssetFiles("$bundledPackRoot/$id"),
+                files = countAssetFiles("${BUNDLED_PACK_ROOT}/$id"),
                 bundled = true,
             )
         }.sortedBy { it.name.lowercase() }
@@ -574,8 +594,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Switch the active pack: `""` = relay pack, a bundled id, or an imported pack id. */
     fun selectPack(id: String) {
-        if (id == ui.activePackId) return
-        prefs.edit().putString("activePackId", id).apply()
+        if (id == ui.activePackId) {
+            // Tapping the already-active pack is how the user pins the
+            // first-launch default against later relay pushes.
+            if (id.isNotBlank() && !packPinnedByUser) {
+                packPinnedByUser = true
+                prefs.edit().putBoolean("packPinned", true).apply()
+            }
+            return
+        }
+        packPinnedByUser = id.isNotBlank()
+        prefs.edit()
+            .putString("activePackId", id)
+            .putBoolean("packPinned", packPinnedByUser)
+            .apply()
         if (id.isBlank()) {
             ui = ui.copy(activePackId = "")
             if (relayFiles.isNotEmpty()) {
@@ -3203,8 +3235,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             JSONObject(files["manifest.json"].orEmpty()).optString("name")
         }.getOrNull().orEmpty()
         ui = ui.copy(relayPackName = relayName.ifBlank { ui.relayPackName })
-        // An imported pack takes precedence until the user switches back.
-        if (ui.activePackId.isNotBlank()) return
+        // A pack the user picked by hand outranks the relay; the default
+        // bundled theme steps aside so Termux keeps driving the look.
+        if (packPinnedByUser) return
+        if (ui.activePackId.isNotBlank()) {
+            ui = ui.copy(activePackId = "")
+            prefs.edit().putString("activePackId", "").apply()
+        }
         applyPack(files, assets, hashes, hash, announce = true)
     }
 
@@ -3788,6 +3825,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
 /** Imported packs live under `files/ui-packs/`; bundled ones under `assets/ui-packs/`. */
 private const val BUNDLED_PREFIX = "builtin:"
+
+/** Asset root of the packs compiled into the APK. */
+private const val BUNDLED_PACK_ROOT = "ui-packs"
 
 /** Largest base64 payload accepted from pig (~6 MiB of image bytes). */
 private const val MAX_IMAGE_B64_CHARS = 8_000_000

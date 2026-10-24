@@ -47,7 +47,14 @@ Bundled packs ship with the APK; the first one is `builtin:compact`
 before the build). They cannot be deleted — only selected — and they are read
 straight out of `assets/`, so selecting one does not copy anything to the app's
 files dir. The choice is stored in `activePackId`, so it survives restarts, and
-it still wins over relay pushes until the user picks the built-in pack again.
+it wins over relay pushes until the user picks the built-in pack again.
+
+**First launch** starts on `builtin:compact` instead of looking plain while
+Termux has not pushed anything yet, but that default is *not* a user choice: as
+soon as a relay pack arrives it takes over and clears `activePackId`. Picking
+any pack in the manager (including tapping the already-selected bundled row)
+sets `packPinned`, and from then on relay pushes are ignored until the user
+selects 内置 pack again.
 
 ## manifest.json
 
