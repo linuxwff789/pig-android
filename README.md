@@ -54,9 +54,15 @@ usage statistics, performance work). See [Release build](#release-build).
   tool card's 收起/摘要/展开 chip to apply that mode to every tool card.
 - Model picker: tap the model name in the top bar to search the available
   models (context size, thinking, image support) and switch with `set_model`.
-  The same dialog exposes the thinking-level chips when the model supports
-  more than `off`, and every row's `ctx` value is editable so a wrong provider
-  `contextWindow` can be pinned by hand.
+  The star pins a **default model** for new sessions; each model remembers the
+  thinking level you last picked for it. Every row's `ctx` value is editable so
+  a wrong provider `contextWindow` can be pinned by hand.
+- New sessions start instantly when possible: the relay keeps one prewarmed
+  `pig --mode rpc` spare, so `new_session` can hand over a ready process instead
+  of rebuilding the runtime in front of you (also the first prompt after launch).
+- Settings has a resizable window (compact/standard/large/full), a custom
+  auto-compaction threshold (presets 50–80%), and an About section with the app
+  version plus a GitHub release update check.
 - GitHub Actions builds a debug APK on every push.
 
 M1 is in: the app parses the pushed pack and applies `theme/colors.json` and

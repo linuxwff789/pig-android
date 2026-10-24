@@ -386,6 +386,10 @@ data class AppUiState(
     val notifyCompacted: Boolean = false,
     /** `system`, `silent`, `alarm` or `ringtone`. */
     val notifySound: String = "system",
+    /** `provider/model` applied whenever a new session is created (empty = none). */
+    val defaultModel: String = "",
+    /** Settings dialog size: compact / standard / large / full. */
+    val settingsSize: String = "standard",
     /** `compaction.reserveTokens` from settings.json (0 = unknown). */
     val compactionReserveTokens: Int = 0,
     /** `compaction.keepRecentTokens` from settings.json (0 = unknown). */

@@ -23,10 +23,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -87,6 +89,16 @@ fun ModelPickerDialog(vm: AppViewModel) {
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant,
                     )
+                    if (vm.ui.defaultModel.isNotBlank()) {
+                        Text(
+                            packText("model.defaultIs", "默认 {model}")
+                                .replace("{model}", vm.ui.defaultModel),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 if (vm.ui.model.isNotBlank()) {
                     InfoPill(
@@ -203,14 +215,17 @@ fun ModelPickerDialog(vm: AppViewModel) {
                     }
                     items(filtered, key = { "${it.provider}/${it.id}" }) { model ->
                         val overridden = vm.contextWindowFor(model.provider, model.id)
+                        val key = "${model.provider}/${model.id}"
                         ModelRow(
                             model = model,
-                            selected = "${model.provider}/${model.id}" == vm.ui.model,
+                            selected = key == vm.ui.model,
+                            isDefault = key == vm.ui.defaultModel,
                             cornerRadius = corner,
                             enabled = !vm.ui.modelSwitchPending,
                             contextOverride = overridden,
                             onClick = { vm.selectModel(model) },
                             onEditContext = { contextTarget = model },
+                            onToggleDefault = { vm.toggleDefaultModel(model) },
                         )
                     }
                 }
@@ -249,11 +264,13 @@ fun ModelPickerDialog(vm: AppViewModel) {
 private fun ModelRow(
     model: ModelInfo,
     selected: Boolean,
+    isDefault: Boolean,
     cornerRadius: Int,
     enabled: Boolean,
     contextOverride: Int,
     onClick: () -> Unit,
     onEditContext: () -> Unit,
+    onToggleDefault: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val shape = RoundedCornerShape((cornerRadius - 4).coerceAtLeast(8).dp)
@@ -293,6 +310,21 @@ private fun ModelRow(
                             packText("model.reasoning", "思考"),
                             style = MaterialTheme.typography.labelSmall,
                             color = scheme.secondary,
+                        )
+                    }
+                }
+                if (isDefault) {
+                    Spacer(Modifier.width(5.dp))
+                    Box(
+                        Modifier
+                            .clip(CircleShape)
+                            .background(scheme.primary.copy(alpha = 0.16f))
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                    ) {
+                        Text(
+                            packText("model.default", "默认"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.primary,
                         )
                     }
                 }
@@ -343,6 +375,22 @@ private fun ModelRow(
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
                 tint = scheme.primary,
+            )
+        }
+        IconButton(
+            onClick = onToggleDefault,
+            enabled = enabled,
+            modifier = Modifier.size(34.dp),
+        ) {
+            Icon(
+                Icons.Default.Star,
+                contentDescription = if (isDefault) {
+                    packText("model.defaultClear", "取消默认模型")
+                } else {
+                    packText("model.defaultSet", "设为默认模型")
+                },
+                modifier = Modifier.size(18.dp),
+                tint = if (isDefault) scheme.primary else scheme.onSurfaceVariant.copy(alpha = 0.45f),
             )
         }
     }

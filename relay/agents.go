@@ -3,10 +3,10 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"io"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -60,6 +60,11 @@ type session struct {
 	agentMu sync.Mutex
 	agents  map[string]*agentProc
 	active  *agentProc
+	// standby is a freshly started pig that has no session yet. It makes
+	// `new_session` cheap (and the first prompt after opening the app): a plain
+	// `pig --mode rpc` needs ~10s to build its runtime, so doing that lazily in
+	// front of the user is what made new sessions feel stuck.
+	standby *agentProc
 	// activePath is the session the app is looking at; it may have no agent.
 	activePath string
 
@@ -94,6 +99,10 @@ func (s *session) stop() {
 		agents := make([]*agentProc, 0, len(s.agents))
 		for _, a := range s.agents {
 			agents = append(agents, a)
+		}
+		if s.standby != nil {
+			agents = append(agents, s.standby)
+			s.standby = nil
 		}
 		s.agents = map[string]*agentProc{}
 		s.active = nil
@@ -202,6 +211,11 @@ func (a *agentProc) trackFrame(s *session, payload []byte) {
 		a.mu.Unlock()
 		if !s.isActive(a) {
 			go s.reapAgent(a)
+		} else {
+			// The turn is over: warm a replacement while the phone is idle so the
+			// next new_session can hand the user a ready pig instead of waiting
+			// for runtime construction.
+			go s.maybeWarmStandby()
 		}
 	case "message_start":
 		if head.Message.Role == "assistant" {
@@ -395,6 +409,9 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 		if s.agents[""] == a {
 			delete(s.agents, "")
 		}
+		if s.standby == a {
+			s.standby = nil
+		}
 		wasActive := s.active == a
 		if wasActive {
 			s.active = nil
@@ -475,6 +492,107 @@ func (s *session) reapAgent(a *agentProc) {
 		return
 	}
 	s.stopAgent(a)
+	// A busy parked agent just settled; this is the moment its CPU is free
+	// again, so warming a standby no longer competes with a running turn.
+	go s.maybeWarmStandby()
+}
+
+// maybeWarmStandby starts a spare pig when it is safe to spend CPU on one: a
+// client is connected and no agent is in the middle of a turn. Starting a
+// second pig during streaming makes both slower, so wait for agent_end.
+func (s *session) maybeWarmStandby() {
+	if s.currentOut() == nil {
+		return
+	}
+	s.agentMu.Lock()
+	if s.standby != nil {
+		s.agentMu.Unlock()
+		return
+	}
+	agents := make([]*agentProc, 0, len(s.agents))
+	for _, a := range s.agents {
+		agents = append(agents, a)
+	}
+	s.agentMu.Unlock()
+	if len(agents) == 0 {
+		// No session in use yet. This is the first app launch, exactly when a
+		// ready pig makes the first prompt instant.
+		s.ensureStandby()
+		return
+	}
+	for _, a := range agents {
+		if a.isBusy() {
+			return
+		}
+	}
+	s.ensureStandby()
+}
+
+// ensureStandby starts one spare pig process. startAgent returns as soon as
+// the process is spawned; readiness is pig's own stdin queue, so the spare can
+// be handed over even while its runtime is still being built.
+func (s *session) ensureStandby() {
+	if s.currentOut() == nil {
+		return
+	}
+	s.startMu.Lock()
+	defer s.startMu.Unlock()
+	s.agentMu.Lock()
+	if s.standby != nil {
+		s.agentMu.Unlock()
+		return
+	}
+	s.agentMu.Unlock()
+	a, err := s.startAgent("", false)
+	if err != nil {
+		log.Printf("standby: start pig: %v", err)
+		return
+	}
+	s.agentMu.Lock()
+	if s.standby != nil {
+		s.agentMu.Unlock()
+		go a.pig.stop()
+		return
+	}
+	s.standby = a
+	s.agentMu.Unlock()
+}
+
+// promoteStandby makes the spare the active agent. It does not need to be
+// ready: commands written to it are queued by pig until the runtime starts.
+func (s *session) promoteStandby() *agentProc {
+	s.agentMu.Lock()
+	a := s.standby
+	if a == nil {
+		s.agentMu.Unlock()
+		return nil
+	}
+	s.standby = nil
+	old := s.active
+	s.active = a
+	s.activePath = ""
+	s.agents[""] = a
+	s.agentMu.Unlock()
+	// Extensions may have asked something while the spare was warming up (or
+	// set a status line); deliver that now that it owns the UI.
+	s.replayAgent(a)
+	if old != nil && old != a && !old.isBusy() {
+		// stop() waits for the process, sometimes seconds; never put that on
+		// the new_session reply path.
+		go s.stopAgent(old)
+	}
+	return a
+}
+
+// dropStandby stops the spare, e.g. when the app disconnects.
+func (s *session) dropStandby() {
+	s.agentMu.Lock()
+	a := s.standby
+	s.standby = nil
+	s.agentMu.Unlock()
+	if a != nil {
+		a.pig.stop()
+	}
 }
 
 // switchTo makes path active, reusing a parked agent when it exists. Idle
@@ -563,6 +681,7 @@ func (s *session) attach(conn net.Conn) (*connWriter, uint64, error) {
 		})
 	}
 	s.replayAgent(s.activeAgent())
+	go s.maybeWarmStandby()
 	return out, gen, nil
 }
 
@@ -575,8 +694,10 @@ func (s *session) detach(conn net.Conn, gen uint64) {
 	s.mu.Unlock()
 	_ = conn.Close()
 	// No client: keep streaming turns, drop an idle active process so a later
-	// switch to history does not need one.
+	// switch to history does not need one. The prewarmed spare is useless
+	// without a UI, so stop it too.
 	go func() {
+		s.dropStandby()
 		a := s.activeAgent()
 		if a != nil && !a.isBusy() {
 			s.stopAgent(a)
@@ -809,6 +930,11 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 		}
 	case "prompt":
 		a := s.activeAgent()
+		if a == nil && s.activePath == "" {
+			// A prewarmed pig is a brand-new session, exactly what a prompt on
+			// an empty app needs. Hand it over instead of paying startup twice.
+			a = s.promoteStandby()
+		}
 		if a == nil {
 			var err error
 			a, err = s.ensureAgent(s.activePath, s.activePath != "")
@@ -822,8 +948,21 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 		}
 		_ = a.pig.write(line)
 	case "new_session":
+		// Fast path: a spare process already is a fresh session. Promote it
+		// before replying so the app can ask for state right away.
+		if a := s.promoteStandby(); a != nil {
+			_ = s.send(frame{
+				"type": "response", "id": id, "command": "new_session",
+				"success": true, "data": frame{},
+			})
+			go s.maybeWarmStandby()
+			return
+		}
 		a := s.activeAgent()
 		if a != nil && !a.isBusy() {
+			// No spare: pig replaces its runtime in-process (~10s). The app
+			// clears the transcript immediately, so the wait is only visible as
+			// "starting" rather than an old conversation that refuses to go away.
 			_ = a.pig.write(line)
 			return
 		}
@@ -838,6 +977,7 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 			"type": "response", "id": id, "command": "new_session",
 			"success": true, "data": frame{},
 		})
+		go s.maybeWarmStandby()
 	case "extension_ui_response":
 		if a := s.activeAgent(); a != nil {
 			var response struct {
@@ -850,6 +990,9 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 		}
 	default:
 		a := s.activeAgent()
+		if a == nil && s.activePath == "" {
+			a = s.promoteStandby()
+		}
 		if a == nil {
 			var err error
 			a, err = s.ensureAgent(s.activePath, s.activePath != "")
