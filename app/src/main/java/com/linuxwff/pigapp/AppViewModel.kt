@@ -1892,6 +1892,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         markVisited(path)
         desiredSessionPath = path
         restorePending = false
+        // An explicit switch wins over a new session still being created; the
+        // prompts typed into that session belonged to it, not to this one.
+        awaitingNewSession = false
+        pendingNewSessionPrompts.clear()
         toolPartialRaw.clear()
         ui = ui.copy(
             status = "switching",
