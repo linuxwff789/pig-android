@@ -2610,6 +2610,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun handleResponse(event: JSONObject) {
         val responseCommand = event.optString("command")
         val responseId = event.optString("id")
+        // The relay loads a restored session into its prewarmed pig before the
+        // first prompt; that switch is internal, not the user's switch.
+        if (responseId.startsWith("standby-")) return
         val isSourceRequest = pendingRpcSources.containsKey(responseId)
         if (!isSourceRequest && responseCommand == "get_state" &&
             responseId.isNotBlank() && responseId != lastStateRequestId
