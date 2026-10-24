@@ -4141,7 +4141,6 @@ private fun TypingDots(color: Color) {
     }
 }
 
-@Composable
 /**
  * Extension dialogs (`confirm` / `select` / `input` / `editor`) such as the
  * permission-system prompt. The body is selectable and copyable because it is
