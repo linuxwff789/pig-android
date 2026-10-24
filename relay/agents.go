@@ -30,7 +30,16 @@ type agentProc struct {
 	activeTools map[string]toolProgress
 	pendingUI   map[string]json.RawMessage
 	busy        bool
+
+	// A promoted spare may still be building its runtime; commands are queued
+	// here and flushed when the startup probe answers, so nothing is lost and
+	// the relay's client loop never has to block on pig startup.
+	writeMu sync.Mutex
+	ready   bool
+	pending [][]byte
 }
+
+const standbyProbeID = "standby-probe"
 
 type toolProgress struct {
 	Name    string
@@ -161,6 +170,40 @@ func (a *agentProc) isBusy() bool {
 	return a.busy
 }
 
+func (a *agentProc) markReady() {
+	a.writeMu.Lock()
+	if a.ready {
+		a.writeMu.Unlock()
+		return
+	}
+	a.ready = true
+	pending := a.pending
+	a.pending = nil
+	for _, line := range pending {
+		_ = a.pig.write(line)
+	}
+	a.writeMu.Unlock()
+}
+
+// writeLine buffers commands while a spare is still starting. Normal agents
+// are ready from the start, so this is the plain write path for them.
+func (a *agentProc) writeLine(line []byte) error {
+	a.writeMu.Lock()
+	if !a.ready {
+		a.pending = append(a.pending, append([]byte(nil), line...))
+		a.writeMu.Unlock()
+		return nil
+	}
+	a.writeMu.Unlock()
+	return a.pig.write(line)
+}
+
+func (s *session) isStandby(a *agentProc) bool {
+	s.agentMu.Lock()
+	defer s.agentMu.Unlock()
+	return s.standby == a
+}
+
 func (a *agentProc) clearPending(id string) {
 	a.mu.Lock()
 	delete(a.pendingUI, id)
@@ -196,6 +239,10 @@ func (a *agentProc) trackFrame(s *session, payload []byte) {
 	}
 	switch head.Type {
 	case "response":
+		if head.ID == standbyProbeID {
+			a.markReady()
+			return
+		}
 		if head.Command == "get_state" && head.Data.SessionFile != "" {
 			s.mapAgentPath(a, head.Data.SessionFile)
 		}
@@ -209,6 +256,12 @@ func (a *agentProc) trackFrame(s *session, payload []byte) {
 		a.streamText = ""
 		a.activeTools = map[string]toolProgress{}
 		a.mu.Unlock()
+		if s.isStandby(a) {
+			// A spare emits agent_settled once its runtime is up; that is not
+			// "an idle agent of a session that is no longer active". Reaping it
+			// here would kill the prewarmed process (and restart it forever).
+			return
+		}
 		if !s.isActive(a) {
 			go s.reapAgent(a)
 		} else {
@@ -350,6 +403,7 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 		path:        path,
 		activeTools: map[string]toolProgress{},
 		pendingUI:   map[string]json.RawMessage{},
+		ready:       true,
 	}
 
 	go func() {
@@ -548,6 +602,12 @@ func (s *session) ensureStandby() {
 		log.Printf("standby: start pig: %v", err)
 		return
 	}
+	// Probe before publishing: commands promoted before the reply are queued
+	// and flushed by markReady.
+	a.writeMu.Lock()
+	a.ready = false
+	a.writeMu.Unlock()
+	_ = a.pig.write([]byte(`{"id":"` + standbyProbeID + `","type":"get_state"}`))
 	s.agentMu.Lock()
 	if s.standby != nil {
 		s.agentMu.Unlock()
@@ -558,8 +618,10 @@ func (s *session) ensureStandby() {
 	s.agentMu.Unlock()
 }
 
-// promoteStandby makes the spare the active agent. It does not need to be
-// ready: commands written to it are queued by pig until the runtime starts.
+// promoteStandby makes the spare the active agent. pig builds its runtime in
+// the background, and commands written before that finishes can be dropped
+// (switch_session in particular), so wait for the startup probe first. A fresh
+// session still appears instantly to the app; get_state answers when ready.
 func (s *session) promoteStandby() *agentProc {
 	s.agentMu.Lock()
 	a := s.standby
@@ -909,19 +971,19 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 		s.replayAgent(a)
 	case "get_state":
 		if a := s.activeAgent(); a != nil {
-			_ = a.pig.write(line)
+			_ = a.writeLine(line)
 		} else {
 			_ = s.send(s.syntheticState(id))
 		}
 	case "get_messages":
 		if a := s.activeAgent(); a != nil {
-			_ = a.pig.write(line)
+			_ = a.writeLine(line)
 		} else {
 			_ = s.send(s.syntheticMessages(id))
 		}
 	case "get_session_stats":
 		if a := s.activeAgent(); a != nil {
-			_ = a.pig.write(line)
+			_ = a.writeLine(line)
 		} else {
 			_ = s.send(frame{
 				"type": "response", "id": id, "command": "get_session_stats",
@@ -932,7 +994,7 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 		a := s.activeAgent()
 		if a == nil && s.activePath == "" {
 			// A prewarmed pig is a brand-new session, exactly what a prompt on
-			// an empty app needs. Hand it over instead of paying startup twice.
+			// an empty app needs.
 			a = s.promoteStandby()
 		}
 		if a == nil {
@@ -946,7 +1008,7 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 				return
 			}
 		}
-		_ = a.pig.write(line)
+		_ = a.writeLine(line)
 	case "new_session":
 		// Fast path: a spare process already is a fresh session. Promote it
 		// before replying so the app can ask for state right away.
@@ -963,7 +1025,7 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 			// No spare: pig replaces its runtime in-process (~10s). The app
 			// clears the transcript immediately, so the wait is only visible as
 			// "starting" rather than an old conversation that refuses to go away.
-			_ = a.pig.write(line)
+			_ = a.writeLine(line)
 			return
 		}
 		if _, err := s.ensureAgent("", false); err != nil {
@@ -986,7 +1048,7 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 			if json.Unmarshal(line, &response) == nil && response.ID != "" {
 				a.clearPending(response.ID)
 			}
-			_ = a.pig.write(line)
+			_ = a.writeLine(line)
 		}
 	default:
 		a := s.activeAgent()
@@ -1000,7 +1062,7 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 				return
 			}
 		}
-		_ = a.pig.write(line)
+		_ = a.writeLine(line)
 	}
 }
 

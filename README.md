@@ -59,7 +59,8 @@ usage statistics, performance work). See [Release build](#release-build).
   a wrong provider `contextWindow` can be pinned by hand.
 - New sessions start instantly when possible: the relay keeps one prewarmed
   `pig --mode rpc` spare, so `new_session` can hand over a ready process instead
-  of rebuilding the runtime in front of you (also the first prompt after launch).
+  of rebuilding the runtime in front of you (also the first prompt when no
+  session is open yet).
 - Settings has a resizable window (compact/standard/large/full), a custom
   auto-compaction threshold (presets 50–80%), and an About section with the app
   version plus a GitHub release update check.
