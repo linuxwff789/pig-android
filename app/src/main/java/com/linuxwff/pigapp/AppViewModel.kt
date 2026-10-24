@@ -872,6 +872,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(attachments = ui.attachments.filterNot { it.id == id })
     }
 
+    fun clearAttachments() {
+        ui = ui.copy(attachments = emptyList())
+    }
+
     /** Downscale + recompress a picked image so the prompt and session stay small. */
     private fun encodeAttachment(uri: Uri): PendingImage? {
         val bytes = try {
