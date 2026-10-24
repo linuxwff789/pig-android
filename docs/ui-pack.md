@@ -708,6 +708,26 @@ window has not reached pig yet. Prefer it over `stats.contextUsage` when the pac
 should follow a pinned window or survive a reconnect. A `dataSources` entry
 named `context` takes precedence over the computed object.
 
+### `session` bindings
+
+`session` describes the session the app is attached to. Its name only arrives
+with `get_sessions`, so the app computes it instead of exposing it as an RPC
+source.
+
+| path | type | meaning |
+| --- | --- | --- |
+| `session` | object | whole object, for `format` templates |
+| `session.title` | string? | session name, else an extension `setTitle`, else the first-message preview; `null` while unknown so the element's `text` fallback is used |
+| `session.name` | string? | name from `/rename`, `null` when the session has none |
+| `session.preview` | string | first-message preview |
+| `session.path` | string | session file path |
+| `session.id` | string | session id shown by pig |
+| `session.live` / `session.busy` | boolean | a pig process is attached / is producing a turn |
+
+```json
+{ "type": "text", "bind": "session.title", "text": "新会话", "style": "heading" }
+```
+
 ### `stats` bindings
 
 Like `context`, `stats` is computed by the app so packs can show session totals

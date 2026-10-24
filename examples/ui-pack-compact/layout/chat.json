@@ -116,22 +116,11 @@
           },
           {
             "type": "text",
-            "bind": "state.model",
-            "format": "{id}",
-            "text": "—",
-            "action": "header:model",
-            "style": "mono",
+            "bind": "session.title",
+            "text": "新会话",
+            "style": "heading",
             "color": "onSurface",
             "weight": 1.0
-          },
-          {
-            "type": "icon",
-            "icon": "chevronDown",
-            "size": 12,
-            "action": "header:model"
-          },
-          {
-            "type": "spacer"
           },
           {
             "type": "icon",
@@ -146,6 +135,22 @@
         "spacing": 5,
         "align": "start",
         "elements": [
+          {
+            "type": "text",
+            "bind": "state.model",
+            "format": "{id}",
+            "text": "点击选择模型",
+            "action": "header:model",
+            "style": "mono",
+            "color": "onSurfaceVariant",
+            "weight": 1.0
+          },
+          {
+            "type": "icon",
+            "icon": "chevronDown",
+            "size": 12,
+            "action": "header:model"
+          },
           {
             "type": "usage"
           },
@@ -164,9 +169,6 @@
             "style": "mono",
             "color": "secondary",
             "action": "header:model"
-          },
-          {
-            "type": "spacer"
           }
         ]
       }

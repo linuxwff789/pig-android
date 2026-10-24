@@ -104,9 +104,31 @@ fun formatTokenLabel(tokens: Int): String = when {
  * taken from an RPC reply, so packs can show the *effective* window/usage —
  * including the user's pinned context length and the last known usage while a
  * relay is attached without a live pig.
+ *
+ * `session` is the same idea for the current session: its name is only known
+ * from `get_sessions`, so the header can bind `session.title` no matter which
+ * pack is active.
  */
 fun resolveUiPath(ui: AppUiState, path: String): Any? {
     val root = path.substringBefore('.')
+    if (root == "session" && !ui.rpcData.containsKey(root)) {
+        val info = ui.sessions.firstOrNull { it.path == ui.sessionFile }
+        val name = info?.name?.takeIf { it.isNotBlank() }
+        val title = name
+            ?: ui.titleOverride?.takeIf { it.isNotBlank() }
+            ?: info?.preview?.takeIf { it.isNotBlank() }
+        val session = JSONObject()
+            .put("title", title ?: JSONObject.NULL)
+            .put("name", name ?: JSONObject.NULL)
+            .put("preview", info?.preview.orEmpty())
+            .put("path", ui.sessionFile)
+            .put("id", ui.sessionId)
+            .put("live", info?.live ?: false)
+            .put("busy", info?.busy ?: false)
+        val key = path.removePrefix("session").removePrefix(".")
+        if (key.isEmpty()) return session
+        return if (session.has(key) && !session.isNull(key)) session.opt(key) else null
+    }
     if (root == "context" && !ui.rpcData.containsKey(root)) {
         val percent = ui.contextPercent
         val ctx = JSONObject()
