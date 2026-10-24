@@ -110,9 +110,10 @@
           {
             "type": "icon",
             "icon": "menu",
-            "size": 20,
+            "size": 22,
             "action": "header:menu",
-            "color": "onSurface"
+            "color": "onSurface",
+            "padding": 2
           },
           {
             "type": "text",
@@ -120,7 +121,8 @@
             "text": "新会话",
             "style": "heading",
             "color": "onSurface",
-            "weight": 1.0
+            "weight": 1.0,
+            "lines": 1
           },
           {
             "type": "icon",

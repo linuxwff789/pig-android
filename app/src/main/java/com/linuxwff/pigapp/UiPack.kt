@@ -775,6 +775,7 @@ object UiPackParser {
                                 avatar = item.optBoolean("avatar", true),
                                 avatarSize = item.optInt("avatarSize", 0).coerceIn(0, 96),
                                 online = item.optBoolean("online", true),
+                                lines = item.optInt("lines", 2).coerceIn(1, 4),
                             ),
                         )
                     }

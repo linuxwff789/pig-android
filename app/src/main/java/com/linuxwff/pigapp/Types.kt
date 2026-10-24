@@ -254,6 +254,8 @@ data class UiHeaderElement(
     val avatar: Boolean = true,
     val avatarSize: Int = 0,
     val online: Boolean = true,
+    /** Max lines for `text` elements; a long session title must not wrap. */
+    val lines: Int = 2,
 )
 
 /** A pack action waiting for user confirmation. */

@@ -345,7 +345,7 @@ private fun HeaderElement(
             modifier = modifier.then(clickable),
             style = headerTextStyle(element.style),
             color = if (element.style == "danger") scheme.error else color,
-            maxLines = 2,
+            maxLines = element.lines,
             overflow = TextOverflow.Ellipsis,
         )
 
