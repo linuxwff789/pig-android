@@ -57,12 +57,12 @@ usage statistics, performance work). See [Release build](#release-build).
   The star pins a **default model** for new sessions; each model remembers the
   thinking level you last picked for it. Every row's `ctx` value is editable so
   a wrong provider `contextWindow` can be pinned by hand.
-- New sessions start instantly when possible: the relay keeps one prewarmed
-  `pig --mode rpc` spare, so `new_session` can hand over a ready process instead
-  of rebuilding the runtime in front of you (also the first prompt when no
-  session is open yet). Tapping 新会话 opens the empty conversation right away
-  with a 正在新建对话 banner; whatever you type meanwhile is queued in the app and
-  sent as soon as pig reports the new session.
+- Tapping 新会话 opens the empty conversation and a 正在新建对话 banner right
+  away; pig builds the session in the background and whatever you type meanwhile
+  is queued in the app and sent as soon as it reports the new session. No spare
+  process is prewarmed (memory first): an idle conversation is reused when you
+  create a new one, and a session with no messages yet is parked instead of
+  being stopped.
 - A session with no messages yet is not on disk, so the relay lists it from the
   live process (badge 未发送) and parks that process when you switch away —
   switching back resumes the same conversation. The composer keeps a draft per
@@ -112,9 +112,7 @@ See [docs/install.md](docs/install.md) for the manual route and troubleshooting.
 
 The running relay keeps its old code after the files are replaced. Rerun the
 script (or copy the new `pig-relay` into `$PREFIX/bin`) and then use
-**设置 → 连接 → 重启 relay**; the app restarts the process and reconnects. The
-new relay also prewarms one `pig --mode rpc` spare, which is why the first new
-session after that is instant.
+**设置 → 连接 → 重启 relay**; the app restarts the process and reconnects.
 
 ## Update the app
 
