@@ -66,13 +66,14 @@ private class PigImageTransformer(private val cornerRadius: Int) : ImageTransfor
     @Composable
     override fun transform(link: String): ImageData? {
         LaunchedEffect(link) { RemoteImages.request(link) }
-        val bitmap = RemoteImages.get(link) ?: return null
+        val image = RemoteImages.get(link) ?: return null
         return ImageData(
-            painter = BitmapPainter(bitmap),
+            painter = BitmapPainter(image.bitmap),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
-                .clip(RoundedCornerShape(cornerRadius.dp)),
+                .clip(RoundedCornerShape(cornerRadius.dp))
+                .clickable { ImageViewer.show(image.bitmap, image.mimeType) },
             contentDescription = link,
         )
     }

@@ -26,18 +26,24 @@ import kotlinx.coroutines.launch
  * links are allowed: the app has no access to Termux paths, and `content:` URIs
  * would need a grant the agent cannot give.
  */
+data class RemoteImage(
+    val bitmap: ImageBitmap,
+    /** Media type used to pick the encoder when the picture is saved. */
+    val mimeType: String,
+)
+
 object RemoteImages {
     private const val MAX_BYTES = 8 * 1024 * 1024
     private const val MAX_DIM = 1600
     private const val CACHE_ENTRIES = 12
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val images = mutableStateMapOf<String, ImageBitmap>()
+    private val images = mutableStateMapOf<String, RemoteImage>()
     private val failed = ConcurrentHashMap.newKeySet<String>()
     private val loading = ConcurrentHashMap.newKeySet<String>()
 
     /** Snapshot-state read: calling this from a composable redraws on arrival. */
-    fun get(url: String): ImageBitmap? = images[url]
+    fun get(url: String): RemoteImage? = images[url]
 
     /** Start (or skip) a background fetch; call from a `LaunchedEffect`. */
     fun request(url: String) {
@@ -50,13 +56,16 @@ object RemoteImages {
 
     private fun load(url: String) {
         try {
-            val bytes = fetch(url)
-            val bitmap = bytes?.let { decode(it) }
+            val (bytes, mimeType) = fetch(url) ?: run {
+                failed.add(url)
+                return
+            }
+            val bitmap = decode(bytes)
             if (bitmap == null) {
                 failed.add(url)
             } else {
                 trim()
-                images[url] = bitmap
+                images[url] = RemoteImage(bitmap, mimeType)
             }
         } catch (e: Exception) {
             failed.add(url)
@@ -91,14 +100,35 @@ object RemoteImages {
         return bitmap.asImageBitmap()
     }
 
-    private fun fetch(url: String): ByteArray? = when {
-        url.startsWith("data:", true) -> decodeDataUri(url)
+    private fun fetch(url: String): Pair<ByteArray, String>? = when {
+        url.startsWith("data:", true) -> decodeDataUri(url)?.let { it to dataUriMime(url) }
         url.startsWith("http://", true) || url.startsWith("https://", true) -> fetchHttp(url)
         url.startsWith("file:", true) -> runCatching {
             val file = File(URI(url))
-            if (file.isFile && file.length() <= MAX_BYTES) file.readBytes() else null
+            if (file.isFile && file.length() <= MAX_BYTES) {
+                file.readBytes() to guessMime(url)
+            } else {
+                null
+            }
         }.getOrNull()
         else -> null
+    }
+
+    private fun dataUriMime(uri: String): String {
+        val comma = uri.indexOf(',')
+        if (comma <= 5) return "image/png"
+        return uri.substring(5, comma).substringBefore(';').ifBlank { "image/png" }
+    }
+
+    private fun guessMime(url: String): String {
+        val path = url.substringBefore('?').lowercase()
+        return when {
+            path.endsWith(".jpg") || path.endsWith(".jpeg") -> "image/jpeg"
+            path.endsWith(".webp") -> "image/webp"
+            path.endsWith(".gif") -> "image/gif"
+            path.endsWith(".bmp") -> "image/bmp"
+            else -> "image/png"
+        }
     }
 
     private fun decodeDataUri(uri: String): ByteArray? {
@@ -112,7 +142,7 @@ object RemoteImages {
         return runCatching { Base64.decode(payload, Base64.DEFAULT) }.getOrNull()
     }
 
-    private fun fetchHttp(url: String): ByteArray? {
+    private fun fetchHttp(url: String): Pair<ByteArray, String>? {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 8_000
             readTimeout = 12_000
@@ -121,7 +151,9 @@ object RemoteImages {
         }
         try {
             if (connection.responseCode !in 200..299) return null
-            if (!connection.contentType.orEmpty().startsWith("image/")) return null
+            val contentType = connection.contentType.orEmpty()
+            if (!contentType.startsWith("image/")) return null
+            val mimeType = contentType.substringBefore(';').ifBlank { guessMime(url) }
             connection.inputStream.use { stream ->
                 val out = ByteArrayOutputStream()
                 val buffer = ByteArray(16 * 1024)
@@ -133,7 +165,7 @@ object RemoteImages {
                     if (total > MAX_BYTES) return null
                     out.write(buffer, 0, read)
                 }
-                return out.toByteArray()
+                return out.toByteArray() to mimeType
             }
         } finally {
             connection.disconnect()

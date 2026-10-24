@@ -507,6 +507,11 @@ fun PigApp(vm: AppViewModel) {
         )
     }
     ui.pending?.let { PendingDialog(it, vm) }
+    // One full-screen image viewer for transcript and Markdown pictures.
+    ImageViewerHost { image ->
+        vm.saveChatImage(image.bitmap, image.mimeType)
+        ImageViewer.close()
+    }
     ModelPickerDialog(vm)
     if (ui.setup) SetupDialog(ui, vm)
 }

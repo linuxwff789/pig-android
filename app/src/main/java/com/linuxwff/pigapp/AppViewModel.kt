@@ -7,8 +7,12 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.content.Intent
+import android.content.ContentValues
 import android.graphics.Bitmap
+import android.os.Build
+import android.os.Environment
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
@@ -17,6 +21,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -874,6 +879,66 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearAttachments() {
         ui = ui.copy(attachments = emptyList())
+    }
+
+    /**
+     * Save a picture the viewer is showing. Q+ goes through MediaStore, which
+     * needs no storage permission and makes it appear in the gallery under
+     * Pictures/Pig. Older releases fall back to the app's external Pictures
+     * directory (no WRITE_EXTERNAL_STORAGE prompt).
+     */
+    fun saveChatImage(image: ImageBitmap, mimeType: String) {
+        viewModelScope.launch {
+            val location = withContext(Dispatchers.IO) {
+                runCatching { writeImage(image, mimeType) }.getOrNull()
+            }
+            ui = ui.copy(
+                toast = if (location != null) {
+                    str("toast.imageSaved", "已保存到 {path}").replace("{path}", location)
+                } else {
+                    str("toast.imageSaveFailed", "图片保存失败")
+                },
+            )
+        }
+    }
+
+    private fun writeImage(image: ImageBitmap, mimeType: String): String {
+        val bitmap = image.asAndroidBitmap()
+        val jpeg = mimeType.contains("jpeg", true) || mimeType.contains("jpg", true)
+        val format = if (jpeg) Bitmap.CompressFormat.JPEG else Bitmap.CompressFormat.PNG
+        val name = "pig-" + System.currentTimeMillis() + if (jpeg) ".jpg" else ".png"
+        val app = getApplication<Application>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, name)
+                put(MediaStore.Images.Media.MIME_TYPE, if (jpeg) "image/jpeg" else "image/png")
+                put(
+                    MediaStore.Images.Media.RELATIVE_PATH,
+                    Environment.DIRECTORY_PICTURES + "/Pig",
+                )
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+            val resolver = app.contentResolver
+            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                ?: error("MediaStore insert failed")
+            try {
+                resolver.openOutputStream(uri)?.use { out ->
+                    bitmap.compress(format, 95, out)
+                } ?: error("MediaStore open failed")
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            } catch (e: Exception) {
+                runCatching { resolver.delete(uri, null, null) }
+                throw e
+            }
+            return "Pictures/Pig/$name"
+        }
+        val dir = File(app.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "Pig")
+        dir.mkdirs()
+        val file = File(dir, name)
+        file.outputStream().use { out -> bitmap.compress(format, 95, out) }
+        return file.absolutePath
     }
 
     /** Downscale + recompress a picked image so the prompt and session stay small. */

@@ -276,9 +276,10 @@ next model call provides a fresh usage value.
 | `dialog.*` | extension confirm/input/select dialogs |
 | `relay.*`, `error.*` | launcher errors, connection errors, pack errors |
 | `notification.*` | foreground-service notification (best-effort: the service may start before a pack is loaded, then falls back) |
-| `a11y.*` | menu/stop/reconnect/copy/close/window-close labels, plus `image`, `attachImage`, `removeImage` |
+| `a11y.*` | menu/stop/reconnect/copy/close/window-close labels, plus `image`, `attachImage`, `removeImage`, `saveImage` |
 | `chat.imagesOmitted` | placeholder for image blocks skipped by the size/count caps (`{n}`) |
 | `toast.imageLimit`, `toast.imageUnreadable`, `toast.modelNoImages` | composer image feedback |
+| `toast.imageSaved`, `toast.imageSaveFailed` | viewer save feedback (`{path}`) |
 | `brand.emoji` | avatar glyph (default 🐷) |
 | `skin.title`, `toast.skinChanged` | skin switcher heading / confirmation |
 | `pack.*` | pack manager dialog, built-in/local rows, import buttons |

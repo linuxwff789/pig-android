@@ -227,8 +227,11 @@ relay forwards them untouched. The app renders them in both directions:
 - **Agent → app.** Tool output keeps its images: `read` on a picture,
   screenshot tools, MCP servers and image models all return an `image` block
   next to their text. It shows inside the tool card (every mode, including
-  summary), and an assistant message can carry image blocks too. Tap a picture
-  for a full-screen viewer (pinch to zoom, double-tap to reset).
+  summary), and an assistant message can carry image blocks too. Tap any
+  picture — transcript block or Markdown `![…](…)` — for a full-screen viewer
+  (pinch to zoom, drag to pan, double-tap to reset). The viewer's save button
+  writes it to `Pictures/Pig` through MediaStore (no storage permission on
+  Android 10+; older releases use the app's external Pictures directory).
 - **App → agent.** The composer's image button opens the system photo picker
   (no storage permission). Picked pictures are downscaled to a 1568 px long
   edge and recompressed (JPEG, or PNG when the source has alpha) before they
