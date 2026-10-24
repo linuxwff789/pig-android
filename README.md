@@ -60,7 +60,9 @@ usage statistics, performance work). See [Release build](#release-build).
 - New sessions start instantly when possible: the relay keeps one prewarmed
   `pig --mode rpc` spare, so `new_session` can hand over a ready process instead
   of rebuilding the runtime in front of you (also the first prompt when no
-  session is open yet).
+  session is open yet). Tapping 新会话 opens the empty conversation right away
+  with a 正在新建对话 banner; whatever you type meanwhile is queued in the app and
+  sent as soon as pig reports the new session.
 - Settings is a resizable dialog whose sizes come from the UI pack
   (`layout/chat.json` → `settings`, presets + `defaultSize`); a pack can also pin
   one fixed size. It also has a custom auto-compaction threshold (presets
