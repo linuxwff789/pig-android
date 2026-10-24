@@ -85,14 +85,42 @@ object RelayLauncher {
      */
     fun launch(context: Context, port: Int, token: String, cwd: String): String? {
         acquireTermuxWakeLock(context)
+        return runRelay(context, relayCommand(port, token, cwd))
+    }
+
+    /**
+     * Replaces the relay on [port]. The relay only reads `--token` at startup,
+     * so a stale process (older install, hand-run relay) answers every
+     * handshake with `auth failed: bad token` no matter what we send. Only
+     * called after a bad-token rejection, where the running relay is useless
+     * to us anyway.
+     */
+    fun restart(context: Context, port: Int, token: String, cwd: String): String? {
+        acquireTermuxWakeLock(context)
+        // The bracket in the pattern keeps pkill from matching this very
+        // shell, whose command line also contains the literal string.
+        val kill = "pkill -f \"pig-rela[y] --port $port\" >/dev/null 2>&1; sleep 0.5; "
+        return runRelay(context, kill + relayCommand(port, token, cwd))
+    }
+
+    private fun relayCommand(port: Int, token: String, cwd: String): String =
+        "exec \"$RELAY_BIN\" --port $port --token $token --cwd ${shellQuote(cwd)}"
+
+    private fun shellQuote(value: String): String =
+        "'" + value.replace("'", "'\\''") + "'"
+
+    private fun runRelay(context: Context, command: String): String? {
+        if (!hasPermission(context)) {
+            return AppViewModel.packString("relay.noPermission", "没有 Termux RUN_COMMAND 权限")
+        }
+        if (!isTermuxInstalled(context)) {
+            return AppViewModel.packString("relay.termuxMissing", "Termux 未安装")
+        }
         val intent = Intent().apply {
             setClassName(TERMUX_PKG, "com.termux.app.RunCommandService")
             action = "com.termux.RUN_COMMAND"
-            putExtra("com.termux.RUN_COMMAND_PATH", RELAY_BIN)
-            putExtra(
-                "com.termux.RUN_COMMAND_ARGUMENTS",
-                arrayOf("--port", port.toString(), "--token", token, "--cwd", cwd),
-            )
+            putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/sh")
+            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-c", command))
             putExtra("com.termux.RUN_COMMAND_WORKDIR", cwd)
             putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
         }

@@ -32,8 +32,15 @@ import java.net.Socket
 class RelayClient(
     private val host: String,
     private val port: Int,
-    private val token: String,
+    token: String,
 ) {
+    /**
+     * Shared secret for `relay_auth`. Mutable because an app-data restore can
+     * leave the in-memory copy behind the one stored in prefs; the ViewModel
+     * swaps it and reconnects instead of showing a dead relay.
+     */
+    @Volatile
+    var token: String = token
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var socket: Socket? = null
     private var writer: BufferedWriter? = null

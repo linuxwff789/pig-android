@@ -41,9 +41,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val notifications by lazy { SessionNotifications(getApplication()) }
 
     val port: Int = prefs.getInt("port", 8791)
-    val token: String = prefs.getString("token", null) ?: newToken().also {
+    var token: String = prefs.getString("token", null) ?: newToken().also {
         prefs.edit().putString("token", it).apply()
     }
+        private set
     val cwd: String = prefs.getString("cwd", null) ?: "/data/data/com.termux/files/home"
 
     private val client = RelayClient("127.0.0.1", port, token)
@@ -192,6 +193,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
             return
         }
+        // Uninstall + data restore replaces the prefs file while this process
+        // keeps the token it generated at startup. Prefs is the durable copy
+        // and also what the relay was launched with, so adopt it first.
+        syncTokenFromPrefs()
         val launchError = RelayLauncher.launch(ctx, port, token, cwd)
         if (launchError != null) {
             ui = ui.copy(
@@ -279,6 +284,54 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 delay(1_000)
             }
         }
+    }
+
+    /**
+     * App-data restore (uninstall + restore, adb backup) can swap the prefs
+     * file under a running process, leaving [token] stale. Prefs is the copy
+     * the relay was launched with, so adopt it before reconnecting.
+     */
+    private fun syncTokenFromPrefs() {
+        val stored = prefs.getString("token", null)?.takeIf { it.isNotBlank() } ?: return
+        if (stored == token) return
+        token = stored
+        client.token = stored
+    }
+
+    private var lastTokenRecoveryAt = 0L
+
+    /**
+     * `auth failed: bad token` means the relay listening on our port was
+     * started with another secret (hand-run relay, or one left over from
+     * before a reinstall). Try the copy on disk first; if that is already what
+     * we sent, replace the relay process with one using our token.
+     */
+    private fun recoverFromBadToken() {
+        val now = System.currentTimeMillis()
+        if (now - lastTokenRecoveryAt < 10_000) return
+        lastTokenRecoveryAt = now
+        val before = token
+        syncTokenFromPrefs()
+        if (token != before) {
+            ui = ui.copy(error = null, setup = false, setupHint = null)
+            client.close()
+            client.connect()
+            return
+        }
+        val ctx = getApplication<Application>()
+        val error = RelayLauncher.restart(ctx, port, token, cwd)
+        if (error != null) {
+            ui = ui.copy(
+                error = str("error.relayBadToken", "relay token 不一致，且无法重启 relay：{error}")
+                    .replace("{error}", error),
+                setup = true,
+                setupHint = error,
+            )
+            return
+        }
+        ui = ui.copy(error = null, setup = false, setupHint = null)
+        client.close()
+        client.connect()
     }
 
     private fun savedSession(): String? =
@@ -2139,7 +2192,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             "relay_error" -> {
                 val message = event.optString("message", "relay error")
-                if (ui.notifyError && !message.startsWith("unknown relay frame")) {
+                // A bad token is recovered silently below; don't notify.
+                if (ui.notifyError && !message.startsWith("unknown relay frame") &&
+                    !message.contains("bad token")
+                ) {
                     notifySession(
                         SessionNotifications.Kind.ERROR,
                         str("notification.error", "出错了") + " · " + sessionLabel(),
@@ -2160,6 +2216,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     // Older relay: the pin stays display-only; say so once, in
                     // the transcript.
                     appendNotice(str("toast.contextWindowLocalOnly", "relay 版本过旧，上下文长度仅在本机生效"))
+                } else if (message.contains("bad token")) {
+                    recoverFromBadToken()
                 } else {
                     ui = ui.copy(error = message, setup = true, setupHint = message)
                 }
