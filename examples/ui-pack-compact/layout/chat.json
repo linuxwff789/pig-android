@@ -151,24 +151,16 @@
           },
           {
             "type": "text",
-            "text": "·",
-            "style": "mono",
-            "color": "onSurfaceVariant"
-          },
-          {
-            "type": "cache"
-          },
-          {
-            "type": "text",
-            "text": "·",
-            "style": "mono",
-            "color": "onSurfaceVariant"
+            "bind": "stats",
+            "format": "· {cacheHitRate}%",
+            "text": "· —",
+            "style": "mono"
           },
           {
             "type": "text",
             "bind": "state",
-            "format": "{thinkingLevel}",
-            "text": "—",
+            "format": "· {thinkingLevel}",
+            "text": "· —",
             "style": "mono",
             "color": "secondary",
             "action": "header:model"
