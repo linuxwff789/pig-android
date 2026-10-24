@@ -101,6 +101,18 @@ does nothing, paste the two lines into Termux manually.
 
 See [docs/install.md](docs/install.md) for the manual route and troubleshooting.
 
+The running relay keeps its old code after the files are replaced. Rerun the
+script (or copy the new `pig-relay` into `$PREFIX/bin`) and then use
+**设置 → 连接 → 重启 relay**; the app restarts the process and reconnects. The
+new relay also prewarms one `pig --mode rpc` spare, which is why the first new
+session after that is instant.
+
+## Update the app
+
+**设置 → 关于 → 检查更新** compares the installed version with the latest GitHub
+release. The APK updates by installing the new `app-release.apk` over the old
+one (same signing key).
+
 ## Build the relay
 
 ```bash
