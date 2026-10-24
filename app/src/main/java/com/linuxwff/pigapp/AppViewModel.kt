@@ -1218,8 +1218,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         // First prompt in a fresh app process with no session yet: honour the
-        // pinned default model before the turn starts.
-        if (ui.sessionId.isBlank() && !ui.busy && ui.defaultModel.isNotBlank()) {
+        // pinned default model before the turn starts. A restored transcript
+        // keeps the model its session was using.
+        if (ui.sessionId.isBlank() && !ui.busy && ui.defaultModel.isNotBlank() &&
+            savedSession() == null
+        ) {
             applyDefaultModel()
         }
         val wasBusy = ui.busy
