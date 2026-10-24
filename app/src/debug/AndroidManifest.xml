@@ -11,6 +11,7 @@
                 <action android:name="com.linuxwff.pigapp.DEBUG_ABORT" />
                 <action android:name="com.linuxwff.pigapp.DEBUG_ATTACH" />
                 <action android:name="com.linuxwff.pigapp.DEBUG_ATTACH_CLEAR" />
+                <action android:name="com.linuxwff.pigapp.DEBUG_SAVE_IMAGE" />
                 <action android:name="com.linuxwff.pigapp.DEBUG_STATE" />
                 <action android:name="com.linuxwff.pigapp.DEBUG_ANSWER" />
                 <action android:name="com.linuxwff.pigapp.DEBUG_SWITCH" />

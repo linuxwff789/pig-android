@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
 
 /**
@@ -13,6 +14,7 @@ import java.io.File
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_PROMPT --es text "hello"
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_ATTACH --es path /sdcard/.../pic.png
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_ATTACH_CLEAR
+ *   am broadcast -a com.linuxwff.pigapp.DEBUG_SAVE_IMAGE --es path /data/.../pic.png
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_CONNECT
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_ABORT
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_SWITCH --es path /path/to/session.jsonl
@@ -51,6 +53,16 @@ class DebugReceiver : BroadcastReceiver() {
                 Log.i(TAG, "attach image: $path")
                 if (path.isNotBlank()) {
                     vm.addAttachments(listOf(android.net.Uri.fromFile(File(path))))
+                }
+            }
+            "com.linuxwff.pigapp.DEBUG_SAVE_IMAGE" -> {
+                val path = intent.getStringExtra("path") ?: ""
+                Log.i(TAG, "save image: $path")
+                val bitmap = android.graphics.BitmapFactory.decodeFile(path)
+                if (bitmap == null) {
+                    Log.w(TAG, "save image: cannot decode $path")
+                } else {
+                    vm.saveChatImage(bitmap.asImageBitmap(), "image/png")
                 }
             }
             "com.linuxwff.pigapp.DEBUG_ATTACH_CLEAR" -> {
