@@ -25,7 +25,11 @@ reads). See [Release build](#release-build).
   tables with alignment and inline formatting, links), renders tool cards with
   collapse/summary/expand modes (`write` shows lines/bytes, `edit` shows
   added/removed counts and a colored diff), answers `confirm` / `select` / `input` /
-  `editor` extension dialogs, and shows status updates.
+  `editor` extension dialogs, and shows status updates. Extension dialogs use
+  the pack's theme; their body is selectable and has a copy button (permission
+  prompts carry command-line help). Tapping the chat hides the dialog without
+  answering — the request stays pending and a banner above the composer brings
+  it back.
 - Relay authenticates with a per-install token, forwards pig's RPC frames
   unchanged, lists projects/sessions, and pushes a hot-reloadable UI pack.
 - Session drawer lists recent sessions (`~/.pig/agent/sessions`), switches via

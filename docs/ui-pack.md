@@ -273,7 +273,7 @@ next model call provides a fresh usage value.
 | `settings.*` | settings sheet and about/session info |
 | `commands.*` | built-in slash-command descriptions in the palette |
 | `setup.*` | first-run Termux setup dialog |
-| `dialog.*` | extension confirm/input/select dialogs |
+| `dialog.*` | extension confirm/input/select dialogs (`confirmTitle`, `inputTitle`, `selectTitle`, `allow`, `deny`, `ok`, `cancel`, plus `pendingHidden` with `{title}` and `pendingOpen` for the reopen banner) |
 | `relay.*`, `error.*` | launcher errors, connection errors, pack errors |
 | `notification.*` | foreground-service notification (best-effort: the service may start before a pack is loaded, then falls back) |
 | `a11y.*` | menu/stop/reconnect/copy/close/window-close labels, plus `image`, `attachImage`, `removeImage`, `saveImage` |

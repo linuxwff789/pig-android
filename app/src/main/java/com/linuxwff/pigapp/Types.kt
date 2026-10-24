@@ -312,6 +312,8 @@ data class AppUiState(
     val model: String = "",
     val sessionId: String = "",
     val pending: UiRequest? = null,
+    /** The user tapped the chat to dismiss the dialog; the request still waits. */
+    val pendingHidden: Boolean = false,
     val error: String? = null,
     val toast: String? = null,
     val uiPackHash: String = "",

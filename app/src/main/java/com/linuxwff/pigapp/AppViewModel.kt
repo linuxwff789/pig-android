@@ -1868,6 +1868,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(toast = null)
     }
 
+    /** Hide the dialog without answering: the request stays pending. */
+    fun hidePending() {
+        if (ui.pending != null) ui = ui.copy(pendingHidden = true)
+    }
+
+    fun showPending() {
+        if (ui.pending != null) ui = ui.copy(pendingHidden = false)
+    }
+
     fun answer(value: String? = null, confirmed: Boolean? = null, cancelled: Boolean = false) {
         val pending = ui.pending ?: return
         val response = JSONObject().put("type", "extension_ui_response").put("id", pending.id)
@@ -3446,6 +3455,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         placeholder = event.optString("placeholder", "").takeIf { it.isNotBlank() },
                         prefill = event.optString("prefill", ""),
                     ),
+                    // A new request always surfaces, even after the user hid
+                    // the previous one by tapping the chat.
+                    pendingHidden = false,
                 )
             }
             "notify" -> {

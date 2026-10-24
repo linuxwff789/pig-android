@@ -125,6 +125,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlin.math.roundToInt
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -360,6 +362,9 @@ fun PigApp(vm: AppViewModel) {
                         if (ui.pendingMessages > 0 && components.showPendingBanner) {
                             PendingBanner(ui.pendingMessages)
                         }
+                        if (ui.pending != null && ui.pendingHidden) {
+                            HiddenRequestBanner(ui.pending, vm::showPending)
+                        }
                         Composer(
                             value = draft,
                             onValueChange = { draft = it },
@@ -506,7 +511,7 @@ fun PigApp(vm: AppViewModel) {
             },
         )
     }
-    ui.pending?.let { PendingDialog(it, vm) }
+    ui.pending?.takeIf { !ui.pendingHidden }?.let { PendingDialog(it, vm) }
     // One full-screen image viewer for transcript and Markdown pictures.
     ImageViewerHost { image ->
         vm.saveChatImage(image.bitmap, image.mimeType)
@@ -4137,21 +4142,105 @@ private fun TypingDots(color: Color) {
 }
 
 @Composable
+/**
+ * Extension dialogs (`confirm` / `select` / `input` / `editor`) such as the
+ * permission-system prompt. The body is selectable and copyable because it is
+ * often command-line help. Tapping the chat (the dialog scrim) only hides the
+ * dialog: the request stays pending and the banner above the composer brings
+ * it back, so a stray tap cannot deny a tool call.
+ */
+@Composable
 private fun PendingDialog(request: UiRequest, vm: AppViewModel) {
     var value by remember(request.id) { mutableStateOf(request.prefill) }
+    val scheme = MaterialTheme.colorScheme
+    val theme = packTheme()
+    val toolCard = LocalUiPack.current.layout.toolCard
+    val shape = RoundedCornerShape(theme.cornerRadius.dp)
+    val scroll = rememberScrollState()
+    val copyText = remember(request.title, request.message, request.options) {
+        buildString {
+            append(request.title.ifBlank { request.method })
+            request.message?.takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
+            request.options.forEachIndexed { index, option ->
+                append("\n").append(index + 1).append(". ").append(option)
+            }
+        }
+    }
 
-    AlertDialog(
-        onDismissRequest = { vm.answer(cancelled = true) },
-        shape = RoundedCornerShape(24.dp),
-        containerColor = MaterialTheme.colorScheme.surface,
-        title = { Text(request.title.ifBlank { request.method }) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                request.message?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium)
+    Dialog(
+        onDismissRequest = vm::hidePending,
+        properties = DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+        ),
+    ) {
+        Surface(
+            shape = shape,
+            color = scheme.surface,
+            border = BorderStroke(1.dp, scheme.outline.copy(alpha = 0.35f)),
+            tonalElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                Modifier
+                    .padding(18.dp)
+                    .heightIn(max = 560.dp)
+                    .verticalScroll(scroll),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(toolCard.iconBoxSize.dp)
+                            .clip(RoundedCornerShape(toolCard.iconRadius.dp))
+                            .background(scheme.secondary.copy(alpha = 0.16f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            packIcon("warning", "warning"),
+                            contentDescription = null,
+                            modifier = Modifier.size(toolCard.iconSize.dp),
+                            tint = scheme.secondary,
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        request.title.ifBlank {
+                            when (request.method) {
+                                "select" -> packText("dialog.selectTitle", "请选择")
+                                "input", "editor" -> packText("dialog.inputTitle", "请输入")
+                                else -> packText("dialog.confirmTitle", "确认操作")
+                            }
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = packColor("onSurface"),
+                        modifier = Modifier.weight(1f),
+                    )
+                    CopyButton { vm.copyText(copyText) }
+                }
+                request.message?.takeIf { it.isNotBlank() }?.let { message ->
+                    Spacer(Modifier.height(10.dp))
+                    SelectionContainer {
+                        Text(
+                            message,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = if (looksLikeCommandHelp(message)) {
+                                    packCodeFont()
+                                } else {
+                                    FontFamily.Default
+                                },
+                            ),
+                            color = scheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(scheme.surfaceVariant.copy(alpha = 0.55f))
+                                .padding(10.dp),
+                        )
+                    }
                 }
                 when (request.method) {
                     "select" -> request.options.forEach { option ->
+                        Spacer(Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = { vm.answer(value = option) },
                             modifier = Modifier.fillMaxWidth(),
@@ -4160,49 +4249,113 @@ private fun PendingDialog(request: UiRequest, vm: AppViewModel) {
                             Text(option)
                         }
                     }
-                    "input" -> OutlinedTextField(
-                        value = value,
-                        onValueChange = { value = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text(request.placeholder ?: "") },
-                    )
-                    "editor" -> OutlinedTextField(
-                        value = value,
-                        onValueChange = { value = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 160.dp),
-                        maxLines = 12,
-                    )
-                    else -> Unit
+                    "input" -> {
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedTextField(
+                            value = value,
+                            onValueChange = { value = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text(request.placeholder ?: "") },
+                        )
+                    }
+                    "editor" -> {
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedTextField(
+                            value = value,
+                            onValueChange = { value = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 160.dp),
+                            maxLines = 12,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    when (request.method) {
+                        "select" -> TextButton(onClick = { vm.answer(cancelled = true) }) {
+                            Text(packText("dialog.cancel", "取消"))
+                        }
+                        "confirm" -> {
+                            TextButton(onClick = { vm.answer(confirmed = false) }) {
+                                Text(
+                                    packText("dialog.deny", "拒绝"),
+                                    color = scheme.error,
+                                )
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            TextButton(onClick = { vm.answer(confirmed = true) }) {
+                                Text(packText("dialog.allow", "允许"))
+                            }
+                        }
+                        else -> {
+                            TextButton(onClick = { vm.answer(cancelled = true) }) {
+                                Text(packText("dialog.cancel", "取消"))
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            TextButton(onClick = { vm.answer(value = value) }) {
+                                Text(packText("dialog.ok", "确定"))
+                            }
+                        }
+                    }
                 }
             }
-        },
-        confirmButton = {
-            when (request.method) {
-                "select" -> TextButton(onClick = { vm.answer(cancelled = true) }) {
-                    Text(packText("dialog.cancel", "取消"))
-                }
-                "confirm" -> TextButton(onClick = { vm.answer(confirmed = true) }) {
-                    Text(packText("dialog.allow", "允许"))
-                }
-                else -> TextButton(onClick = { vm.answer(value = value) }) {
-                    Text(packText("dialog.ok", "确定"))
-                }
-            }
-        },
-        dismissButton = {
-            when (request.method) {
-                "confirm" -> TextButton(onClick = { vm.answer(confirmed = false) }) {
-                    Text(packText("dialog.deny", "拒绝"))
-                }
-                "select" -> Unit
-                else -> TextButton(onClick = { vm.answer(cancelled = true) }) {
-                    Text(packText("dialog.cancel", "取消"))
-                }
-            }
-        },
-    )
+        }
+    }
+}
+
+/** Heuristic: show command lines / help in the code font. */
+private fun looksLikeCommandHelp(text: String): Boolean {
+    val lines = text.lineSequence().filter { it.isNotBlank() }.take(8).toList()
+    if (lines.isEmpty()) return false
+    val shellish = lines.count { line ->
+        line.startsWith("$") || line.startsWith("#") || line.startsWith(">") ||
+            line.contains(" --") || line.contains("Usage:") || line.contains("用法:") ||
+            line.startsWith("/") || line.startsWith("- ")
+    }
+    return shellish * 2 >= lines.size
+}
+
+/** The pending request is still waiting after the user tapped the chat. */
+@Composable
+private fun HiddenRequestBanner(request: UiRequest, onOpen: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 3.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(scheme.secondary.copy(alpha = 0.14f))
+            .clickable { onOpen() }
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            packIcon("warning", "warning"),
+            contentDescription = null,
+            modifier = Modifier.size(13.dp),
+            tint = scheme.secondary,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            packText("dialog.pendingHidden", "有待确认的请求")
+                .replace("{title}", request.title.ifBlank { request.method }),
+            style = MaterialTheme.typography.labelSmall,
+            color = scheme.secondary,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            packText("dialog.pendingOpen", "查看"),
+            style = MaterialTheme.typography.labelSmall,
+            color = scheme.primary,
+        )
+    }
 }
 
 @Composable
