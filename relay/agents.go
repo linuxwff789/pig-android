@@ -646,6 +646,55 @@ func (s *session) promoteStandby() *agentProc {
 	return a
 }
 
+// stopEmptyParked stops parked sessions that were never written to disk; they
+// are replaced (or are being replaced) by a newer session. Prompts/drafts for
+// them are gone anyway: there is no file to reopen.
+func (s *session) stopEmptyParked() {
+	s.agentMu.Lock()
+	var stale []*agentProc
+	for path, a := range s.agents {
+		if a == s.active || path == "" || a.isBusy() || sessionHasContent(path) {
+			continue
+		}
+		delete(s.agents, path)
+		stale = append(stale, a)
+	}
+	s.agentMu.Unlock()
+	for _, a := range stale {
+		go s.stopAgent(a)
+	}
+}
+
+// promoteEmptyParked turns a parked session that was never written to disk into
+// the active agent. It is indistinguishable from a freshly started pig (no
+// messages, no file), so `new_session` can reuse it instead of spawning one.
+func (s *session) promoteEmptyParked() *agentProc {
+	s.agentMu.Lock()
+	var toStop *agentProc
+	for path, a := range s.agents {
+		if a == s.active || a.isBusy() || path == "" || sessionHasContent(path) {
+			continue
+		}
+		delete(s.agents, path)
+		a.path = ""
+		s.agents[""] = a
+		old := s.active
+		s.active = a
+		s.activePath = ""
+		if old != nil && old != a && !old.isBusy() && sessionHasContent(old.path) {
+			toStop = old
+		}
+		s.agentMu.Unlock()
+		if toStop != nil {
+			go s.stopAgent(toStop)
+		}
+		s.replayAgent(a)
+		return a
+	}
+	s.agentMu.Unlock()
+	return nil
+}
+
 // dropStandby stops the spare, e.g. when the app disconnects.
 func (s *session) dropStandby() {
 	s.agentMu.Lock()
@@ -659,6 +708,9 @@ func (s *session) dropStandby() {
 
 // switchTo makes path active, reusing a parked agent when it exists. Idle
 // agents of the previous session are stopped; history sessions stay read-only.
+// An agent whose session was never written to disk (a new conversation the user
+// switched away from without sending anything) is parked instead: it is the
+// only copy of that session.
 func (s *session) switchTo(path string) *agentProc {
 	s.agentMu.Lock()
 	old := s.active
@@ -666,10 +718,23 @@ func (s *session) switchTo(path string) *agentProc {
 	s.active = a
 	s.activePath = path
 	s.agentMu.Unlock()
-	if old != nil && old != a && !old.isBusy() {
+	if old != nil && old != a && !old.isBusy() && sessionHasContent(old.path) {
 		s.stopAgent(old)
 	}
 	return a
+}
+
+// sessionHasContent reports whether the session file exists with at least one
+// entry, i.e. whether discarding the agent loses anything.
+func sessionHasContent(path string) bool {
+	if path == "" {
+		return true
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.Size() > 0
 }
 
 func (s *session) replayAgent(a *agentProc) {
@@ -1013,6 +1078,18 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 		// Fast path: a spare process already is a fresh session. Promote it
 		// before replying so the app can ask for state right away.
 		if a := s.promoteStandby(); a != nil {
+			// Unwritten sessions from earlier are superseded by this one.
+			s.stopEmptyParked()
+			_ = s.send(frame{
+				"type": "response", "id": id, "command": "new_session",
+				"success": true, "data": frame{},
+			})
+			go s.maybeWarmStandby()
+			return
+		}
+		// No spare, but a session the user created and never wrote to is just as
+		// empty: reuse its process instead of starting another one.
+		if a := s.promoteEmptyParked(); a != nil {
 			_ = s.send(frame{
 				"type": "response", "id": id, "command": "new_session",
 				"success": true, "data": frame{},
@@ -1122,6 +1199,32 @@ func (s *session) handleClientLine(line []byte) {
 				item["live"] = true
 				item["busy"] = a.isBusy()
 			}
+		}
+		// A session created but not yet written to disk (no message sent) has
+		// no file, so the disk scan cannot see it. List it anyway while its pig
+		// is alive: otherwise switching away loses it completely.
+		known := make(map[string]bool, len(sessions))
+		for _, item := range sessions {
+			if path, ok := item["path"].(string); ok {
+				known[path] = true
+			}
+		}
+		for path, a := range s.agents {
+			if path == "" || known[path] || sessionHasContent(path) {
+				continue
+			}
+			sessions = append([]map[string]any{{
+				"path":    path,
+				"updated": time.Now().UnixMilli(),
+				"size":    0,
+				"id":      "",
+				"cwd":     s.cwd,
+				"name":    "",
+				"preview": "",
+				"live":    true,
+				"busy":    a.isBusy(),
+				"unsaved": true,
+			}}, sessions...)
 		}
 		active := s.activePath
 		s.agentMu.Unlock()

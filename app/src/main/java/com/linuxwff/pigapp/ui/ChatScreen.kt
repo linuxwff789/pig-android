@@ -160,18 +160,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun PigApp(vm: AppViewModel) {
     val ui = vm.ui
-    var draft by rememberSaveable { mutableStateOf("") }
-    // Each session keeps its own composer draft; switching must not carry the
-    // text into another conversation.
-    val drafts = remember { mutableStateMapOf<String, String>() }
-    var draftPath by remember { mutableStateOf(ui.sessionFile) }
-    LaunchedEffect(ui.sessionFile) {
-        if (draftPath != ui.sessionFile) {
-            drafts[draftPath] = draft
-            draft = drafts[ui.sessionFile].orEmpty()
-            draftPath = ui.sessionFile
-        }
-    }
+    // One composer draft per session (kept by the view model, so it survives
+    // session switches and app restarts). A conversation that is still being
+    // created uses a placeholder key until its file exists.
+    val draftKey = vm.draftKey()
+    var draft by remember(draftKey) { mutableStateOf(vm.draftText(draftKey)) }
+    LaunchedEffect(draftKey, draft) { vm.setDraft(draftKey, draft) }
     var showSettings by remember { mutableStateOf(false) }
     var showStats by remember { mutableStateOf(false) }
     var showPackManager by remember { mutableStateOf(false) }
@@ -465,8 +459,12 @@ fun PigApp(vm: AppViewModel) {
     }
 
     ui.pendingSwitch?.let { session ->
-        val title = session.name.ifBlank {
-        session.preview.ifBlank { packText("session.untitled", "未命名会话") }
+        val title = if (session.unsaved) {
+        session.name.ifBlank { packText("session.newUnsaved", "新会话（还没发送）") }
+    } else {
+        session.name.ifBlank {
+            session.preview.ifBlank { packText("session.untitled", "未命名会话") }
+        }
     }
     val components = packComponents()
         AlertDialog(
@@ -2805,6 +2803,7 @@ private fun SessionBadge(session: SessionInfo) {
     val scheme = MaterialTheme.colorScheme
     val (label, color) = when {
         session.busy -> packText("session.busy", "运行中") to scheme.tertiary
+        session.unsaved -> packText("session.unsaved", "未发送") to scheme.primary
         session.live -> packText("session.live", "已打开") to scheme.secondary
         session.visited -> packText("session.visited", "开过") to scheme.onSurfaceVariant
         else -> packText("session.history", "历史") to scheme.onSurfaceVariant.copy(alpha = 0.75f)
@@ -2868,8 +2867,12 @@ private fun SessionRow(
     onRename: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val title = session.name.ifBlank {
-        session.preview.ifBlank { packText("session.untitled", "未命名会话") }
+    val title = if (session.unsaved) {
+        session.name.ifBlank { packText("session.newUnsaved", "新会话（还没发送）") }
+    } else {
+        session.name.ifBlank {
+            session.preview.ifBlank { packText("session.untitled", "未命名会话") }
+        }
     }
     val components = packComponents()
     val scheme = MaterialTheme.colorScheme
@@ -2903,9 +2906,9 @@ private fun SessionRow(
                 color = if (current) scheme.primary else scheme.onSurface,
             )
             val meta = buildList {
-                if (showId) add(session.id.take(8))
+                if (showId && session.id.isNotBlank()) add(session.id.take(8))
                 if (showTime) add(DateUtils.getRelativeTimeSpanString(session.updated).toString())
-                if (components.showSessionSize) add("${session.size / 1024}K")
+                if (components.showSessionSize && !session.unsaved) add("${session.size / 1024}K")
             }.joinToString(" · ")
             if (meta.isNotBlank()) {
                 Text(
@@ -2929,7 +2932,7 @@ private fun SessionRow(
             )
         }
         Box {
-            IconButton(
+            if (!session.unsaved) IconButton(
                 onClick = { menuOpen = true },
                 modifier = Modifier.size(28.dp),
             ) {

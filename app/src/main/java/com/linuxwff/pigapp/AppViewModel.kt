@@ -86,6 +86,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var awaitingNewSession = false
     /** Prompts typed while the new session was still starting, in send order. */
     private val pendingNewSessionPrompts = mutableListOf<JSONObject>()
+    /** Composer text per session, so switching away never loses a draft. */
+    private val drafts = LinkedHashMap<String, String>()
+    private var draftsFlushedAt = 0L
     /** Thinking level to restore once the pending set_model is confirmed. */
     private var pendingThinkingRestore: String? = null
     /** `provider/model` -> last thinking level the user picked for it. */
@@ -154,6 +157,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             settingsSize = prefs.getString("settingsSize", "standard") ?: "standard",
         )
         thinkingByModel = loadThinkingLevels()
+        drafts.putAll(loadDrafts())
         // Upgrades from builds without `packPinned` treated any stored id as a
         // hand-made choice; a fresh install has no `activePackId` at all.
         val pinned = if (prefs.contains("packPinned")) {
@@ -310,6 +314,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Called from Activity.onPause: stop retrying while the app is in the background. */
     fun onBackground() {
         foreground = false
+        saveDrafts(force = true)
         autoReconnectJob?.cancel()
         autoReconnectJob = null
     }
@@ -1896,6 +1901,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // prompts typed into that session belonged to it, not to this one.
         awaitingNewSession = false
         pendingNewSessionPrompts.clear()
+        drafts.remove(pendingDraftKey)
+        saveDrafts(force = true)
         toolPartialRaw.clear()
         ui = ui.copy(
             status = "switching",
@@ -1957,6 +1964,49 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // New sessions always start on the model pinned in the picker. This is
         // sent behind new_session, so pig/relay applies it to the fresh session.
         applyDefaultModel()
+    }
+
+    /** Composer key for the session that is being created but has no file yet. */
+    private val pendingDraftKey = "\u0000pending"
+
+    /** Key the composer should store its text under right now. */
+    fun draftKey(): String = ui.sessionFile.ifBlank {
+        if (awaitingNewSession || ui.status == "starting") pendingDraftKey else ""
+    }
+
+    fun draftText(key: String): String = if (key.isEmpty()) "" else drafts[key].orEmpty()
+
+    fun setDraft(key: String, text: String) {
+        if (key.isEmpty()) return
+        val current = drafts[key].orEmpty()
+        if (current == text) return
+        if (text.isBlank()) drafts.remove(key) else drafts[key] = text
+        while (drafts.size > 30) {
+            drafts.remove(drafts.keys.first())
+        }
+        saveDrafts(force = false)
+    }
+
+    private fun saveDrafts(force: Boolean) {
+        if (!force && System.currentTimeMillis() - draftsFlushedAt < 1500) return
+        draftsFlushedAt = System.currentTimeMillis()
+        if (drafts.isEmpty()) {
+            prefs.edit().remove("drafts").apply()
+            return
+        }
+        prefs.edit().putString("drafts", JSONObject(drafts as Map<*, *>).toString()).apply()
+    }
+
+    private fun loadDrafts(): Map<String, String> {
+        val raw = prefs.getString("drafts", "").orEmpty()
+        if (raw.isBlank()) return emptyMap()
+        val json = runCatching { JSONObject(raw) }.getOrNull() ?: return emptyMap()
+        val out = LinkedHashMap<String, String>()
+        json.keys().forEach { key ->
+            val text = json.optString(key, "")
+            if (key.isNotBlank() && text.isNotBlank()) out[key] = text
+        }
+        return out
     }
 
     /** Send prompts that were typed while the new session was starting. */
@@ -2845,6 +2895,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 if (awaitingNewSession) {
                     awaitingNewSession = false
                     if (!liveActive) currentAssistant = null
+                    // A draft typed into the new conversation now belongs to its
+                    // file, not to the placeholder key.
+                    val pending = drafts.remove(pendingDraftKey)
+                    if (!pending.isNullOrBlank() && sessionFile.isNotBlank()) {
+                        drafts[sessionFile] = pending
+                    }
+                    saveDrafts(force = true)
                     flushPendingPrompts()
                 }
                 var status = ui.status
@@ -3236,6 +3293,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             live = item.optBoolean("live", false),
                             busy = item.optBoolean("busy", false),
                             visited = visited.contains(path),
+                            unsaved = item.optBoolean("unsaved", false),
                         ),
                     )
                 }

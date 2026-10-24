@@ -81,6 +81,8 @@ data class SessionInfo(
     val busy: Boolean = false,
     /** The app has opened this session at least once. */
     val visited: Boolean = false,
+    /** Live session without a file yet: created, nothing sent. */
+    val unsaved: Boolean = false,
 )
 
 data class AppWidget(val key: String, val lines: List<String>, val placement: String)
