@@ -74,6 +74,29 @@
     "inputRadius": 10,
     "buttonIconSize": 18
   },
+  "settings": {
+    "defaultSize": "standard",
+    "sizes": [
+      {
+        "id": "compact",
+        "label": "紧凑",
+        "width": 0.8,
+        "height": 0.64
+      },
+      {
+        "id": "standard",
+        "label": "标准",
+        "width": 0.94,
+        "height": 0.86
+      },
+      {
+        "id": "large",
+        "label": "大",
+        "width": 0.99,
+        "height": 0.96
+      }
+    ]
+  },
   "skinSwitcher": {
     "show": true,
     "placement": "drawer",

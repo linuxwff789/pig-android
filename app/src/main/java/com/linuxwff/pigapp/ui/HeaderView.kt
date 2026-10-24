@@ -466,7 +466,7 @@ private fun statusLabel(status: String): String = when (status) {
     "compacting" -> packText("status.compacting", "压缩中")
     "retrying" -> packText("status.retrying", "重试中")
     "switching" -> packText("status.switching", "切换中")
-    "starting" -> packText("status.starting", "新建会话")
+    "starting" -> packText("status.starting", "正在新建对话…")
     "restoring" -> packText("status.restoring", "恢复中")
     else -> status
 }

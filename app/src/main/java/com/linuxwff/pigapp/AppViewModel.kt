@@ -82,6 +82,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var historyHealTried = false
     private var lastCommandsAt = 0L
     private var modelSwitchAccepted = false
+    /** A `new_session` is in flight; the transcript switches when it settles. */
+    private var awaitingNewSession = false
+    /** Messages on screen when `new_session` was sent. */
+    private var newSessionMessageCount = 0
     /** Thinking level to restore once the pending set_model is confirmed. */
     private var pendingThinkingRestore: String? = null
     /** `provider/model` -> last thinking level the user picked for it. */
@@ -1911,30 +1915,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         restorePending = false
         needsHistory = false
         historyHealTried = false
-        // Clear the transcript immediately. A relay without a prewarmed pig can
-        // take seconds to replace the session; showing the old conversation
-        // until then was the "new session is slow" symptom.
+        // Do not blank the transcript here: a relay without a prewarmed pig
+        // needs seconds to replace the session, and the old conversation is
+        // still the only thing worth reading while the user starts typing.
+        // The banner says what is going on; the transcript switches when
+        // get_state confirms the new session.
+        awaitingNewSession = true
+        newSessionMessageCount = ui.messages.size
         ui = ui.copy(
-            readOnly = false,
             busy = false,
             streamingId = null,
             status = "starting",
             pendingMessages = 0,
-            messages = emptyList(),
-            sessionId = "",
-            sessionFile = "",
-            extensionStatuses = emptyMap(),
             pendingAgentRestart = false,
-            widgets = emptyList(),
-            dismissedWidgets = emptyMap(),
-            contextPercent = null,
-            contextTokens = 0,
-            contextWindowActual = 0,
-            contextCompacted = false,
-            cacheHitRate = null,
-            usage = SessionUsage(),
-            cacheReadTokens = 0,
-            cacheInputTokens = 0,
         )
         client.send(JSONObject().put("type", "new_session"))
         // New sessions always start on the model pinned in the picker. This is
@@ -2423,6 +2416,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 needsHistory = true
                 historyHealTried = false
                 restartInFlight = false
+                // A reconnect settles whatever was pending; the new-session
+                // hint must not outlive the connection that showed it.
+                awaitingNewSession = false
                 clearLive()
                 ui = ui.copy(streamingId = null, pendingMessages = 0)
                 pendingToolPartials.clear()
@@ -2674,7 +2670,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             if (command == "new_session") {
+                // The replacement failed: drop the hint and keep what is shown.
                 ui = ui.copy(status = "")
+                awaitingNewSession = false
             }
             if (command == "switch_session" && restorePending) {
                 // The remembered session was deleted; fall back to a fresh one.
@@ -2747,32 +2745,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 desiredSessionPath = null
                 restorePending = false
             }
+            // The old transcript stays on screen (with the "starting" banner)
+            // until get_state describes the session that replaced it; switching
+            // history is a file read, so it can be cleared right away.
+            val switchingToFile = command == "switch_session"
             ui = ui.copy(
-                messages = emptyList(),
-                // Keep the spinner until get_state confirms the replacement;
-                // clearing it here leaves a silent gap while pig starts.
-                status = if (ui.status == "starting" || ui.status == "switching") {
+                messages = if (switchingToFile) emptyList() else ui.messages,
+                status = if (switchingToFile || ui.status == "starting" ||
+                    ui.status == "switching"
+                ) {
                     ui.status
                 } else {
                     ""
                 },
                 streamingId = null,
                 pendingMessages = 0,
-                contextPercent = null,
-                contextTokens = 0,
-                contextWindowActual = 0,
-                contextCompacted = false,
-                cacheHitRate = null,
-                usage = SessionUsage(),
-                cacheReadTokens = 0,
-                cacheInputTokens = 0,
+                contextPercent = if (switchingToFile) null else ui.contextPercent,
+                contextTokens = if (switchingToFile) 0 else ui.contextTokens,
+                contextWindowActual = if (switchingToFile) 0 else ui.contextWindowActual,
+                contextCompacted = if (switchingToFile) false else ui.contextCompacted,
+                cacheHitRate = if (switchingToFile) null else ui.cacheHitRate,
+                usage = if (switchingToFile) SessionUsage() else ui.usage,
+                cacheReadTokens = if (switchingToFile) 0 else ui.cacheReadTokens,
+                cacheInputTokens = if (switchingToFile) 0 else ui.cacheInputTokens,
             )
             clearLive()
             pendingToolPartials.clear()
-            needsHistory = false
             historyHealTried = false
+            needsHistory = false
             requestState()
-            requestMessages()
+            if (switchingToFile) requestMessages()
             requestStats()
             requestSessions()
             refreshDataSources("session_switch")
@@ -2796,7 +2798,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val switched = sessionId.isNotBlank() &&
                     ui.sessionId.isNotBlank() &&
                     sessionId != ui.sessionId
-                if (switched) currentAssistant = null
+                if (switched && !liveActive) currentAssistant = null
+                // The reply to the get_state issued after new_session describes
+                // the replacement. Drop the old transcript now but keep messages
+                // the user already typed into the new session; they are the last
+                // ones appended locally.
+                val settledNewSession = awaitingNewSession
+                val kept = if (settledNewSession) {
+                    ui.messages.drop(newSessionMessageCount.coerceAtMost(ui.messages.size))
+                } else {
+                    ui.messages
+                }
+                if (settledNewSession) {
+                    awaitingNewSession = false
+                    if (!liveActive) currentAssistant = null
+                    ui = ui.copy(
+                        messages = kept,
+                        extensionStatuses = emptyMap(),
+                        widgets = emptyList(),
+                        dismissedWidgets = emptyMap(),
+                        readOnly = !live,
+                        pendingAgentRestart = false,
+                        pendingMessages = 0,
+                        contextPercent = null,
+                        contextTokens = 0,
+                        contextWindowActual = 0,
+                        contextCompacted = false,
+                        cacheHitRate = null,
+                        usage = SessionUsage(),
+                        cacheReadTokens = 0,
+                        cacheInputTokens = 0,
+                    )
+                }
                 var status = ui.status
                 var toast = ui.toast
                 if (status == "starting" || status == "switching") status = ""
@@ -2861,7 +2894,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     sessionFile = sessionFile,
                     busy = streaming,
                     readOnly = !live,
-                    messages = if (switched) emptyList() else ui.messages,
+                    // A settled new session already filtered the transcript
+                    // down to what the user typed into it.
+                    messages = if (settledNewSession) {
+                        ui.messages
+                    } else if (switched) {
+                        emptyList()
+                    } else {
+                        ui.messages
+                    },
                     contextWindow = effectiveContextWindow(
                         model?.optInt("contextWindow", ui.contextWindow) ?: ui.contextWindow,
                         label,
