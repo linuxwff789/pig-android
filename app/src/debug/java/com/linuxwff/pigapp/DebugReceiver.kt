@@ -11,6 +11,7 @@ import java.io.File
  *
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_STATE
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_PROMPT --es text "hello"
+ *   am broadcast -a com.linuxwff.pigapp.DEBUG_ATTACH --es path /sdcard/.../pic.png
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_CONNECT
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_ABORT
  *   am broadcast -a com.linuxwff.pigapp.DEBUG_SWITCH --es path /path/to/session.jsonl
@@ -43,6 +44,13 @@ class DebugReceiver : BroadcastReceiver() {
                 val text = intent.getStringExtra("text") ?: ""
                 Log.i(TAG, "prompt: $text")
                 vm.sendPrompt(text)
+            }
+            "com.linuxwff.pigapp.DEBUG_ATTACH" -> {
+                val path = intent.getStringExtra("path") ?: ""
+                Log.i(TAG, "attach image: $path")
+                if (path.isNotBlank()) {
+                    vm.addAttachments(listOf(android.net.Uri.fromFile(File(path))))
+                }
             }
             "com.linuxwff.pigapp.DEBUG_ABORT" -> vm.abort()
             "com.linuxwff.pigapp.DEBUG_SWITCH_CONFIRM" -> vm.confirmSwitch()
