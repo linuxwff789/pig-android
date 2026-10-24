@@ -27,6 +27,15 @@ jobs:
         with:
           go-version: "stable"
 
+      - name: Check bundled packs are in sync
+        run: |
+          sh scripts/sync-bundled-packs.sh
+          if [ -n "$(git status --porcelain -- app/src/main/assets)" ]; then
+            echo "app/src/main/assets is stale; run scripts/sync-bundled-packs.sh and commit" >&2
+            git --no-pager diff --stat -- app/src/main/assets >&2
+            exit 1
+          fi
+
       - name: Build relay (android/arm64)
         run: |
           cd relay
