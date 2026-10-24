@@ -85,7 +85,7 @@ object RelayLauncher {
      */
     fun launch(context: Context, port: Int, token: String, cwd: String): String? {
         acquireTermuxWakeLock(context)
-        return runRelay(context, relayCommand(port, token, cwd))
+        return runRelay(context, cwd, relayCommand(port, token, cwd))
     }
 
     /**
@@ -100,7 +100,7 @@ object RelayLauncher {
         // The bracket in the pattern keeps pkill from matching this very
         // shell, whose command line also contains the literal string.
         val kill = "pkill -f \"pig-rela[y] --port $port\" >/dev/null 2>&1; sleep 0.5; "
-        return runRelay(context, kill + relayCommand(port, token, cwd))
+        return runRelay(context, cwd, kill + relayCommand(port, token, cwd))
     }
 
     private fun relayCommand(port: Int, token: String, cwd: String): String =
@@ -109,7 +109,7 @@ object RelayLauncher {
     private fun shellQuote(value: String): String =
         "'" + value.replace("'", "'\\''") + "'"
 
-    private fun runRelay(context: Context, command: String): String? {
+    private fun runRelay(context: Context, cwd: String, command: String): String? {
         if (!hasPermission(context)) {
             return AppViewModel.packString("relay.noPermission", "没有 Termux RUN_COMMAND 权限")
         }
