@@ -181,18 +181,20 @@ func onAgentEnd(ctx sdk.Context, data map[string]any) (any, error) {
 		ctx.Notify("计划已生成。/plan go 开始执行，/plan off 退出计划模式。", "info")
 		return nil, nil
 	}
-	choice, ok, err := ctx.Select(
+	choiceValue, ok, err := ctx.Select(
 		fmt.Sprintf("计划已生成（%d 步），接下来？", len(steps)),
 		[]string{"执行计划", "留在计划模式", "细化计划"},
 	)
 	if err != nil || !ok {
 		return nil, nil
 	}
+	choice, _ := choiceValue.(string)
 	switch {
 	case strings.HasPrefix(choice, "执行"):
 		startExecution(ctx)
 	case strings.HasPrefix(choice, "细化"):
-		refinement, submitted, err := ctx.Editor("补充计划要求", "")
+		refinementValue, submitted, err := ctx.Editor("补充计划要求", "")
+		refinement, _ := refinementValue.(string)
 		if err == nil && submitted && strings.TrimSpace(refinement) != "" {
 			_ = ctx.SendMessage(
 				"plan-refine",
