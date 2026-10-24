@@ -95,8 +95,89 @@
     "buttonIconSize": 13
   },
   "header": {
-    "height": 42,
+    "show": true,
+    "height": 0,
     "paddingH": 10,
-    "paddingV": 2
+    "paddingV": 3,
+    "background": "gradient",
+    "gradientAlpha": 0.1,
+    "divider": true,
+    "rows": [
+      {
+        "spacing": 6,
+        "align": "start",
+        "elements": [
+          {
+            "type": "icon",
+            "icon": "menu",
+            "size": 20,
+            "action": "header:menu",
+            "color": "onSurface"
+          },
+          {
+            "type": "text",
+            "bind": "state.model",
+            "format": "{id}",
+            "text": "—",
+            "action": "header:model",
+            "style": "mono",
+            "color": "onSurface",
+            "weight": 1.0
+          },
+          {
+            "type": "icon",
+            "icon": "chevronDown",
+            "size": 12,
+            "action": "header:model"
+          },
+          {
+            "type": "spacer"
+          },
+          {
+            "type": "icon",
+            "icon": "refresh",
+            "size": 18,
+            "action": "header:reconnect",
+            "when": "offline"
+          }
+        ]
+      },
+      {
+        "spacing": 5,
+        "align": "start",
+        "elements": [
+          {
+            "type": "usage"
+          },
+          {
+            "type": "text",
+            "text": "·",
+            "style": "mono",
+            "color": "onSurfaceVariant"
+          },
+          {
+            "type": "cache"
+          },
+          {
+            "type": "text",
+            "text": "·",
+            "style": "mono",
+            "color": "onSurfaceVariant"
+          },
+          {
+            "type": "text",
+            "bind": "state",
+            "format": "{thinkingLevel}",
+            "text": "—",
+            "style": "mono",
+            "color": "secondary",
+            "action": "header:model"
+          },
+          {
+            "type": "spacer"
+          }
+        ]
+      }
+    ]
   }
 }
