@@ -3536,9 +3536,16 @@ private fun packColor(name: String): Color = when (name) {
     "secondary" -> MaterialTheme.colorScheme.secondary
     "tertiary" -> MaterialTheme.colorScheme.tertiary
     "onSurface" -> MaterialTheme.colorScheme.onSurface
+    "onSurfaceVariant" -> MaterialTheme.colorScheme.onSurfaceVariant
+    "onPrimary" -> MaterialTheme.colorScheme.onPrimary
+    "surface" -> MaterialTheme.colorScheme.surface
+    "surfaceVariant" -> MaterialTheme.colorScheme.surfaceVariant
+    "background" -> MaterialTheme.colorScheme.background
+    "outline" -> MaterialTheme.colorScheme.outline
     "error" -> MaterialTheme.colorScheme.error
     "success" -> MaterialTheme.colorScheme.tertiary
     "warning" -> MaterialTheme.colorScheme.secondary
+    "none", "transparent" -> Color.Transparent
     else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
@@ -4479,6 +4486,17 @@ private fun Composer(
         if (layout.composerFontSize > 0) base.copy(fontSize = layout.composerFontSize.sp) else base
     }.copy(color = packColor(layout.composerTextColor))
     val buttonIconSize = (layout.composerButtonIconSize.takeIf { it > 0 } ?: 21).dp
+    val attachIconSize = layout.composerAttachIconSize.takeIf { it > 0 }?.dp ?: buttonIconSize
+    val attachTint = packColor(layout.composerAttachTint)
+    val attachBackground = packColor(layout.composerAttachBackground)
+        .copy(alpha = layout.composerAttachBackgroundAlpha)
+    val inputSurface = packColor(layout.composerInputSurface)
+    val cursorColor = packColor(layout.composerCursorColor)
+    val sendTint = packColor(layout.composerSendTint)
+    val sendBackground = packColor(layout.composerSendBackground)
+    val stopTint = packColor(layout.composerStopTint)
+    val stopBackground = packColor(layout.composerStopBackground)
+        .copy(alpha = layout.composerStopBackgroundAlpha)
     val placeholderColor = when (layout.composerPlaceholderColor) {
         "primary" -> scheme.primary
         "secondary" -> scheme.secondary
@@ -4511,6 +4529,9 @@ private fun Composer(
                 AttachmentStrip(
                     images = attachments,
                     onRemove = onRemoveAttachment,
+                    thumbSize = layout.composerThumbSize.dp,
+                    thumbRadius = layout.composerThumbRadius.dp,
+                    gap = layout.composerThumbGap.dp,
                     modifier = Modifier
                         .padding(bottom = 6.dp)
                         .horizontalScroll(rememberScrollState()),
@@ -4521,17 +4542,18 @@ private fun Composer(
                     Modifier
                         .size(buttonSize)
                         .clip(CircleShape)
+                        .background(attachBackground)
                         .clickable(enabled = connected) { onPickImages() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         packIcon("image", "image"),
                         contentDescription = packText("a11y.attachImage", "添加图片"),
-                        modifier = Modifier.size(buttonIconSize),
-                        tint = scheme.onSurfaceVariant,
+                        modifier = Modifier.size(attachIconSize),
+                        tint = attachTint,
                     )
                 }
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(layout.composerAttachGap.dp))
                 OutlinedTextField(
                     value = value,
                     onValueChange = onValueChange,
@@ -4559,7 +4581,7 @@ private fun Composer(
                                     base
                                 }
                             },
-                            color = placeholderColor.copy(alpha = 0.75f),
+                            color = placeholderColor.copy(alpha = layout.composerPlaceholderAlpha),
                         )
                     },
                     maxLines = layout.composerMaxLines,
@@ -4569,9 +4591,9 @@ private fun Composer(
                             alpha = (layout.composerInputBorderAlpha + 0.2f).coerceAtMost(1f),
                         ),
                         unfocusedBorderColor = scheme.outline.copy(alpha = layout.composerInputBorderAlpha),
-                        focusedContainerColor = scheme.surfaceVariant.copy(alpha = layout.composerInputAlpha),
-                        unfocusedContainerColor = scheme.surfaceVariant.copy(alpha = layout.composerInputAlpha),
-                        cursorColor = scheme.primary,
+                        focusedContainerColor = inputSurface.copy(alpha = layout.composerInputAlpha),
+                        unfocusedContainerColor = inputSurface.copy(alpha = layout.composerInputAlpha),
+                        cursorColor = cursorColor,
                     ),
                     keyboardOptions = KeyboardOptions(
                         imeAction = if (layout.sendOnEnter) ImeAction.Send else ImeAction.Default,
@@ -4586,7 +4608,7 @@ private fun Composer(
                         Modifier
                             .size(buttonSize)
                             .clip(CircleShape)
-                            .background(scheme.error.copy(alpha = 0.16f))
+                            .background(stopBackground)
                             .clickable { onStop() },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -4594,7 +4616,7 @@ private fun Composer(
                             packIcon("stop", "stop"),
                             contentDescription = packText("a11y.stop", "停止"),
                             modifier = Modifier.size(buttonIconSize),
-                            tint = scheme.error,
+                            tint = stopTint,
                         )
                     }
                     if (canSend) {
@@ -4602,9 +4624,20 @@ private fun Composer(
                         Box(
                             Modifier
                                 .size(buttonSize)
-                                .shadow(8.dp, CircleShape, ambientColor = scheme.primary, spotColor = scheme.primary)
+                                .shadow(
+                                    layout.composerSendGlow.dp,
+                                    CircleShape,
+                                    ambientColor = scheme.primary,
+                                    spotColor = scheme.primary,
+                                )
                                 .clip(CircleShape)
-                                .background(brandBrush())
+                                .then(
+                                    if (layout.composerSendStyle == "solid") {
+                                        Modifier.background(sendBackground)
+                                    } else {
+                                        Modifier.background(brandBrush())
+                                    },
+                                )
                                 .pointerInput(onSteer, onFollowUp) {
                                     detectTapGestures(
                                         onTap = { onSteer() },
@@ -4617,7 +4650,7 @@ private fun Composer(
                                 packIcon("send", "send"),
                                 contentDescription = packText("a11y.steer", "插队"),
                                 modifier = Modifier.size(buttonIconSize),
-                                tint = MaterialTheme.colorScheme.onPrimary,
+                                tint = sendTint,
                             )
                         }
                     }
@@ -4626,14 +4659,25 @@ private fun Composer(
                         Modifier
                             .size(buttonSize)
                             .then(
-                                if (canSend) {
-                                    Modifier.shadow(8.dp, CircleShape, ambientColor = scheme.primary, spotColor = scheme.primary)
+                                if (canSend && layout.composerSendGlow > 0) {
+                                    Modifier.shadow(
+                                        layout.composerSendGlow.dp,
+                                        CircleShape,
+                                        ambientColor = scheme.primary,
+                                        spotColor = scheme.primary,
+                                    )
                                 } else {
                                     Modifier
                                 },
                             )
                             .clip(CircleShape)
-                            .background(if (canSend) brandBrush() else SolidColor(scheme.surfaceVariant))
+                            .background(
+                                when {
+                                    !canSend -> SolidColor(scheme.surfaceVariant)
+                                    layout.composerSendStyle == "solid" -> SolidColor(sendBackground)
+                                    else -> brandBrush()
+                                },
+                            )
                             .clickable(enabled = canSend) { onSubmit() },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -4641,7 +4685,7 @@ private fun Composer(
                             packIcon("send", "send"),
                             contentDescription = packText("a11y.send", "发送"),
                             modifier = Modifier.size(buttonIconSize),
-                            tint = if (canSend) MaterialTheme.colorScheme.onPrimary else scheme.onSurfaceVariant,
+                            tint = if (canSend) sendTint else scheme.onSurfaceVariant,
                         )
                     }
                 }

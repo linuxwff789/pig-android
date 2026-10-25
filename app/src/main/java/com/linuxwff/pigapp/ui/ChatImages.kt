@@ -114,21 +114,24 @@ fun AttachmentStrip(
     images: List<PendingImage>,
     onRemove: (String) -> Unit,
     modifier: Modifier = Modifier,
+    thumbSize: Dp = 56.dp,
+    thumbRadius: Dp = 10.dp,
+    gap: Dp = 6.dp,
 ) {
     if (images.isEmpty()) return
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(gap),
     ) {
         images.forEach { image ->
-            Box(Modifier.size(56.dp)) {
+            Box(Modifier.size(thumbSize)) {
                 Image(
                     bitmap = image.bitmap,
                     contentDescription = packText("a11y.image", "图片"),
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(10.dp)),
+                        .size(thumbSize)
+                        .clip(RoundedCornerShape(thumbRadius)),
                 )
                 Box(
                     modifier = Modifier

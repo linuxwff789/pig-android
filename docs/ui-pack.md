@@ -543,9 +543,32 @@ removed through `drawer.modules`.
 | `elevation` | -1 | composer shadow; `-1` = theme composerElevation |
 | `surfaceAlpha` | 1 | composer surface opacity |
 | `buttonIconSize` | 0 | send/stop icon size; `0` = 21dp |
+| `attachTint` | `onSurfaceVariant` | colour token for the attach (image) button |
+| `attachBackground` | `none` | disc behind it; `none` or a colour token |
+| `attachBackgroundAlpha` | 1 | 0–1 |
+| `attachGap` | 4 | dp between the attach button and the input, 0–24 |
+| `attachIconSize` | 0 | `0` = `buttonIconSize`; 0–48 |
+| `inputSurface` | `surfaceVariant` | colour token behind the input text |
+| `cursorColor` | `primary` | caret token |
+| `placeholderAlpha` | 0.75 | 0–1 |
+| `sendStyle` | `brand` | `brand` keeps the primary→tertiary gradient, `solid` paints one token |
+| `sendTint` | `onPrimary` | send icon tint |
+| `sendBackground` | `primary` | token used when `sendStyle` is `solid` |
+| `sendGlow` | 8 | dp of coloured shadow behind the send disc, 0–24 |
+| `stopBackground` | `error` | token behind the stop disc |
+| `stopBackgroundAlpha` | 0.16 | 0–1 |
+| `stopTint` | `error` | stop icon tint |
+| `thumbSize` | 56 | pending-image thumbnail dp, 24–96 |
+| `thumbRadius` | 10 | thumbnail corner radius, 0–40 |
+| `thumbGap` | 6 | dp between thumbnails, 0–24 |
 
 `composer.placeholderColor`: `onSurfaceVariant` (default),
 `primary`, `secondary`, `tertiary`, `text`, `error`.
+
+Every `*Color`, `*Tint` and `*Background` above takes a colour token:
+`primary`, `secondary`, `tertiary`, `onPrimary`, `onSurface`,
+`onSurfaceVariant`, `surface`, `surfaceVariant`, `background`, `outline`,
+`error`, `success`, `warning`, and `none` (transparent).
 
 ### Chat bubbles (`chat.bubble`)
 
@@ -975,7 +998,12 @@ still the source of the built-in pack and of hot reloads.
   "composer": {
     "placeholder": "给 Pig 发消息…",
     "maxLines": 6,
-    "sendOnEnter": true
+    "sendOnEnter": true,
+    "attachTint": "primary", "attachGap": 6,
+    "inputSurface": "surface", "cursorColor": "tertiary",
+    "sendStyle": "solid", "sendBackground": "primary", "sendGlow": 0,
+    "stopBackground": "warning", "stopBackgroundAlpha": 0.24,
+    "thumbSize": 64, "thumbRadius": 14, "thumbGap": 8
   },
   "settings": {
     "defaultSize": "standard",

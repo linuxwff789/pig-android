@@ -162,6 +162,28 @@ data class UiLayout(
     val composerElevation: Int = -1,
     val composerSurfaceAlpha: Float = 1f,
     val composerButtonIconSize: Int = 0,
+    /** Attach button and the gap before the input. */
+    val composerAttachTint: String = "onSurfaceVariant",
+    val composerAttachBackground: String = "none",
+    val composerAttachBackgroundAlpha: Float = 1f,
+    val composerAttachGap: Int = 4,
+    val composerAttachIconSize: Int = 0,
+    /** Input well colour, caret and placeholder. */
+    val composerInputSurface: String = "surfaceVariant",
+    val composerCursorColor: String = "primary",
+    val composerPlaceholderAlpha: Float = 0.75f,
+    /** Send/stop discs: `brand` keeps the gradient, `solid` paints one token. */
+    val composerSendStyle: String = "brand",
+    val composerSendTint: String = "onPrimary",
+    val composerSendBackground: String = "primary",
+    val composerSendGlow: Int = 8,
+    val composerStopBackground: String = "error",
+    val composerStopBackgroundAlpha: Float = 0.16f,
+    val composerStopTint: String = "error",
+    /** Pending-image strip. */
+    val composerThumbSize: Int = 56,
+    val composerThumbRadius: Int = 10,
+    val composerThumbGap: Int = 6,
     /** Chat transcript appearance. */
     val chatPaddingH: Int = 14,
     val chatPaddingV: Int = 10,
@@ -516,6 +538,51 @@ object UiPackParser {
             ) ?: d.composerSurfaceAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
             composerButtonIconSize = (composer?.optInt("buttonIconSize", d.composerButtonIconSize)
                 ?: d.composerButtonIconSize).coerceIn(0, 32),
+            composerAttachTint = composer?.optString("attachTint", d.composerAttachTint)
+                ?.takeIf { it.isNotBlank() } ?: d.composerAttachTint,
+            composerAttachBackground = composer?.optString(
+                "attachBackground",
+                d.composerAttachBackground,
+            )?.takeIf { it.isNotBlank() } ?: d.composerAttachBackground,
+            composerAttachBackgroundAlpha = (composer?.optDouble(
+                "attachBackgroundAlpha", d.composerAttachBackgroundAlpha.toDouble(),
+            ) ?: d.composerAttachBackgroundAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
+            composerAttachGap = (composer?.optInt("attachGap", d.composerAttachGap)
+                ?: d.composerAttachGap).coerceIn(0, 24),
+            composerAttachIconSize = (composer?.optInt("attachIconSize", d.composerAttachIconSize)
+                ?: d.composerAttachIconSize).coerceIn(0, 48),
+            composerInputSurface = composer?.optString("inputSurface", d.composerInputSurface)
+                ?.takeIf { it.isNotBlank() } ?: d.composerInputSurface,
+            composerCursorColor = composer?.optString("cursorColor", d.composerCursorColor)
+                ?.takeIf { it.isNotBlank() } ?: d.composerCursorColor,
+            composerPlaceholderAlpha = (composer?.optDouble(
+                "placeholderAlpha", d.composerPlaceholderAlpha.toDouble(),
+            ) ?: d.composerPlaceholderAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
+            composerSendStyle = composer?.optString("sendStyle", d.composerSendStyle)
+                ?.takeIf { it == "brand" || it == "solid" } ?: d.composerSendStyle,
+            composerSendTint = composer?.optString("sendTint", d.composerSendTint)
+                ?.takeIf { it.isNotBlank() } ?: d.composerSendTint,
+            composerSendBackground = composer?.optString(
+                "sendBackground",
+                d.composerSendBackground,
+            )?.takeIf { it.isNotBlank() } ?: d.composerSendBackground,
+            composerSendGlow = (composer?.optInt("sendGlow", d.composerSendGlow)
+                ?: d.composerSendGlow).coerceIn(0, 24),
+            composerStopBackground = composer?.optString(
+                "stopBackground",
+                d.composerStopBackground,
+            )?.takeIf { it.isNotBlank() } ?: d.composerStopBackground,
+            composerStopBackgroundAlpha = (composer?.optDouble(
+                "stopBackgroundAlpha", d.composerStopBackgroundAlpha.toDouble(),
+            ) ?: d.composerStopBackgroundAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
+            composerStopTint = composer?.optString("stopTint", d.composerStopTint)
+                ?.takeIf { it.isNotBlank() } ?: d.composerStopTint,
+            composerThumbSize = (composer?.optInt("thumbSize", d.composerThumbSize)
+                ?: d.composerThumbSize).coerceIn(24, 96),
+            composerThumbRadius = (composer?.optInt("thumbRadius", d.composerThumbRadius)
+                ?: d.composerThumbRadius).coerceIn(0, 40),
+            composerThumbGap = (composer?.optInt("thumbGap", d.composerThumbGap)
+                ?: d.composerThumbGap).coerceIn(0, 24),
             chatPaddingH = (chat?.optInt("paddingH", d.chatPaddingH) ?: d.chatPaddingH)
                 .coerceIn(0, 64),
             chatPaddingV = (chat?.optInt("paddingV", d.chatPaddingV) ?: d.chatPaddingV)
