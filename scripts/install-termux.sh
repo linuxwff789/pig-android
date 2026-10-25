@@ -128,6 +128,29 @@ fi
 
 mkdir -p "$HOME/.pig/android-ui/theme" "$HOME/.pig/android-ui/layout" "$HOME/.pig/android-ui/windows"
 
+# pig compiles the pigkit extensions from Go sources on every start. With a
+# broken toolchain it refuses to run at all, and every extension command
+# (/provider-ui, /endpoints, /plan ...) disappears. Say so here instead of
+# leaving the app with a backend that only knows the built-ins.
+if command -v pig >/dev/null 2>&1; then
+    say "checking that pig loads its extensions"
+    if command -v timeout >/dev/null 2>&1; then
+        probe=$(printf '%s\n' '{"id":1,"type":"get_extensions"}' |
+            timeout 300 pig --mode rpc 2>&1 || true)
+    else
+        probe=$(printf '%s\n' '{"id":1,"type":"get_extensions"}' |
+            pig --mode rpc 2>&1 || true)
+    fi
+    case "$probe" in
+        *'"success":true'*) say "extensions load" ;;
+        *)
+            printf '!! pig could not start with its extensions. Until this is\n'
+            printf '!! fixed the app has no /provider-ui, /endpoints or /plan.\n'
+            printf '%s\n' "$probe" | tail -6
+            ;;
+    esac
+fi
+
 printf '\npig:   %s\nrelay: %s (%s)\n' \
     "$(command -v pig || echo "$PREFIX/bin/pig")" "$RELAY" "$(relay_version)"
 printf 'Open Termux once so allow-external-apps takes effect, then return to Pig and press retry.\n'

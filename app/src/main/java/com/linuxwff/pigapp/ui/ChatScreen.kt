@@ -785,10 +785,38 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
     val command = RelayLauncher.installCommand(context)
     val termuxInstalled = RelayLauncher.isTermuxInstalled(context)
     val permitted = RelayLauncher.hasPermission(context)
+    val scheme = MaterialTheme.colorScheme
+    // Termux works in its own sandbox: the only progress the app can honestly
+    // show is time-based staging plus the moment the relay answers.
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(ui.installRunning) {
+        while (ui.installRunning) {
+            now = System.currentTimeMillis()
+            delay(1000)
+        }
+    }
+    val elapsed = if (ui.installRunning && ui.installStartedAt > 0) {
+        ((now - ui.installStartedAt) / 1000).coerceAtLeast(0)
+    } else {
+        0
+    }
+    val stage = when {
+        elapsed < 45 -> packText("setup.stageStart", "正在下载安装脚本（会先换国内源）")
+        elapsed < 150 -> packText("setup.stagePig", "正在安装 pig")
+        elapsed < 360 -> packText(
+            "setup.stageGo",
+            "正在安装 Go 并构建扩展（最慢的一步，约 100MB）",
+        )
+        elapsed < 720 -> packText("setup.stageLong", "还在构建扩展；Termux 窗口里能看到实时日志")
+        else -> packText(
+            "setup.stageStuck",
+            "超过 12 分钟还没连上：去 Termux 看看是不是报错了，可以点「重试」。",
+        )
+    }
     PackAlertDialog(
         onDismissRequest = vm::dismissSetup,
         shape = RoundedCornerShape(24.dp),
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = scheme.surface,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 BrandAvatar(30.dp)
@@ -798,6 +826,33 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (ui.installRunning) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = scheme.primary,
+                        trackColor = scheme.surfaceVariant,
+                    )
+                    Text(
+                        packText("setup.installElapsed", "安装中 · 已 {seconds}s").replace(
+                            "{seconds}",
+                            elapsed.toString(),
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        stage,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                    Text(
+                        packText(
+                            "setup.installAutoConnect",
+                            "装好后这里会自动连上，不用再点重试。",
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                }
                 Text(
                     packText("setup.intro", "Pig App 只是前端：pig 和 pig-relay 要装在 Termux 里。"),
                     style = MaterialTheme.typography.bodyMedium,
@@ -816,19 +871,22 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
                     )
                 } else {
                     Text(
-                        packText("setup.runStep", "1. 在 Termux 里运行："),
+                        packText("setup.stepCopy", "1. 点「复制命令」"),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
-                        packText("setup.pkgHint", "（第一次用 Termux 可能要先等 pkg 初始化）"),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        packText("setup.stepPaste", "2. 点「打开 Termux」，粘贴并回车"),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        packText("setup.stepWait", "3. 装完回到这里，会自动连接"),
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                 }
                 Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    color = scheme.surfaceVariant.copy(alpha = 0.6f),
                     shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                    border = BorderStroke(1.dp, scheme.outline.copy(alpha = 0.5f)),
                 ) {
                     SelectionContainer {
                         Text(
@@ -839,27 +897,29 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
                         )
                     }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (termuxInstalled) {
+                        TextButton(onClick = vm::copyInstallCommandAndOpen) {
+                            Text(packText("setup.copyAndOpen", "复制命令并打开 Termux"))
+                        }
+                        TextButton(onClick = vm::openTermux) {
+                            Text(packText("setup.openTermux", "打开 Termux"))
+                        }
+                    }
+                }
                 Text(
                     packText(
                         "setup.scriptHint",
-                        "脚本会启用 allow-external-apps、安装 pig 和 pig-relay；装完打开一次 Termux。",
+                        "脚本会开启 allow-external-apps、安装 pig 和 pig-relay。全新 Termux 必须先手动跑一次，之后才能一键安装。",
                     ),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    packText(
-                        "setup.oneClickHint",
-                        "「一键安装」只在 allow-external-apps 已开启时可用；没反应就手动跑上面的命令。",
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = scheme.onSurfaceVariant,
                 )
                 ui.setupHint?.let {
                     Text(
                         it,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
+                        color = scheme.error,
                     )
                 }
             }
@@ -879,11 +939,6 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
         },
         dismissButton = {
             Row {
-                TextButton(onClick = {
-                    val clipboard =
-                        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("Pig install", command))
-                }) { Text(packText("setup.copyCommand", "复制命令")) }
                 TextButton(onClick = {
                     vm.dismissSetup()
                     vm.reconnect()

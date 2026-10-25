@@ -204,6 +204,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 handle(event)
             }
         }
+        // Termux reports the fate of every RUN_COMMAND through the PendingIntent
+        // RelayLauncher attaches; a policy violation (fresh install, no
+        // allow-external-apps) must surface instead of silently doing nothing.
+        viewModelScope.launch {
+            RunCommandFeedback.outcomes.collect { handleRunCommandOutcome(it) }
+        }
         // Loopback TCP has no keepalive: after the phone sleeps or the process
         // is frozen the socket can look alive while the relay is gone. Ping
         // periodically and drop the connection when the pongs stop.
@@ -238,6 +244,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // keeps the token it generated at startup. Prefs is the durable copy
         // and also what the relay was launched with, so adopt it first.
         syncTokenFromPrefs()
+        if (runBlockedByTermux) {
+            // Every attempt would be refused before exec and Termux posts a
+            // notification for each one; wait for the user (or onForeground).
+            ui = ui.copy(
+                connected = false,
+                setup = true,
+                setupHint = str(
+                    "setup.blockedHint",
+                    "Termux 的 allow-external-apps 还没开启，后台命令会被拒绝。" +
+                        "点「复制命令」→「打开 Termux」→ 粘贴回车；装好回到这里会自动连接。",
+                ),
+            )
+            return
+        }
         val launchError = RelayLauncher.launch(ctx, port, token, cwd)
         if (launchError != null) {
             ui = ui.copy(
@@ -257,7 +277,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // so the fresh relay can bind.
             repeat(3) {
                 delay(1500)
-                if (!client.connected.value) {
+                if (!client.connected.value && !runBlockedByTermux) {
                     RelayLauncher.launch(ctx, port, token, cwd)
                 }
             }
@@ -297,6 +317,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Called from Activity.onResume: resume the relay/session after a lock or process freeze. */
     fun onForeground() {
         foreground = true
+        // Coming back from Termux is the moment the user could have enabled
+        // allow-external-apps, so allow one more launch attempt.
+        runBlockedByTermux = false
         notifications.clear()
         if (liveActive) {
             val id = currentAssistant
@@ -345,6 +368,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             while (foreground && !client.connected.value) {
                 val ctx = getApplication<Application>()
                 if (!RelayLauncher.hasPermission(ctx)) break
+                if (runBlockedByTermux) break
                 if (!client.isConnecting) connect()
                 val now = System.currentTimeMillis()
                 if (now >= nextLaunch) {
@@ -371,6 +395,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private var lastTokenRecoveryAt = 0L
+    /** Set when Termux refused RUN_COMMAND; stops the retry loop from spamming it. */
+    private var runBlockedByTermux = false
+    private var warnedMissingExtensions = ""
+
+    private fun isCommandRegistered(command: String): Boolean {
+        val name = command.trim().removePrefix("/").substringBefore(' ').trim()
+        if (name.isEmpty()) return false
+        return ui.commands.any { it.name == name }
+    }
+
+    /**
+     * `pig install` failures are only a one-line warning in pig's own stderr
+     * ("Could not install: …"), after which the backend runs with built-ins
+     * only. Say it in the app, once per set of missing commands.
+     */
+    private fun warnMissingExtensions(missing: List<String>) {
+        val key = missing.joinToString(",")
+        if (key == warnedMissingExtensions) return
+        warnedMissingExtensions = key
+        val text = str(
+            "error.extensionsMissing",
+            "pig 的扩展没加载：{commands} 不可用。在 Termux 里运行 pig update" +
+                "（缺 Go 先 pkg install golang），然后重启 relay。",
+        ).replace("{commands}", missing.joinToString(" ") { "/$it" })
+        ui = ui.copy(error = text, toast = text)
+    }
 
     /**
      * `auth failed: bad token` means the relay listening on our port was
@@ -489,17 +539,111 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun reconnect() {
+        // An explicit retry, so lift the "Termux refused RUN_COMMAND" latch: the
+        // user may have just enabled allow-external-apps in Termux.
+        runBlockedByTermux = false
         client.close()
         connect()
     }
 
     fun bootstrap() {
         val error = RelayLauncher.bootstrap(getApplication(), cwd)
+        runBlockedByTermux = false
         ui = ui.copy(
             setup = error == null,
             setupHint = error,
-            toast = error ?: str("toast.setupStarted", "已在 Termux 里开始安装，完成后点「重试」"),
+            installRunning = error == null,
+            installStartedAt = if (error == null) System.currentTimeMillis() else ui.installStartedAt,
+            toast = error ?: str("toast.setupStarted", "已在 Termux 里开始安装，完成前可以先看上面的进度"),
         )
+    }
+
+    /**
+     * Fresh installs cannot use RUN_COMMAND at all, so the dialog hands the
+     * install command to the user instead: copy here, paste in Termux. The
+     * staged progress starts right away and ends when the relay answers.
+     */
+    fun copyInstallCommand() {
+        val ctx = getApplication<Application>()
+        val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(
+            ClipData.newPlainText("Pig install", RelayLauncher.installCommand(ctx)),
+        )
+        ui = ui.copy(
+            installRunning = true,
+            installStartedAt = System.currentTimeMillis(),
+            setupHint = null,
+            toast = str("toast.installCopied", "命令已复制：在 Termux 里粘贴并回车"),
+        )
+    }
+
+    /** Copy the install one-liner, then bring Termux up so it is one paste away. */
+    fun copyInstallCommandAndOpen() {
+        copyInstallCommand()
+        openTermux()
+    }
+
+    /**
+     * Termux's answer to a RUN_COMMAND. The only actionable failure on a fresh
+     * install is `allow-external-apps=false`: Termux refuses before exec, so the
+     * app used to keep retrying without ever telling the user why.
+     */
+    private fun handleRunCommandOutcome(outcome: RunCommandOutcome) {
+        if (outcome.blockedByTermux) {
+            runBlockedByTermux = true
+            autoReconnectJob?.cancel()
+            autoReconnectJob = null
+            ui = ui.copy(
+                connected = false,
+                installRunning = false,
+                setup = true,
+                error = str(
+                    "error.externalAppsBlocked",
+                    "Termux 拦截了后台命令：需要先在 Termux 里执行一次安装命令",
+                ),
+                setupHint = str(
+                    "setup.blockedHint",
+                    "Termux 的 allow-external-apps 还没开启，后台命令会被拒绝。" +
+                        "点「复制命令」→「打开 Termux」→ 粘贴回车；装好回到这里会自动连接。",
+                ),
+            )
+            return
+        }
+        when (outcome.kind) {
+            RunCommandReceiver.KIND_BOOTSTRAP -> {
+                if (outcome.failed) {
+                    ui = ui.copy(
+                        installRunning = false,
+                        setup = true,
+                        setupHint = outcome.summary().ifBlank {
+                            str("setup.installFailed", "安装命令失败，请到 Termux 里看输出")
+                        },
+                    )
+                } else {
+                    ui = ui.copy(
+                        installRunning = false,
+                        toast = str("toast.installDone", "Termux 安装完成，正在连接…"),
+                    )
+                    reconnect()
+                }
+            }
+            RunCommandReceiver.KIND_RELAY, RunCommandReceiver.KIND_RESTART -> {
+                // While the installer is still running the binary legitimately
+                // does not exist yet: keep the progress bar, not an error.
+                if (outcome.missingBinary && !ui.installRunning) {
+                    ui = ui.copy(
+                        installRunning = false,
+                        setup = true,
+                        setupHint = str(
+                            "setup.relayMissing",
+                            "Termux 里还没有 pig-relay：先跑一次安装命令。",
+                        ),
+                    )
+                }
+                // Any other failure here is expected while the install is still
+                // running; the dialog already explains what to do.
+            }
+        }
     }
 
     fun dismissSetup() {
@@ -1873,8 +2017,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Refresh built-ins + extension commands; throttled unless forced. */
-    fun refreshCommands(force: Boolean = false) {
-        val now = System.currentTimeMillis()
+    fun refreshCommands(force: Boolean = false) {        val now = System.currentTimeMillis()
         if (!force && now - lastCommandsAt < 2_000) return
         lastCommandsAt = now
         client.send(JSONObject().put("id", "commands-${nextId++}").put("type", "get_commands"))
@@ -2335,6 +2478,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     ui = ui.copy(toast = str("toast.extMissingCommand", "ext 动作缺少命令名"))
                     return
                 }
+                // Sending an unregistered slash command makes pig treat it as a
+                // chat message; say what is actually wrong instead.
+                if (!isCommandRegistered(command)) {
+                    warnMissingExtensions(listOf(command.substringBefore(' ')))
+                    return
+                }
                 val payload = formPayload(windowId)
                 val message = if (payload == null) "/$command" else "/$command $payload"
                 client.send(
@@ -2381,8 +2530,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(windows = ui.windows + cached)
     }
 
-    fun openNavItem(item: NavItem) {
-        if (item.action.startsWith("pack:")) {
+    fun openNavItem(item: NavItem) {        if (item.action.startsWith("pack:")) {
             runPackAction(item.action.removePrefix("pack:"), null)
             refreshDataSources("window_open")
             return
@@ -2401,6 +2549,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     toast = str("toast.notConnectedRefresh", "未连接 relay，无法刷新 {label}")
                         .replace("{label}", item.label),
                 )
+                return
+            }
+            if (!isCommandRegistered(item.command)) {
+                warnMissingExtensions(listOf(item.command.substringBefore(' ')))
                 return
             }
             client.send(
@@ -2672,7 +2824,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun handle(event: JSONObject) {
         when (val type = event.optString("type")) {
             "relay_hello" -> {
-                ui = ui.copy(error = null, setup = false, setupHint = null)
+                ui = ui.copy(error = null, setup = false, setupHint = null, installRunning = false)
+                warnedMissingExtensions = ""
                 lastPongAt = System.currentTimeMillis()
                 restoreChecked = false
                 restorePending = false
@@ -3411,6 +3564,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }.distinctBy { it.name }
                 ui = ui.copy(commands = list)
+                // The UI pack's own buttons (nav.json, windows) call extension
+                // commands. pig degrades to built-ins silently when its packages
+                // cannot be installed, and then "/provider-ui" is sent as a
+                // chat message (pig answers "No API key found").
+                val missing = ui.uiPack.nav
+                    .map { it.command.substringBefore(' ').trim() }
+                    .filter { it.isNotBlank() && list.none { c -> c.name == it } }
+                    .distinct()
+                if (missing.isNotEmpty()) warnMissingExtensions(missing)
             }
             "get_available_models" -> {
                 val array = data.optJSONArray("models")

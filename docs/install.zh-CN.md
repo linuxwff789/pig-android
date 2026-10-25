@@ -35,9 +35,13 @@ curl -fsSL https://github.com/linuxwff789/pig-android/releases/download/v1.1.27/
 
 它还会在 `~/.termux/termux.properties` 中启用 Termux 的外部命令开关（保留 `.bak-pig` 备份），并运行 `termux-reload-settings`。**打开一次 Termux App** 让该属性生效，授予 Pig App `com.termux.permission.RUN_COMMAND` 权限，然后按重试。
 
+最后它用 RPC 模式启动一次 `pig` 并请求扩展列表：工具链装不上、扩展编译不出来时会当场报出来，而不是过一阵变成「App 里只有内置命令」。
+
 ### 为什么不直接用 App 内的按钮？
 
-`allow-external-apps=false` 时 `RUN_COMMAND` 本身会被拦截。在干净的 Termux 上，用户不打开该开关，App 就无法运行安装脚本，因此设置对话框会给出那一行命令供你粘贴到 Termux。开关打开并且 Termux 被打开过一次后，一键安装即可使用。
+`allow-external-apps=false` 时 `RUN_COMMAND` 本身会被拦截。在干净的 Termux 上，用户不打开该开关，App 就无法运行安装脚本，因此设置对话框会给出那一行命令供你粘贴到 Termux，并带 **复制命令** 和 **打开 Termux** 两个按钮；安装期间对话框显示分阶段进度（实时输出在 Termux 窗口里，relay 一答上就自动切到已连接）。
+
+App 现在会读 Termux 对每条 `RUN_COMMAND` 回传的结果：被 `allow-external-apps` 拦截、或者 `pig-relay` 还不存在，都会立刻给出对应提示，而不是看起来什么都没发生。开关打开并且 Termux 被打开过一次后，一键安装即可使用。
 
 ## 手动安装
 

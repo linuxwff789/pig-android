@@ -46,12 +46,23 @@ It also enables Termux's external-command switch in
 `termux-reload-settings`. **Open the Termux app once** so the property takes
 effect, grant the Pig app `com.termux.permission.RUN_COMMAND`, and press retry.
 
+Finally it starts `pig` once through the RPC mode and asks for its extension
+list, so a toolchain that cannot build the extensions is reported here instead
+of showing up later as "the app only has built-in commands".
+
 ### Why not just the in-app button?
 
 `RUN_COMMAND` itself is blocked while `allow-external-apps=false`. On a clean
 Termux the app cannot run the installer until the user enables that switch, so
-the setup dialog gives you the one line to paste into Termux. Once the switch
-is on and Termux has been opened once, 一键安装 works.
+the setup dialog gives you the one line to paste into Termux: it has
+**复制命令** and **打开 Termux** buttons, and while the install runs it shows a
+staged progress line (Termux's output is in its own window; the dialog switches
+to connected on its own when the relay answers).
+
+The app now reads the result Termux sends back for every `RUN_COMMAND`, so a
+refused command (`allow-external-apps` off) or a missing `pig-relay` shows up
+immediately with that hint, instead of looking like a request that did nothing.
+Once the switch is on and Termux has been opened once, 一键安装 works.
 
 ## Manual
 

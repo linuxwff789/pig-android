@@ -476,6 +476,10 @@ data class AppUiState(
     val assetCount: Int = 0,
     val setup: Boolean = false,
     val setupHint: String? = null,
+    /** The Termux-side installer is (meant to be) running: show staged progress. */
+    val installRunning: Boolean = false,
+    /** Wall clock of the last install start; drives the elapsed/progress text. */
+    val installStartedAt: Long = 0L,
     val wakeLock: Boolean = true,
     val keepAlive: Boolean = true,
     /** Glow behind per-message avatars; off by default for cheaper drawing. */

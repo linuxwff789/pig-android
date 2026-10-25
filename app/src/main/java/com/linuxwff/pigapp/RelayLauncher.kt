@@ -1,10 +1,12 @@
 package com.linuxwff.pigapp
 
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
@@ -61,30 +63,15 @@ object RelayLauncher {
         runCatching { context.packageManager.getPackageInfo(TERMUX_PKG, 0) }.isSuccess
 
     /** Runs the one-line Termux installer (pig + pig-relay + UI dirs). */
-    fun bootstrap(context: Context, cwd: String): String? {
-        if (!hasPermission(context)) {
-            return AppViewModel.packString("relay.noPermission", "没有 Termux RUN_COMMAND 权限")
-        }
-        if (!isTermuxInstalled(context)) {
-            return AppViewModel.packString("relay.termuxMissing", "Termux 未安装")
-        }
-        val command = installCommand(context)
-        val intent = Intent().apply {
-            setClassName(TERMUX_PKG, "com.termux.app.RunCommandService")
-            action = "com.termux.RUN_COMMAND"
-            putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/sh")
-            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-c", command))
-            putExtra("com.termux.RUN_COMMAND_WORKDIR", cwd)
-            putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
-        }
-        return runCatching {
-            context.startService(intent)
-            null
-        }.getOrElse {
-            AppViewModel.packString("relay.launchFailed", "无法启动安装命令: {error}")
-                .replace("{error}", it.message ?: "")
-        }
-    }
+    fun bootstrap(context: Context, cwd: String): String? =
+        runCommand(
+            context = context,
+            cwd = cwd,
+            command = installCommand(context),
+            kind = RunCommandReceiver.KIND_BOOTSTRAP,
+            requestCode = RunCommandReceiver.REQUEST_BOOTSTRAP,
+            label = "Pig install",
+        )
 
     fun openTermux(context: Context): Boolean = runCatching {
         context.startActivity(
@@ -121,7 +108,14 @@ object RelayLauncher {
      */
     fun launch(context: Context, port: Int, token: String, cwd: String): String? {
         acquireTermuxWakeLock(context)
-        return runRelay(context, cwd, relayCommand(port, token, cwd))
+        return runCommand(
+            context = context,
+            cwd = cwd,
+            command = relayCommand(port, token, cwd),
+            kind = RunCommandReceiver.KIND_RELAY,
+            requestCode = RunCommandReceiver.REQUEST_RELAY,
+            label = "pig-relay",
+        )
     }
 
     /**
@@ -136,7 +130,14 @@ object RelayLauncher {
         // The bracket in the pattern keeps pkill from matching this very
         // shell, whose command line also contains the literal string.
         val kill = "pkill -f \"pig-rela[y] --port $port\" >/dev/null 2>&1; sleep 0.5; "
-        return runRelay(context, cwd, kill + relayCommand(port, token, cwd))
+        return runCommand(
+            context = context,
+            cwd = cwd,
+            command = kill + relayCommand(port, token, cwd),
+            kind = RunCommandReceiver.KIND_RESTART,
+            requestCode = RunCommandReceiver.REQUEST_RESTART,
+            label = "pig-relay restart",
+        )
     }
 
     private fun relayCommand(port: Int, token: String, cwd: String): String =
@@ -145,7 +146,30 @@ object RelayLauncher {
     private fun shellQuote(value: String): String =
         "'" + value.replace("'", "'\\''") + "'"
 
-    private fun runRelay(context: Context, cwd: String, command: String): String? {
+    /**
+     * The PendingIntent Termux answers through. It must be `FLAG_MUTABLE` on
+     * Android 12+: Termux fills the result bundle into the intent it sends, and
+     * an immutable PendingIntent silently drops those extras.
+     */
+    private fun resultPendingIntent(context: Context, kind: String, requestCode: Int): PendingIntent {
+        val intent = Intent(context, RunCommandReceiver::class.java)
+            .setAction(RunCommandReceiver.ACTION_RESULT)
+            .putExtra(RunCommandReceiver.EXTRA_KIND, kind)
+        var flags = PendingIntent.FLAG_UPDATE_CURRENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            flags = flags or PendingIntent.FLAG_MUTABLE
+        }
+        return PendingIntent.getBroadcast(context, requestCode, intent, flags)
+    }
+
+    private fun runCommand(
+        context: Context,
+        cwd: String,
+        command: String,
+        kind: String,
+        requestCode: Int,
+        label: String,
+    ): String? {
         if (!hasPermission(context)) {
             return AppViewModel.packString("relay.noPermission", "没有 Termux RUN_COMMAND 权限")
         }
@@ -159,6 +183,11 @@ object RelayLauncher {
             putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-c", command))
             putExtra("com.termux.RUN_COMMAND_WORKDIR", cwd)
             putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
+            putExtra("com.termux.RUN_COMMAND_COMMAND_LABEL", label)
+            putExtra(
+                "com.termux.RUN_COMMAND_PENDING_INTENT",
+                resultPendingIntent(context, kind, requestCode),
+            )
         }
         return try {
             context.startService(intent)

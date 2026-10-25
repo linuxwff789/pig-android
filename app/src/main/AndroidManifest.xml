@@ -42,6 +42,13 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps the loopback connection to the user's coding agent in Termux alive while the screen is off." />
         </service>
+
+        <!-- Termux answers RUN_COMMAND through a PendingIntent aimed here; the
+             result says whether the command ran (fresh installs have
+             allow-external-apps=false and are refused before exec). -->
+        <receiver
+            android:name=".RunCommandReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>
