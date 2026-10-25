@@ -134,9 +134,50 @@ data class UiBubbleAppearance(
     val assistantBackgroundAlpha: Float = 0.55f,
     val assistantBorderAlpha: Float = 0.25f,
     val assistantTextColor: String = "onSurface",
+    /** Colour token for both bubble outlines. */
+    val borderColor: String = "outline",
+    /** `brand` keeps the gradient, any other value is a solid token. */
+    val userBackground: String = "brand",
+    val userBackgroundAlpha: Float = 1f,
+    /** start | center | end */
+    val textAlign: String = "start",
+    /** Per-corner overrides; -1 inherits the theme radius. */
+    val radiusTL: Int = -1,
+    val radiusTR: Int = -1,
+    val radiusBR: Int = -1,
+    val radiusBL: Int = -1,
 )
 
 /** `chat.thinking`: the reasoning block above an assistant answer. */
+/** `chrome`: status bar, toast, dialogs, filter chips and the empty state. */
+data class UiChromeAppearance(
+    val statusColor: String = "onSurfaceVariant",
+    val statusSize: Int = 0,
+    val statusSpinnerColor: String = "primary",
+    val statusSpinnerSize: Int = 0,
+    val statusBackground: String = "none",
+    val statusBackgroundAlpha: Float = 1f,
+    val statusPaddingH: Int = 6,
+    val statusPaddingV: Int = 2,
+    /** Empty string keeps the Material default. */
+    val toastContainer: String = "",
+    val toastText: String = "",
+    val toastAction: String = "",
+    val toastShape: Int = -1,
+    val toastInsetH: Int = 12,
+    val dialogSurface: String = "",
+    val dialogRadius: Int = -1,
+    val dialogMaxWidth: Int = 0,
+    val dialogTitleColor: String = "onSurface",
+    val dialogTextColor: String = "onSurfaceVariant",
+    val chipBackground: String = "primary",
+    val chipBackgroundAlpha: Float = 0.18f,
+    val chipLabelColor: String = "primary",
+    val chipShape: String = "circle",
+    val chipRadius: Int = -1,
+    val emptyTitleColor: String = "onSurfaceVariant",
+)
+
 /** `markdown`: colours for the Markdown body (links, inline code, tables, rules). */
 data class UiMarkdownAppearance(
     val linkColor: String = "secondary",
@@ -197,6 +238,16 @@ data class UiToolCardAppearance(
     val titleSize: Int = 0,
     val metricsColor: String = "onSurfaceVariant",
     val chipRadius: Int = 6,
+    val borderColor: String = "outline",
+    val errorBorderColor: String = "error",
+    val titleColor: String = "onSurface",
+    val iconTint: String = "secondary",
+    val iconBackground: String = "secondary",
+    val diffAddColor: String = "success",
+    val diffRemoveColor: String = "error",
+    val diffContextColor: String = "onSurfaceVariant",
+    val codeFontFamily: String = "",
+    val codeFontSize: Int = 0,
     val chipAlpha: Float = 0.15f,
     val groupRadius: Int = -1,
     val groupPadding: Int = 10,

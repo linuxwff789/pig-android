@@ -614,8 +614,13 @@ Every `*Color`, `*Tint` and `*Background` above takes a colour token:
 | `assistantBackgroundAlpha` | 0.55 | assistant card background opacity |
 | `assistantBorderAlpha` | 0.25 | assistant card border opacity |
 | `assistantTextColor` | `onSurface` | assistant card text token |
+| `borderColor` | `outline` | border token for both bubbles |
+| `userBackground` | `brand` | `brand` keeps the theme gradient; any token = solid fill |
+| `userBackgroundAlpha` | 1.0 | opacity of the solid fill |
+| `textAlign` | `start` | `start` / `center` / `end` for user bubble text |
+| `radiusTL` / `radiusTR` / `radiusBR` / `radiusBL` | -1 | per-corner radius; `-1` inherits the theme/auto radius |
 
-The user bubble gradient, radius, alpha, elevation and shadow still come from
+The user bubble gradient stops, alpha, elevation and shadow still come from
 `theme/colors.json`; `components.bubbleMaxWidthDp` still sets the width.
 
 ### Tool cards (`chat.toolCard`)
@@ -639,12 +644,50 @@ The user bubble gradient, radius, alpha, elevation and shadow still come from
 | `chipAlpha` | 0.15 | selected chip background opacity |
 | `groupRadius` | -1 | tool-group radius; `-1` = card radius |
 | `groupPadding` | 10 | tool-group padding |
+| `borderColor` | `outline` | card border token |
+| `errorBorderColor` | `error` | border token when the tool failed |
+| `titleColor` | `onSurface` | tool name token |
+| `iconTint` | `secondary` | icon glyph token |
+| `iconBackground` | `secondary` | icon box fill token (opacity from `iconAlpha`) |
+| `diffAddColor` | `success` | `+` lines in a diff block |
+| `diffRemoveColor` | `error` | `-` lines |
+| `diffContextColor` | `onSurfaceVariant` | unchanged lines |
+| `codeFontFamily` | `""` | diff font family name (see typography); `""` = code font |
+| `codeFontSize` | 0 | diff text size; `0` = 11sp |
 
 These only affect card/bubble visuals; tool execution, grouping and actions are
 unchanged.
 
 The existing `components.json` controls remain for visibility and line counts;
 these new keys are for deeper visual tuning.
+
+### Chrome — status bar, toast, dialogs, chips (`chat.chrome`)
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `statusColor` | `onSurfaceVariant` | status pill text token |
+| `statusSize` | 0 | text size; `0` = theme labelSmall |
+| `statusSpinnerColor` | `primary` | spinner token |
+| `statusSpinnerSize` | 0 | spinner dp; `0` = 11 |
+| `statusBackground` | `none` | pill token; `none` = transparent |
+| `statusBackgroundAlpha` | 1.0 | pill opacity |
+| `statusPaddingH` / `statusPaddingV` | 6 / 2 | pill inner padding |
+| `toastContainer` | `""` | snackbar background token; `""` = Material default |
+| `toastText` | `""` | snackbar text token |
+| `toastAction` | `""` | snackbar action token |
+| `toastShape` | -1 | corner radius; `-1` = Material default |
+| `toastInsetH` | 12 | horizontal inset |
+| `dialogSurface` | `""` | alert background token; `""` = Material default |
+| `dialogRadius` | -1 | alert corner radius |
+| `dialogMaxWidth` | 0 | max width dp; `0` = Material default |
+| `dialogTitleColor` | `onSurface` | dialog title/icon token |
+| `dialogTextColor` | `onSurfaceVariant` | dialog body token |
+| `chipBackground` | `primary` | selected filter-chip fill token |
+| `chipBackgroundAlpha` | 0.18 | selected fill opacity |
+| `chipLabelColor` | `primary` | selected chip label token |
+| `chipShape` | `circle` | `circle` or `rounded` |
+| `chipRadius` | -1 | radius when `chipShape` = `rounded`; `-1` = 10 |
+| `emptyTitleColor` | `onSurfaceVariant` | empty-state title token |
 
 ### Thinking (`chat.thinking`)
 

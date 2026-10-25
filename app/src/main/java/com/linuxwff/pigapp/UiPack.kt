@@ -236,6 +236,7 @@ data class UiLayout(
     val toolCard: UiToolCardAppearance = UiToolCardAppearance(),
     val thinking: UiThinkingAppearance = UiThinkingAppearance(),
     val markdown: UiMarkdownAppearance = UiMarkdownAppearance(),
+    val chrome: UiChromeAppearance = UiChromeAppearance(),
     /** Skin switcher: show, where and how (chips/list). */
     val showSkinSwitcher: Boolean = true,
     val skinSwitcherPlacement: String = "drawer",
@@ -740,6 +741,7 @@ object UiPackParser {
             toolCard = parseToolCard(toolCardJson, warnings),
             thinking = parseThinking(chat?.optJSONObject("thinking"), warnings),
             markdown = parseMarkdown(chat?.optJSONObject("markdown")),
+            chrome = parseChrome(chat?.optJSONObject("chrome")),
             showSkinSwitcher = skinSwitcher?.optBoolean("show", d.showSkinSwitcher)
                 ?: d.showSkinSwitcher,
             skinSwitcherPlacement = placement.takeIf { it in placements } ?: d.skinSwitcherPlacement,
@@ -819,6 +821,59 @@ object UiPackParser {
                 d.assistantBorderAlpha.toDouble(),
             ).toFloat().coerceIn(0f, 1f),
             assistantTextColor = json.optString("assistantTextColor", d.assistantTextColor),
+            borderColor = json.optString("borderColor", d.borderColor)
+                .takeIf { it.isNotBlank() } ?: d.borderColor,
+            userBackground = json.optString("userBackground", d.userBackground)
+                .takeIf { it.isNotBlank() } ?: d.userBackground,
+            userBackgroundAlpha = json.optDouble(
+                "userBackgroundAlpha",
+                d.userBackgroundAlpha.toDouble(),
+            ).toFloat().coerceIn(0f, 1f),
+            textAlign = json.optString("textAlign", d.textAlign)
+                .takeIf { it == "start" || it == "center" || it == "end" } ?: d.textAlign,
+            radiusTL = json.optInt("radiusTL", d.radiusTL).let { if (it < 0) -1 else it.coerceIn(0, 40) },
+            radiusTR = json.optInt("radiusTR", d.radiusTR).let { if (it < 0) -1 else it.coerceIn(0, 40) },
+            radiusBR = json.optInt("radiusBR", d.radiusBR).let { if (it < 0) -1 else it.coerceIn(0, 40) },
+            radiusBL = json.optInt("radiusBL", d.radiusBL).let { if (it < 0) -1 else it.coerceIn(0, 40) },
+        )
+    }
+
+    private fun parseChrome(json: JSONObject?): UiChromeAppearance {
+        if (json == null) return UiChromeAppearance()
+        val d = UiChromeAppearance()
+        fun token(key: String, fallback: String): String =
+            json.optString(key, fallback).takeIf { it.isNotBlank() } ?: fallback
+        fun alpha(key: String, fallback: Float): Float =
+            json.optDouble(key, fallback.toDouble()).toFloat().coerceIn(0f, 1f)
+        fun radius(key: String, fallback: Int): Int =
+            json.optInt(key, fallback).let { if (it < 0) -1 else it.coerceIn(0, 40) }
+        val shape = json.optString("chipShape", d.chipShape)
+        return UiChromeAppearance(
+            statusColor = token("statusColor", d.statusColor),
+            statusSize = json.optInt("statusSize", d.statusSize).coerceIn(0, 24),
+            statusSpinnerColor = token("statusSpinnerColor", d.statusSpinnerColor),
+            statusSpinnerSize = json.optInt("statusSpinnerSize", d.statusSpinnerSize)
+                .coerceIn(0, 32),
+            statusBackground = token("statusBackground", d.statusBackground),
+            statusBackgroundAlpha = alpha("statusBackgroundAlpha", d.statusBackgroundAlpha),
+            statusPaddingH = json.optInt("statusPaddingH", d.statusPaddingH).coerceIn(0, 32),
+            statusPaddingV = json.optInt("statusPaddingV", d.statusPaddingV).coerceIn(0, 32),
+            toastContainer = json.optString("toastContainer", d.toastContainer),
+            toastText = json.optString("toastText", d.toastText),
+            toastAction = json.optString("toastAction", d.toastAction),
+            toastShape = radius("toastShape", d.toastShape),
+            toastInsetH = json.optInt("toastInsetH", d.toastInsetH).coerceIn(0, 48),
+            dialogSurface = json.optString("dialogSurface", d.dialogSurface),
+            dialogRadius = radius("dialogRadius", d.dialogRadius),
+            dialogMaxWidth = json.optInt("dialogMaxWidth", d.dialogMaxWidth).coerceIn(0, 1200),
+            dialogTitleColor = token("dialogTitleColor", d.dialogTitleColor),
+            dialogTextColor = token("dialogTextColor", d.dialogTextColor),
+            chipBackground = token("chipBackground", d.chipBackground),
+            chipBackgroundAlpha = alpha("chipBackgroundAlpha", d.chipBackgroundAlpha),
+            chipLabelColor = token("chipLabelColor", d.chipLabelColor),
+            chipShape = if (shape == "rounded") "rounded" else "circle",
+            chipRadius = radius("chipRadius", d.chipRadius),
+            emptyTitleColor = token("emptyTitleColor", d.emptyTitleColor),
         )
     }
 
@@ -916,6 +971,24 @@ object UiPackParser {
             groupRadius = json.optInt("groupRadius", d.groupRadius)
                 .let { if (it < 0) -1 else it.coerceIn(0, 40) },
             groupPadding = json.optInt("groupPadding", d.groupPadding).coerceIn(0, 40),
+            borderColor = json.optString("borderColor", d.borderColor)
+                .takeIf { it.isNotBlank() } ?: d.borderColor,
+            errorBorderColor = json.optString("errorBorderColor", d.errorBorderColor)
+                .takeIf { it.isNotBlank() } ?: d.errorBorderColor,
+            titleColor = json.optString("titleColor", d.titleColor)
+                .takeIf { it.isNotBlank() } ?: d.titleColor,
+            iconTint = json.optString("iconTint", d.iconTint)
+                .takeIf { it.isNotBlank() } ?: d.iconTint,
+            iconBackground = json.optString("iconBackground", d.iconBackground)
+                .takeIf { it.isNotBlank() } ?: d.iconBackground,
+            diffAddColor = json.optString("diffAddColor", d.diffAddColor)
+                .takeIf { it.isNotBlank() } ?: d.diffAddColor,
+            diffRemoveColor = json.optString("diffRemoveColor", d.diffRemoveColor)
+                .takeIf { it.isNotBlank() } ?: d.diffRemoveColor,
+            diffContextColor = json.optString("diffContextColor", d.diffContextColor)
+                .takeIf { it.isNotBlank() } ?: d.diffContextColor,
+            codeFontFamily = json.optString("codeFontFamily", d.codeFontFamily),
+            codeFontSize = json.optInt("codeFontSize", d.codeFontSize).coerceIn(0, 32),
         )
     }
 

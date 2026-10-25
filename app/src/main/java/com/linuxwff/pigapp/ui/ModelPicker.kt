@@ -69,7 +69,7 @@ fun ModelPickerDialog(vm: AppViewModel) {
     val scheme = MaterialTheme.colorScheme
     val corner = vm.ui.uiPack.theme.cornerRadius
 
-    AlertDialog(
+    PackAlertDialog(
         onDismissRequest = vm::closeModelPicker,
         shape = RoundedCornerShape(26.dp),
         containerColor = scheme.surface,
@@ -152,11 +152,8 @@ fun ModelPickerDialog(vm: AppViewModel) {
                                 enabled = !vm.ui.modelSwitchPending,
                                 onClick = { vm.setThinkingLevel(level) },
                                 label = { Text(level) },
-                                shape = CircleShape,
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = scheme.primary.copy(alpha = 0.18f),
-                                    selectedLabelColor = scheme.primary,
-                                ),
+                                shape = packChipShape(),
+                                colors = packChipColors(),
                             )
                         }
                     }
@@ -410,7 +407,7 @@ private fun ContextWindowDialog(
         mutableStateOf(if (override > 0) override.toString() else "")
     }
     val parsed = parseTokenCount(text)
-    AlertDialog(
+    PackAlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(22.dp),
         containerColor = scheme.surface,
@@ -456,7 +453,8 @@ private fun ContextWindowDialog(
                             selected = text.equals(preset, ignoreCase = true),
                             onClick = { text = preset },
                             label = { Text(preset) },
-                            shape = CircleShape,
+                            shape = packChipShape(),
+                            colors = packChipColors(),
                         )
                     }
                 }

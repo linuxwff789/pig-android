@@ -96,6 +96,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -317,7 +319,35 @@ fun PigApp(vm: AppViewModel) {
         ) {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
-                snackbarHost = { SnackbarHost(snackbar) },
+                snackbarHost = {
+                    SnackbarHost(snackbar) { data ->
+                        val chrome = LocalUiPack.current.layout.chrome
+                        Snackbar(
+                            snackbarData = data,
+                            containerColor = if (chrome.toastContainer.isBlank()) {
+                                SnackbarDefaults.color
+                            } else {
+                                packColor(chrome.toastContainer)
+                            },
+                            contentColor = if (chrome.toastText.isBlank()) {
+                                SnackbarDefaults.contentColor
+                            } else {
+                                packColor(chrome.toastText)
+                            },
+                            actionColor = if (chrome.toastAction.isBlank()) {
+                                SnackbarDefaults.actionColor
+                            } else {
+                                packColor(chrome.toastAction)
+                            },
+                            shape = if (chrome.toastShape >= 0) {
+                                RoundedCornerShape(chrome.toastShape.dp)
+                            } else {
+                                SnackbarDefaults.shape
+                            },
+                            modifier = Modifier.padding(horizontal = chrome.toastInsetH.dp),
+                        )
+                    }
+                },
                 topBar = {
                     val customHeader = ui.uiPack.layout.header
                     if (customHeader == null) {
@@ -487,7 +517,7 @@ fun PigApp(vm: AppViewModel) {
         }
     }
     val components = packComponents()
-        AlertDialog(
+        PackAlertDialog(
             onDismissRequest = vm::cancelSwitch,
             shape = RoundedCornerShape(24.dp),
             containerColor = MaterialTheme.colorScheme.surface,
@@ -515,7 +545,7 @@ fun PigApp(vm: AppViewModel) {
     }
 
     ui.pendingPackAction?.let { request ->
-        AlertDialog(
+        PackAlertDialog(
             onDismissRequest = vm::cancelPackAction,
             shape = RoundedCornerShape(24.dp),
             containerColor = MaterialTheme.colorScheme.surface,
@@ -751,7 +781,7 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
     """.trimIndent()
     val termuxInstalled = RelayLauncher.isTermuxInstalled(context)
     val permitted = RelayLauncher.hasPermission(context)
-    AlertDialog(
+    PackAlertDialog(
         onDismissRequest = vm::dismissSetup,
         shape = RoundedCornerShape(24.dp),
         containerColor = MaterialTheme.colorScheme.surface,
@@ -872,7 +902,7 @@ private fun StatsDialog(
     val scheme = MaterialTheme.colorScheme
     val usage = ui.usage
     val cacheRate = usage.cacheRate
-    AlertDialog(
+    PackAlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(ui.uiPack.theme.cornerRadius.dp),
         containerColor = scheme.surface,
@@ -1099,13 +1129,8 @@ private fun SettingsDialog(
                                                     },
                                                 )
                                             },
-                                            shape = CircleShape,
-                                            colors = FilterChipDefaults.filterChipColors(
-                                                selectedContainerColor = scheme.primary.copy(
-                                                    alpha = 0.18f,
-                                                ),
-                                                selectedLabelColor = scheme.primary,
-                                            ),
+                                            shape = packChipShape(),
+                                            colors = packChipColors(),
                                         )
                                     }
                                 }
@@ -1302,11 +1327,8 @@ private fun SettingsDialog(
                                 selected = ui.notifySound == value,
                                 onClick = { vm.setNotifySound(value) },
                                 label = { Text(label) },
-                                shape = CircleShape,
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = scheme.primary.copy(alpha = 0.18f),
-                                    selectedLabelColor = scheme.primary,
-                                ),
+                                shape = packChipShape(),
+                                colors = packChipColors(),
                             )
                         }
                     }
@@ -1828,7 +1850,7 @@ private fun UpdateDialog(
     onDismiss: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
-    AlertDialog(
+    PackAlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(22.dp),
         containerColor = scheme.surface,
@@ -1876,7 +1898,7 @@ private fun CompactionThresholdDialog(
     val scheme = MaterialTheme.colorScheme
     var text by remember { mutableStateOf(initial.toString()) }
     val percent = text.filter { it.isDigit() }.take(2).toIntOrNull()
-    AlertDialog(
+    PackAlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(22.dp),
         containerColor = scheme.surface,
@@ -1960,11 +1982,8 @@ private fun QueueModeRow(
                     selected = value == mode,
                     onClick = { onPick(mode) },
                     label = { Text(label) },
-                    shape = CircleShape,
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = scheme.primary.copy(alpha = 0.18f),
-                        selectedLabelColor = scheme.primary,
-                    ),
+                    shape = packChipShape(),
+                    colors = packChipColors(),
                 )
             }
         }
@@ -2002,7 +2021,7 @@ private fun SettingNumberRow(
         }
     }
     if (editing) {
-        AlertDialog(
+        PackAlertDialog(
             onDismissRequest = { editing = false },
             title = { Text(title) },
             text = {
@@ -2375,7 +2394,7 @@ private fun DrawerContent(
         Spacer(Modifier.height(10.dp))
 
         renameTarget?.let { target ->
-            AlertDialog(
+            PackAlertDialog(
                 onDismissRequest = { renameTarget = null },
                 title = { Text(packText("session.renameTitle", "重命名会话")) },
                 text = {
@@ -2403,7 +2422,7 @@ private fun DrawerContent(
             )
         }
         deleteTarget?.let { target ->
-            AlertDialog(
+            PackAlertDialog(
                 onDismissRequest = { deleteTarget = null },
                 title = { Text(packText("session.deleteTitle", "删除会话？")) },
                 text = {
@@ -2466,7 +2485,7 @@ private fun PackManagerDialog(
     var deleteTarget by remember { mutableStateOf<LocalPackInfo?>(null) }
     LaunchedEffect(Unit) { vm.refreshLocalPacks() }
 
-    AlertDialog(
+    PackAlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(24.dp),
         containerColor = scheme.surface,
@@ -2582,7 +2601,7 @@ private fun PackManagerDialog(
         },
     )
     deleteTarget?.let { target ->
-        AlertDialog(
+        PackAlertDialog(
             onDismissRequest = { deleteTarget = null },
             shape = RoundedCornerShape(24.dp),
             containerColor = scheme.surface,
@@ -3090,7 +3109,7 @@ private fun ToolGroupCard(
     val groupBorder = if (appearance.borderWidth > 0) {
         BorderStroke(
             appearance.borderWidth.dp,
-            scheme.outline.copy(
+            packColor(appearance.borderColor).copy(
                 alpha = if (appearance.borderAlpha >= 0f) {
                     appearance.borderAlpha
                 } else {
@@ -3131,7 +3150,7 @@ private fun ToolGroupCard(
                     Modifier
                         .size(groupBox.dp)
                         .clip(RoundedCornerShape(appearance.iconRadius.dp))
-                        .background(scheme.secondary.copy(alpha = appearance.iconAlpha)),
+                        .background(packColor(appearance.iconBackground).copy(alpha = appearance.iconAlpha)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -3140,7 +3159,7 @@ private fun ToolGroupCard(
                         modifier = Modifier.size(
                             (appearance.iconSize - 1).coerceAtLeast(8).dp,
                         ),
-                        tint = scheme.secondary,
+                        tint = packColor(appearance.iconTint),
                     )
                 }
                 Spacer(Modifier.width(8.dp))
@@ -3590,6 +3609,7 @@ private fun EmptyState(onSuggestion: (String) -> Unit, avatarSize: Int) {
                 packText("empty.title", "开始聊天"),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold,
+                color = packColor(LocalUiPack.current.layout.chrome.emptyTitleColor),
             )
             if (components.showSuggestions) {
                 Spacer(Modifier.height(5.dp))
@@ -3739,14 +3759,31 @@ private fun MessageRow(
     val theme = packTheme()
     when (message.role) {
         Role.USER -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            val shape = theme.bubbleRadius?.let { RoundedCornerShape(it.dp) } ?: RoundedCornerShape(
-                topStart = (cornerRadius + 4).dp,
-                topEnd = (cornerRadius + 4).dp,
-                bottomEnd = if (cornerRadius == 0) 0.dp else 5.dp,
-                bottomStart = (cornerRadius + 4).dp,
-            )
             val scheme = MaterialTheme.colorScheme
             val bubbleAppearance = LocalUiPack.current.layout.bubble
+            val baseRadius = theme.bubbleRadius?.dp ?: (cornerRadius + 4).dp
+            val inheritedBottomEnd =
+                if (theme.bubbleRadius == null && cornerRadius > 0) 5.dp else baseRadius
+            fun corner(value: Int, fallback: Dp): Dp =
+                if (value >= 0) value.dp else fallback
+            val shape = if (
+                bubbleAppearance.radiusTL >= 0 || bubbleAppearance.radiusTR >= 0 ||
+                bubbleAppearance.radiusBR >= 0 || bubbleAppearance.radiusBL >= 0
+            ) {
+                RoundedCornerShape(
+                    topStart = corner(bubbleAppearance.radiusTL, baseRadius),
+                    topEnd = corner(bubbleAppearance.radiusTR, baseRadius),
+                    bottomEnd = corner(bubbleAppearance.radiusBR, inheritedBottomEnd),
+                    bottomStart = corner(bubbleAppearance.radiusBL, baseRadius),
+                )
+            } else {
+                theme.bubbleRadius?.let { RoundedCornerShape(it.dp) } ?: RoundedCornerShape(
+                    topStart = (cornerRadius + 4).dp,
+                    topEnd = (cornerRadius + 4).dp,
+                    bottomEnd = if (cornerRadius == 0) 0.dp else 5.dp,
+                    bottomStart = (cornerRadius + 4).dp,
+                )
+            }
             var selecting by remember(message.id) { mutableStateOf(false) }
             val bubble: @Composable () -> Unit = {
                 Box(
@@ -3766,19 +3803,29 @@ private fun MessageRow(
                         )
                         .clip(shape)
                         .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    (theme.bubbleStart ?: scheme.primary).copy(alpha = theme.bubbleStartAlpha),
-                                    (theme.bubbleEnd ?: scheme.tertiary).copy(alpha = theme.bubbleEndAlpha),
-                                ),
-                            ),
+                            if (bubbleAppearance.userBackground == "brand") {
+                                Brush.linearGradient(
+                                    listOf(
+                                        (theme.bubbleStart ?: scheme.primary)
+                                            .copy(alpha = theme.bubbleStartAlpha),
+                                        (theme.bubbleEnd ?: scheme.tertiary)
+                                            .copy(alpha = theme.bubbleEndAlpha),
+                                    ),
+                                )
+                            } else {
+                                SolidColor(
+                                    packColor(bubbleAppearance.userBackground)
+                                        .copy(alpha = bubbleAppearance.userBackgroundAlpha),
+                                )
+                            },
                             shape,
                         )
                         .then(
                             if (bubbleAppearance.borderWidth > 0) {
                                 Modifier.border(
                                     bubbleAppearance.borderWidth.dp,
-                                    scheme.primary.copy(alpha = theme.bubbleBorderAlpha),
+                                    packColor(bubbleAppearance.borderColor)
+                                        .copy(alpha = theme.bubbleBorderAlpha),
                                     shape,
                                 )
                             } else {
@@ -3801,7 +3848,13 @@ private fun MessageRow(
                             if (message.images.isNotEmpty()) Spacer(Modifier.height(5.dp))
                             Text(
                                 message.text,
-                                style = MaterialTheme.typography.bodyLarge,
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    textAlign = when (bubbleAppearance.textAlign) {
+                                        "center" -> TextAlign.Center
+                                        "end" -> TextAlign.End
+                                        else -> TextAlign.Start
+                                    },
+                                ),
                                 color = packColor(bubbleAppearance.textColor),
                             )
                         }
@@ -3916,7 +3969,8 @@ private fun MessageRow(
                                     if (bubbleAppearance.borderWidth > 0) {
                                         Modifier.border(
                                             bubbleAppearance.borderWidth.dp,
-                                            scheme.outline.copy(alpha = bubbleAppearance.assistantBorderAlpha),
+                                            packColor(bubbleAppearance.borderColor)
+                                                .copy(alpha = bubbleAppearance.assistantBorderAlpha),
                                             bubbleShape,
                                         )
                                     } else {
@@ -4029,7 +4083,9 @@ private fun ToolCard(
     val toolBorder = if (appearance.borderWidth > 0) {
         BorderStroke(
             appearance.borderWidth.dp,
-            scheme.outline.copy(
+            packColor(
+                if (message.isError) appearance.errorBorderColor else appearance.borderColor,
+            ).copy(
                 alpha = if (appearance.borderAlpha >= 0f) {
                     appearance.borderAlpha
                 } else {
@@ -4070,7 +4126,7 @@ private fun ToolCard(
                     Modifier
                         .size(collapsedBox.dp)
                         .clip(RoundedCornerShape(appearance.iconRadius.dp))
-                        .background(scheme.secondary.copy(alpha = appearance.iconAlpha)),
+                        .background(packColor(appearance.iconBackground).copy(alpha = appearance.iconAlpha)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -4079,13 +4135,14 @@ private fun ToolCard(
                         modifier = Modifier.size(
                             (appearance.iconSize - 1).coerceAtLeast(8).dp,
                         ),
-                        tint = scheme.secondary,
+                        tint = packColor(appearance.iconTint),
                     )
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(
                     message.toolName ?: "tool",
                     style = titleStyle,
+                    color = packColor(appearance.titleColor),
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -4126,19 +4183,23 @@ private fun ToolCard(
                     Modifier
                         .size(appearance.iconBoxSize.dp)
                         .clip(RoundedCornerShape(appearance.iconRadius.dp))
-                        .background(scheme.secondary.copy(alpha = appearance.iconAlpha)),
+                        .background(packColor(appearance.iconBackground).copy(alpha = appearance.iconAlpha)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         packIcon("tool", "build"),
                         contentDescription = null,
                         modifier = Modifier.size(appearance.iconSize.dp),
-                        tint = scheme.secondary,
+                        tint = packColor(appearance.iconTint),
                     )
                 }
                 Spacer(Modifier.width(9.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(message.toolName ?: "tool", style = titleStyle)
+                    Text(
+                        message.toolName ?: "tool",
+                        style = titleStyle,
+                        color = packColor(appearance.titleColor),
+                    )
                     Text(
                         view.headline,
                         style = MaterialTheme.typography.labelSmall,
@@ -4320,15 +4381,19 @@ private fun DiffBlock(diff: String, cornerRadius: Int, maxLines: Int = 200) {
     if (diff.isBlank()) return
     val scheme = MaterialTheme.colorScheme
     val theme = packTheme()
-    val annotated = remember(diff, scheme.error, scheme.onSurfaceVariant, theme.success, maxLines) {
+    val appearance = LocalUiPack.current.layout.toolCard
+    val addedColor = packColor(appearance.diffAddColor)
+    val removedColor = packColor(appearance.diffRemoveColor)
+    val contextColor = packColor(appearance.diffContextColor)
+    val annotated = remember(diff, addedColor, removedColor, contextColor, maxLines) {
         val lines = diff.lineSequence().take(maxLines).toList()
         val truncated = diff.lineSequence().count() > maxLines
         buildAnnotatedString {
             lines.forEachIndexed { index, line ->
                 val color = when {
-                    line.startsWith("+") && !line.startsWith("+++") -> theme.success
-                    line.startsWith("-") && !line.startsWith("---") -> scheme.error
-                    else -> scheme.onSurfaceVariant
+                    line.startsWith("+") && !line.startsWith("+++") -> addedColor
+                    line.startsWith("-") && !line.startsWith("---") -> removedColor
+                    else -> contextColor
                 }
                 withStyle(SpanStyle(color = color)) {
                     append(line.ifEmpty { " " })
@@ -4350,8 +4415,12 @@ private fun DiffBlock(diff: String, cornerRadius: Int, maxLines: Int = 200) {
     ) {
         Text(
             annotated,
-            fontFamily = packCodeFont(),
-            fontSize = 11.sp,
+            fontFamily = if (appearance.codeFontFamily.isNotBlank()) {
+                packFontFamily(LocalUiPack.current, appearance.codeFontFamily)
+            } else {
+                packCodeFont()
+            },
+            fontSize = (if (appearance.codeFontSize > 0) appearance.codeFontSize else 11).sp,
             softWrap = false,
         )
     }
@@ -4908,7 +4977,7 @@ private fun PendingDialog(request: UiRequest, vm: AppViewModel) {
                             packIcon("warning", "warning"),
                             contentDescription = null,
                             modifier = Modifier.size(toolCard.iconSize.dp),
-                            tint = scheme.secondary,
+                            tint = packColor(appearance.iconTint),
                         )
                     }
                     Spacer(Modifier.width(10.dp))
@@ -5085,26 +5154,37 @@ private fun StatusBar(status: String, extensionStatuses: Map<String, String>) {
     // has stopped, otherwise the ring keeps turning forever.
     val extras = extensionStatuses.values.filter { it.isNotBlank() && it != activity }
     val label = (listOf(activity) + extras).filter { it.isNotBlank() }.joinToString(" · ")
+    val chrome = LocalUiPack.current.layout.chrome
+    val pillColor = packColor(chrome.statusBackground)
     Row(
         Modifier
             .padding(horizontal = 14.dp, vertical = 5.dp)
             .clip(CircleShape)
-            .background(scheme.surfaceVariant.copy(alpha = 0.55f))
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .background(pillColor.copy(alpha = chrome.statusBackgroundAlpha))
+            .padding(
+                horizontal = chrome.statusPaddingH.dp,
+                vertical = chrome.statusPaddingV.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (activity.isNotBlank()) {
             CircularProgressIndicator(
-                modifier = Modifier.size(11.dp),
+                modifier = Modifier.size(
+                    (if (chrome.statusSpinnerSize > 0) chrome.statusSpinnerSize else 11).dp,
+                ),
                 strokeWidth = 1.5.dp,
-                color = scheme.secondary,
+                color = packColor(chrome.statusSpinnerColor),
             )
             Spacer(Modifier.width(9.dp))
         }
         Text(
             label,
-            style = MaterialTheme.typography.labelSmall,
-            color = scheme.onSurfaceVariant,
+            style = if (chrome.statusSize > 0) {
+                MaterialTheme.typography.labelSmall.copy(fontSize = chrome.statusSize.sp)
+            } else {
+                MaterialTheme.typography.labelSmall
+            },
+            color = packColor(chrome.statusColor),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
