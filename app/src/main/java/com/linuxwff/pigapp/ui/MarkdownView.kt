@@ -120,19 +120,13 @@ fun PigMarkdown(
             fontFamily = packCodeFont(),
             fontSize = types.code.sp,
         ),
-        quote = themeTypography.bodyMedium.copy(
-            fontStyle = FontStyle.Italic,
-            color = packColor(LocalUiPack.current.layout.markdown.quoteTextColor),
-        ),
+        quote = themeTypography.bodyMedium.copy(fontStyle = FontStyle.Italic),
     )
-    val md = LocalUiPack.current.layout.markdown
+    val scheme = MaterialTheme.colorScheme
     val colors = markdownColor(
-        codeText = packColor(md.inlineCodeColor),
-        inlineCodeText = packColor(md.inlineCodeColor),
-        linkText = packColor(md.linkColor),
-        codeBackground = packColor(md.codeBlockBackground).copy(alpha = md.codeBlockAlpha),
-        inlineCodeBackground = packColor(md.inlineCodeBackground),
-        dividerColor = packColor(md.hrColor),
+        codeBackground = scheme.surfaceVariant,
+        inlineCodeBackground = scheme.surfaceVariant,
+        linkText = scheme.secondary,
     )
     Markdown(
         content = text,
@@ -146,10 +140,6 @@ fun PigMarkdown(
 
 @Composable
 private fun MarkdownTable(model: MarkdownComponentModel, cornerRadius: Int) {
-    val md = LocalUiPack.current.layout.markdown
-    val headerBackground = packColor(md.tableHeaderBackground)
-    val borderColor = packColor(md.tableBorderColor).copy(alpha = md.tableBorderAlpha)
-    val zebraColor = packColor(md.tableHeaderBackground).copy(alpha = md.tableZebraAlpha)
     val content = model.content
     val headerNode = model.node.findChildOfType(GFMElementTypes.HEADER)
     val separator = model.node.findChildOfType(GFMTokenTypes.TABLE_SEPARATOR)
@@ -172,7 +162,7 @@ private fun MarkdownTable(model: MarkdownComponentModel, cornerRadius: Int) {
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape((cornerRadius / 2).coerceAtLeast(4).dp))
-                    .background(headerBackground)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .padding(horizontal = 6.dp, vertical = 5.dp),
             ) {
                 for (index in 0 until columns) {
@@ -187,18 +177,11 @@ private fun MarkdownTable(model: MarkdownComponentModel, cornerRadius: Int) {
                 }
             }
         }
-        rows.forEachIndexed { rowIndex, row ->
-            HorizontalDivider(color = borderColor)
+        rows.forEach { row ->
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .then(
-                        if (rowIndex % 2 == 1 && md.tableZebraAlpha > 0f) {
-                            Modifier.background(zebraColor)
-                        } else {
-                            Modifier
-                        },
-                    )
                     .padding(horizontal = 6.dp, vertical = 5.dp),
             ) {
                 for (index in 0 until columns) {
@@ -338,7 +321,6 @@ private fun CollapsibleCode(
     borderAlpha: Float,
 ) {
     var expanded by remember(code) { mutableStateOf(false) }
-    val md = LocalUiPack.current.layout.markdown
     val scheme = MaterialTheme.colorScheme
     val components = packComponents()
     val shape = RoundedCornerShape((cornerRadius / 2).coerceAtLeast(6).dp)
@@ -347,8 +329,8 @@ private fun CollapsibleCode(
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(packColor(md.codeBlockBackground).copy(alpha = md.codeBlockAlpha))
-            .border(1.dp, packColor(md.codeBlockBorderColor).copy(alpha = borderAlpha), shape),
+            .background(scheme.background.copy(alpha = 0.6f))
+            .border(1.dp, scheme.outline.copy(alpha = borderAlpha), shape),
     ) {
         Row(
             Modifier
