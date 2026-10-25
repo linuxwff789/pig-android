@@ -26,16 +26,23 @@ say() { printf '==> %s\n' "$*"; }
 
 # Downloads are the fragile part on a phone: TLS resets, captive portals and
 # HTTP/2 stacks behind proxies all surface as odd curl exit codes (53 is
-# CURLE_SSL_ENGINE_NOTFOUND, seen on a fresh Termux). Retry, fall back to
-# HTTP/1.1 for the codes that mean "the connection broke", and never leave a
-# partial file behind for the next step to execute.
+# CURLE_SSL_ENGINE_NOTFOUND, and a bare `curl: (35) TLS connect error:
+# error:00000000:lib(0)::reason(0)` is a handshake a middlebox killed).
+# Retry every failure (a TLS handshake that never completes is not retried by
+# plain `--retry`), and switch to TLS 1.2 + HTTP/1.1 from the second attempt.
+# flaky proxies and middleboxes fail on TLS 1.3/HTTP2 with
+# "error:00000000:lib(0)::reason(0)". Never leave a partial file behind for the
+# next step to execute.
 fetch() {
     url=$1
     dest=$2
     tmp="$dest.part.$$"
     attempt=1
     while [ "$attempt" -le 3 ]; do
-        if curl -fsSL --connect-timeout 20 --retry 1 --retry-delay 1 -o "$tmp" "$url"; then
+        extra=""
+        [ "$attempt" -ge 2 ] && extra="--tls-max 1.2 --http1.1"
+        if curl -fsSL $extra --connect-timeout 20 --retry 1 --retry-all-errors \
+            --retry-delay 2 -o "$tmp" "$url"; then
             if [ -s "$tmp" ]; then
                 mv -f "$tmp" "$dest"
                 return 0
@@ -44,15 +51,7 @@ fetch() {
         else
             code=$?
             say "download failed (curl exit $code): $url"
-            case "$code" in
-                16|18|35|52|53|55|56|92)
-                    say "retrying over HTTP/1.1"
-                    if curl -fsSL --http1.1 --connect-timeout 20 -o "$tmp" "$url" && [ -s "$tmp" ]; then
-                        mv -f "$tmp" "$dest"
-                        return 0
-                    fi
-                    ;;
-            esac
+            [ -n "$extra" ] || say "retrying with --tls-max 1.2 --http1.1"
         fi
         rm -f "$tmp"
         attempt=$((attempt + 1))
@@ -175,9 +174,21 @@ elif [ -z "$version" ] && [ -n "$have" ]; then
 else
     say "installing pig-relay ${version:-latest}"
     tmp="$PREFIX/bin/.pig-relay.download"
-    if ! fetch "$RELAY_URL" "$tmp"; then
+    # GitHub can be unreachable while the rest of the network works; PIG_RELAY_MIRRORS
+    # takes URL prefixes (space separated), e.g. "https://ghfast.top/ ".
+    urls="$RELAY_URL"
+    for prefix in ${PIG_RELAY_MIRRORS:-}; do
+        urls="$urls ${prefix}${RELAY_URL}"
+    done
+    ok=0
+    for url in $urls; do
+        [ "$url" = "$RELAY_URL" ] || say "trying mirror: $url"
+        fetch "$url" "$tmp" && { ok=1; break; }
+    done
+    if [ "$ok" = 0 ]; then
         say "could not download $RELAY_URL"
-        say "hint: download it another way and place it at $RELAY (chmod 700)"
+        say "hint: download it another way and place it at $RELAY (chmod 700),"
+        say "      or set PIG_RELAY_MIRRORS to a prefix like https://ghfast.top/"
     elif [ "$(head -c 4 "$tmp")" != "$(printf '\177ELF')" ]; then
         # A captive portal or an error page answers 200 with HTML; never
         # replace a working relay with that.

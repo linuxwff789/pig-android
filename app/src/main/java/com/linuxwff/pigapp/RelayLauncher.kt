@@ -50,15 +50,19 @@ object RelayLauncher {
         } else {
             INSTALL_SCRIPT
         }
+        // jsDelivr serves the same script straight from the repository and is
+        // a different host/CDN, which matters when GitHub's TLS breaks behind a
+        // proxy (`curl: (35) TLS connect error ... lib(0)::reason(0)`).
+        val cdn = "https://cdn.jsdelivr.net/gh/linuxwff789/pig-android@" +
+            (tag ?: "main") + "/scripts/install-termux.sh"
         val pin = if (tag != null) " $tag" else ""
-        // `curl` on a fresh Termux occasionally dies mid-TLS (exit 53 /
-        // engine not found, 35, 56) and both URLs used to be tried exactly
-        // once, leaving an empty script that `sh` then failed on. Retry, and
-        // fall back to HTTP/1.1 for the last attempt.
-        return "mkdir -p \"\$PREFIX/tmp\"; p=\$PREFIX/tmp/pig-install.sh; " +
-            "{ curl -fsSL --retry 3 --retry-delay 1 $script -o \"\$p\" || " +
-            "curl -fsSL --http1.1 --retry 2 --retry-delay 1 $INSTALL_SCRIPT -o \"\$p\"; } && " +
-            "sh \"\$p\"$pin"
+        // `--retry` alone does not retry a failed TLS handshake; that needs
+        // `--retry-all-errors` (curl 7.71+). Both hosts are tried before
+        // giving up, and the file is only executed once it has content.
+        return "mkdir -p \"\$PREFIX/tmp\"; p=\$PREFIX/tmp/pig-install.sh; rm -f \"\$p\"; " +
+            "for u in $script $cdn; do " +
+            "curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 \"\$u\" -o \"\$p\" && break; " +
+            "done; if [ -s \"\$p\" ]; then sh \"\$p\"$pin; else echo '下载失败，请稍后重试'; fi"
     }
 
     fun hasPermission(context: Context): Boolean =
