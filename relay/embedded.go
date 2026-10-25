@@ -72,6 +72,7 @@ func (s *session) installEmbeddedExtensions() {
 	}
 	if err := runPigInstall(s.pigBin, target); err != nil {
 		logf("embedded plan extension not registered: %v", err)
+		logf("hint: Go extensions are built with the system Go toolchain (Termux: pkg install golang); the relay retries on its next start")
 		return
 	}
 	logf("embedded plan extension installed at %s (%s)", target, hash[:8])

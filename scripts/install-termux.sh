@@ -39,6 +39,16 @@ else
     say "pig already installed: $(command -v pig)"
 fi
 
+# pig-relay carries the plan extension as Go sources and builds them with the
+# system Go toolchain on first start. Without Go the app works, only /plan stays
+# missing, and the relay retries on every start.
+if ! command -v go >/dev/null 2>&1; then
+    say "installing Go (needed to build the bundled plan extension)"
+    pkg install -y golang || say "Go install failed; run 'pkg install golang' to enable /plan"
+else
+    say "Go already installed: $(command -v go)"
+fi
+
 if ! command -v pig-relay >/dev/null 2>&1; then
     say "installing pig-relay"
     mkdir -p "$PREFIX/bin"
