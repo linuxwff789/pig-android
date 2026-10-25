@@ -85,6 +85,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -3609,7 +3610,10 @@ private fun EmptyState(onSuggestion: (String) -> Unit, avatarSize: Int) {
                 packText("empty.title", "开始聊天"),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold,
-                color = packColor(LocalUiPack.current.layout.chrome.emptyTitleColor),
+                color = LocalUiPack.current.layout.chrome.emptyTitleColor
+                    .takeIf { it.isNotBlank() }
+                    ?.let { packColor(it) }
+                    ?: LocalContentColor.current,
             )
             if (components.showSuggestions) {
                 Spacer(Modifier.height(5.dp))
@@ -3969,7 +3973,7 @@ private fun MessageRow(
                                     if (bubbleAppearance.borderWidth > 0) {
                                         Modifier.border(
                                             bubbleAppearance.borderWidth.dp,
-                                            packColor(bubbleAppearance.borderColor)
+                                            packColor(bubbleAppearance.assistantBorderColor)
                                                 .copy(alpha = bubbleAppearance.assistantBorderAlpha),
                                             bubbleShape,
                                         )

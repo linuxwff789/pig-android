@@ -614,7 +614,8 @@ Every `*Color`, `*Tint` and `*Background` above takes a colour token:
 | `assistantBackgroundAlpha` | 0.55 | assistant card background opacity |
 | `assistantBorderAlpha` | 0.25 | assistant card border opacity |
 | `assistantTextColor` | `onSurface` | assistant card text token |
-| `borderColor` | `outline` | border token for both bubbles |
+| `borderColor` | `primary` | user bubble border token |
+| `assistantBorderColor` | `outline` | assistant card border token |
 | `userBackground` | `brand` | `brand` keeps the theme gradient; any token = solid fill |
 | `userBackgroundAlpha` | 1.0 | opacity of the solid fill |
 | `textAlign` | `start` | `start` / `center` / `end` for user bubble text |
@@ -667,11 +668,11 @@ these new keys are for deeper visual tuning.
 | --- | --- | --- |
 | `statusColor` | `onSurfaceVariant` | status pill text token |
 | `statusSize` | 0 | text size; `0` = theme labelSmall |
-| `statusSpinnerColor` | `primary` | spinner token |
+| `statusSpinnerColor` | `secondary` | spinner token |
 | `statusSpinnerSize` | 0 | spinner dp; `0` = 11 |
-| `statusBackground` | `none` | pill token; `none` = transparent |
-| `statusBackgroundAlpha` | 1.0 | pill opacity |
-| `statusPaddingH` / `statusPaddingV` | 6 / 2 | pill inner padding |
+| `statusBackground` | `surfaceVariant` | pill token; `none` = transparent |
+| `statusBackgroundAlpha` | 0.55 | pill opacity |
+| `statusPaddingH` / `statusPaddingV` | 12 / 6 | pill inner padding |
 | `toastContainer` | `""` | snackbar background token; `""` = Material default |
 | `toastText` | `""` | snackbar text token |
 | `toastAction` | `""` | snackbar action token |
@@ -687,7 +688,7 @@ these new keys are for deeper visual tuning.
 | `chipLabelColor` | `primary` | selected chip label token |
 | `chipShape` | `circle` | `circle` or `rounded` |
 | `chipRadius` | -1 | radius when `chipShape` = `rounded`; `-1` = 10 |
-| `emptyTitleColor` | `onSurfaceVariant` | empty-state title token |
+| `emptyTitleColor` | `""` | empty-state title token; `""` inherits the ambient colour |
 
 ### Thinking (`chat.thinking`)
 

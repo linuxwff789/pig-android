@@ -823,6 +823,8 @@ object UiPackParser {
             assistantTextColor = json.optString("assistantTextColor", d.assistantTextColor),
             borderColor = json.optString("borderColor", d.borderColor)
                 .takeIf { it.isNotBlank() } ?: d.borderColor,
+            assistantBorderColor = json.optString("assistantBorderColor", d.assistantBorderColor)
+                .takeIf { it.isNotBlank() } ?: d.assistantBorderColor,
             userBackground = json.optString("userBackground", d.userBackground)
                 .takeIf { it.isNotBlank() } ?: d.userBackground,
             userBackgroundAlpha = json.optDouble(

@@ -134,8 +134,9 @@ data class UiBubbleAppearance(
     val assistantBackgroundAlpha: Float = 0.55f,
     val assistantBorderAlpha: Float = 0.25f,
     val assistantTextColor: String = "onSurface",
-    /** Colour token for both bubble outlines. */
-    val borderColor: String = "outline",
+    /** Colour token for the user bubble outline. */
+    val borderColor: String = "primary",
+    val assistantBorderColor: String = "outline",
     /** `brand` keeps the gradient, any other value is a solid token. */
     val userBackground: String = "brand",
     val userBackgroundAlpha: Float = 1f,
@@ -153,12 +154,12 @@ data class UiBubbleAppearance(
 data class UiChromeAppearance(
     val statusColor: String = "onSurfaceVariant",
     val statusSize: Int = 0,
-    val statusSpinnerColor: String = "primary",
+    val statusSpinnerColor: String = "secondary",
     val statusSpinnerSize: Int = 0,
-    val statusBackground: String = "none",
-    val statusBackgroundAlpha: Float = 1f,
-    val statusPaddingH: Int = 6,
-    val statusPaddingV: Int = 2,
+    val statusBackground: String = "surfaceVariant",
+    val statusBackgroundAlpha: Float = 0.55f,
+    val statusPaddingH: Int = 12,
+    val statusPaddingV: Int = 6,
     /** Empty string keeps the Material default. */
     val toastContainer: String = "",
     val toastText: String = "",
@@ -175,7 +176,8 @@ data class UiChromeAppearance(
     val chipLabelColor: String = "primary",
     val chipShape: String = "circle",
     val chipRadius: Int = -1,
-    val emptyTitleColor: String = "onSurfaceVariant",
+    /** Empty string inherits the ambient content colour. */
+    val emptyTitleColor: String = "",
 )
 
 /** `markdown`: colours for the Markdown body (links, inline code, tables, rules). */
