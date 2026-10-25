@@ -9,6 +9,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.SelectableChipColors
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -27,6 +28,8 @@ fun PackAlertDialog(
     title: @Composable (() -> Unit)? = null,
     text: @Composable (() -> Unit)? = null,
     properties: DialogProperties = DialogProperties(),
+    shape: Shape? = null,
+    containerColor: Color = Color.Unspecified,
 ) {
     val chrome = LocalUiPack.current.layout.chrome
     AlertDialog(
@@ -46,12 +49,12 @@ fun PackAlertDialog(
         shape = if (chrome.dialogRadius >= 0) {
             RoundedCornerShape(chrome.dialogRadius.dp)
         } else {
-            AlertDialogDefaults.shape
+            shape ?: AlertDialogDefaults.shape
         },
-        containerColor = if (chrome.dialogSurface.isBlank()) {
-            AlertDialogDefaults.containerColor
-        } else {
+        containerColor = if (chrome.dialogSurface.isNotBlank()) {
             packColor(chrome.dialogSurface)
+        } else {
+            containerColor.takeIf { it != Color.Unspecified } ?: AlertDialogDefaults.containerColor
         },
         iconContentColor = packColor(chrome.dialogTitleColor),
         titleContentColor = packColor(chrome.dialogTitleColor),
