@@ -415,6 +415,12 @@ data class AppUiState(
     val readOnly: Boolean = false,
     /** Message currently being streamed (rendered as plain text for speed). */
     val streamingId: String? = null,
+    /** Older messages exist before the loaded window (pull at the top to get them). */
+    val historyHasOlder: Boolean = false,
+    /** A history page is in flight; an empty transcript shows a spinner instead of "no messages". */
+    val historyLoading: Boolean = false,
+    /** An *older* page is being pulled in (top pill), as opposed to a refresh. */
+    val historyLoadingOlder: Boolean = false,
     /** Steering/follow-up messages still queued in pig. */
     val pendingMessages: Int = 0,
     /** Images picked in the composer and not sent yet. */

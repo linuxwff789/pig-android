@@ -16,6 +16,7 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
+import android.util.LruCache
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -80,6 +81,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // True until this connection has loaded the transcript it should show.
     private var needsHistory = false
     private var historyHealTried = false
+    /**
+     * How many messages the current transcript asks for. History is a suffix of
+     * the session: the first page is small, pulling at the top doubles it.
+     */
+    private var historyWindow = HISTORY_PAGE
     private var lastCommandsAt = 0L
     private var modelSwitchAccepted = false
     /** A `new_session` is in flight; the banner stays until it is ready. */
@@ -1871,7 +1877,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val id = "msgs-${nextId++}"
         lastMessagesRequestId = id
         lastMessagesRequestAt = System.currentTimeMillis()
-        client.send(JSONObject().put("id", id).put("type", "get_messages"))
+        ui = ui.copy(historyLoading = true)
+        client.send(
+            JSONObject()
+                .put("id", id)
+                .put("type", "get_messages")
+                // The relay answers with the newest `limit` messages plus
+                // historyStart/historyTotal, so a 16 MB transcript arrives as
+                // the one or two screens the reader actually needs.
+                .put("limit", historyWindow),
+        )
+    }
+
+    /** Pull the next older page; the transcript stays a suffix of the session. */
+    fun loadOlderHistory() {
+        if (ui.historyLoading || !ui.historyHasOlder) return
+        if (historyWindow >= HISTORY_MAX) return
+        historyWindow = (historyWindow * 2).coerceAtMost(HISTORY_MAX)
+        ui = ui.copy(historyLoadingOlder = true)
+        requestMessages()
+    }
+
+    /** Retry button on the "reading history" screen. */
+    fun reloadHistory() {
+        ui = ui.copy(historyLoading = false, historyLoadingOlder = false)
+        requestMessages()
     }
 
     fun switchSession(path: String) {
@@ -1933,6 +1963,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         restorePending = false
         needsHistory = false
         historyHealTried = false
+        historyWindow = HISTORY_PAGE
         // Open the new conversation right away so the user can start typing;
         // pig creates the session in the background and the queued prompt runs
         // as soon as it is ready. The banner explains the wait.
@@ -1945,6 +1976,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             status = "starting",
             pendingMessages = 0,
             messages = emptyList(),
+            historyHasOlder = false,
+            historyLoading = false,
+            historyLoadingOlder = false,
             sessionId = "",
             sessionFile = "",
             extensionStatuses = emptyMap(),
@@ -2504,7 +2538,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 awaitingNewSession = false
                 flushPendingPrompts()
                 clearLive()
-                ui = ui.copy(streamingId = null, pendingMessages = 0)
+                ui = ui.copy(
+                    streamingId = null,
+                    pendingMessages = 0,
+                    // Nothing on screen yet: say we are reading it rather than
+                    // showing the "no messages" empty state.
+                    historyLoading = ui.messages.isEmpty(),
+                )
                 pendingToolPartials.clear()
                 // The relay may have kept the previous pig alive (mid-turn
                 // reconnect). Ask it what it is doing before switching sessions.
@@ -2521,7 +2561,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "relay_tool" -> handleRelayTool(event)
             "relay_client_error" -> {
                 val message = event.optString("message")
-                ui = ui.copy(error = message, setup = true, setupHint = message)
+                ui = ui.copy(
+                    error = message,
+                    setup = true,
+                    setupHint = message,
+                    historyLoading = false,
+                    historyLoadingOlder = false,
+                )
             }
             "relay_error" -> {
                 val message = event.optString("message", "relay error")
@@ -2552,7 +2598,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } else if (message.contains("bad token")) {
                     recoverFromBadToken()
                 } else {
-                    ui = ui.copy(error = message, setup = true, setupHint = message)
+                    ui = ui.copy(
+                        error = message,
+                        setup = true,
+                        setupHint = message,
+                        historyLoading = false,
+                        historyLoadingOlder = false,
+                    )
                 }
             }
             "relay_exit" -> {
@@ -2563,6 +2615,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         .replace("{code}", event.optInt("code").toString()),
                     streamingId = null,
                     pendingMessages = 0,
+                    historyLoading = false,
+                    historyLoadingOlder = false,
                 )
                 lastPongAt = 0
                 clearLive()
@@ -2744,6 +2798,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (!event.optBoolean("success", true)) {
             val command = event.optString("command")
+            if (command == "get_messages") {
+                // Don't leave the "reading history" spinner up over a failure.
+                ui = ui.copy(historyLoading = false, historyLoadingOlder = false)
+            }
             if (command == "set_model") {
                 modelSwitchAccepted = false
                 pendingThinkingRestore = null
@@ -2838,8 +2896,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // until get_state describes the session that replaced it; switching
             // history is a file read, so it can be cleared right away.
             val switchingToFile = command == "switch_session"
+            historyWindow = HISTORY_PAGE
+            // Paint the transcript built last time immediately; the fresh copy
+            // is requested right below and replaces it in place (stable ids, so
+            // nothing visibly changes).
+            val cachedShown = switchingToFile &&
+                desiredSessionPath?.let { showCachedHistory(it) } == true
             ui = ui.copy(
-                messages = if (switchingToFile) emptyList() else ui.messages,
+                messages = if (switchingToFile && !cachedShown) emptyList() else ui.messages,
+                historyHasOlder = if (cachedShown) ui.historyHasOlder else false,
+                historyLoading = switchingToFile,
+                historyLoadingOlder = false,
                 status = if (switchingToFile || ui.status == "starting" ||
                     ui.status == "switching"
                 ) {
@@ -2887,7 +2954,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val switched = sessionId.isNotBlank() &&
                     ui.sessionId.isNotBlank() &&
                     sessionId != ui.sessionId
-                if (switched && !liveActive) currentAssistant = null
+                if (switched && !liveActive) {
+                    currentAssistant = null
+                    // pig switched sessions on its own (a command inside the
+                    // session): the transcript below is cleared, so fetch the
+                    // new one instead of leaving an empty screen behind.
+                    if (!ui.historyLoading) {
+                        historyWindow = HISTORY_PAGE
+                        requestMessages()
+                    }
+                }
                 // The reply to the get_state issued after new_session means the
                 // backend is ready: the transcript shown above is already the
                 // new one (the user may have typed into it), so only the banner
@@ -2966,6 +3042,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     model = label,
                     sessionId = sessionId,
                     sessionFile = sessionFile,
+                    // No session attached: no history is coming, so don't leave
+                    // the reader on the "reading history" spinner.
+                    historyLoading = if (sessionFile.isBlank()) false else ui.historyLoading,
                     busy = streaming,
                     readOnly = !live,
                     // A new session already cleared the list when it opened;
@@ -3084,6 +3163,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             "get_messages" -> data.optJSONArray("messages")?.let { history ->
+                val historyStart = data.optInt("historyStart", 0)
                 val foreignEmpty = history.length() == 0 && ui.messages.isNotEmpty() &&
                     (taggedPath.isBlank() || taggedPath == ui.sessionFile)
                 if (foreignEmpty) {
@@ -3094,6 +3174,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     needsHistory = false
                     historyHealTried = true
                     val requestId = responseId
+                    val windowAtRequest = historyWindow
                     val pending = pendingToolPartials.toMap()
                     val liveAtRequest = liveActive
                     val live = if (liveAtRequest) liveBuffer.toString() else null
@@ -3107,7 +3188,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         Log.i(
                             "PigPerf",
                             "history build ${(System.nanoTime() - startedAt) / 1_000_000}ms, " +
-                                "${build.items.size} items",
+                                "${build.items.size} items, window $windowAtRequest",
                         )
                         // A newer get_messages (session switch, heal) may have
                         // been issued while this one was building.
@@ -3118,7 +3199,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         // messages are not in `build`, so replacing the list
                         // would drop them.
                         if (!liveAtRequest && liveActive) return@launch
-                        applyHistory(build)
+                        ui = ui.copy(
+                            historyHasOlder = historyStart > 0,
+                            historyLoading = false,
+                            historyLoadingOlder = false,
+                        )
+                        applyHistory(
+                            build,
+                            taggedPath.ifBlank { ui.sessionFile },
+                            windowAtRequest,
+                            historyStart > 0,
+                        )
                     }
                 }
             }
@@ -3337,19 +3428,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             null
         }
         var counter = 1
-        // Images are decoded here (this runs on Dispatchers.Default) and the
-        // pixel budget keeps a long session from holding hundreds of bitmaps.
+        // Screenshots are decoded here (this runs on Dispatchers.Default) and
+        // the pixel budget keeps a long session from holding hundreds of
+        // bitmaps. The budget is spent newest-first: those are the messages on
+        // screen, and loading an older page must not evict them.
         val imageBudget = ImageBudget(HISTORY_IMAGE_PIXEL_BUDGET)
+        val decodedImages = HashMap<Int, DecodedImages>()
+        for (index in messages.length() - 1 downTo 0) {
+            val message = messages.optJSONObject(index) ?: continue
+            if (!hasImages(message)) continue
+            decodedImages[index] = decodeChatImages(
+                message,
+                imageBudget,
+                message.optString("timestamp").takeIf { it.isNotBlank() },
+            )
+        }
         for (index in 0 until messages.length()) {
             val message = messages.optJSONObject(index) ?: continue
+            // Ids come from the message timestamp, not from a counter: paging
+            // prepends items, and stable keys keep tool cards expanded and
+            // screenshots cached when a window grows.
+            val stamp = message.optString("timestamp").ifBlank { "i$index" }
+            var slot = 0
+            fun itemId(): String = "h$stamp-${slot++}"
             when (message.optString("role")) {
                 "user" -> {
                     val text = contentText(message)
-                    val decoded = decodeChatImages(message, imageBudget)
+                    val decoded = decodedImages[index] ?: DecodedImages(emptyList(), 0)
                     if (text.isNotBlank() || decoded.images.isNotEmpty()) {
                         out.add(
                             ChatMsg(
-                                "h${counter++}",
+                                itemId(),
                                 Role.USER,
                                 text = text,
                                 images = decoded.images,
@@ -3362,10 +3471,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val text = contentText(message)
                     val thinking = contentThinking(message, redactedLabel)
                     if (text.isNotBlank() || thinking.isNotBlank() || hasImages(message)) {
-                        val decoded = decodeChatImages(message, imageBudget)
+                        val decoded = decodedImages[index] ?: DecodedImages(emptyList(), 0)
                         out.add(
                             ChatMsg(
-                                "h${counter++}",
+                                itemId(),
                                 Role.ASSISTANT,
                                 text = text,
                                 thinking = thinking,
@@ -3378,14 +3487,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     // errorMessage; without this they vanish on reload.
                     val failure = message.optString("errorMessage")
                     if (failure.isNotBlank()) {
-                        out.add(ChatMsg("h${counter++}", Role.NOTICE, text = failure, isError = true))
+                        out.add(ChatMsg(itemId(), Role.NOTICE, text = failure, isError = true))
                     }
                     val blocks = message.optJSONArray("content") ?: continue
                     for (blockIndex in 0 until blocks.length()) {
                         val block = blocks.optJSONObject(blockIndex) ?: continue
                         if (block.optString("type") != "toolCall") continue
                         val callId = block.optString("id")
-                        val id = "h${counter++}"
+                        val id = itemId()
                         if (callId.isNotBlank()) {
                             toolIds[callId] = id
                             // Let live tool_execution_update/end events find the
@@ -3412,7 +3521,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 "toolResult" -> {
                     val text = contentText(message)
-                    val decoded = decodeChatImages(message, imageBudget)
+                    val decoded = decodedImages[index] ?: DecodedImages(emptyList(), 0)
                     val id = toolIds[message.optString("toolCallId")]
                     val position = id?.let { indexById[it] } ?: -1
                     val meta = JSONObject()
@@ -3430,7 +3539,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     } else {
                         out.add(
                             ChatMsg(
-                                id = "h${counter++}",
+                                id = itemId(),
                                 role = Role.TOOL,
                                 toolName = message.optString("toolName", "tool"),
                                 toolResult = text,
@@ -3467,7 +3576,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return HistoryBuild(out, toolMsgIds, consumed, assistantId, liveText)
     }
 
-    private fun applyHistory(build: HistoryBuild) {
+    private fun applyHistory(
+        build: HistoryBuild,
+        path: String = ui.sessionFile,
+        window: Int = historyWindow,
+        hasOlder: Boolean = ui.historyHasOlder,
+    ) {
         toolMsgIds.clear()
         toolMsgIds.putAll(build.toolMsgIds)
         build.consumed.forEach { (callId, text) ->
@@ -3480,7 +3594,42 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         currentAssistant = build.assistantId
         ui = ui.copy(messages = build.items)
+        rememberHistory(path, window, hasOlder)
         bindResumedAssistant()
+    }
+
+    /** Built transcripts of the last few sessions, so switching back is instant. */
+    private data class CachedHistory(
+        val items: List<ChatMsg>,
+        val window: Int,
+        val hasOlder: Boolean,
+    )
+
+    /** Access-ordered LRU: newest last, and switching back to a session revives it. */
+    private val historyCache = LinkedHashMap<String, CachedHistory>(8, 0.75f, true)
+
+    private fun rememberHistory(path: String, window: Int, hasOlder: Boolean) {
+        if (path.isBlank() || ui.messages.isEmpty()) return
+        synchronized(historyCache) {
+            historyCache[path] = CachedHistory(ui.messages, window, hasOlder)
+            while (historyCache.size > HISTORY_CACHE_SESSIONS) {
+                val oldest = historyCache.keys.firstOrNull() ?: break
+                historyCache.remove(oldest)
+            }
+        }
+    }
+
+    /**
+     * Puts a previously built transcript on screen while the fresh one is still
+     * in flight, and restores the page size it was built with so the refresh
+     * does not shrink what the reader already had.
+     */
+    private fun showCachedHistory(path: String): Boolean {
+        if (path.isBlank() || ui.messages.isNotEmpty()) return false
+        val cached = synchronized(historyCache) { historyCache[path] } ?: return false
+        historyWindow = cached.window
+        ui = ui.copy(messages = cached.items, historyHasOlder = cached.hasOlder)
+        return true
     }
 
     private fun handleUiPack(event: JSONObject) {
@@ -4013,6 +4162,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Pixel budget for one history build; screenshots are ~4 bytes/pixel. */
     private class ImageBudget(var pixels: Long)
 
+    /**
+     * Screenshots already decoded, shared by rebuilds and by page growth so an
+     * older page does not pay for base64 + JPEG again. Keyed by
+     * `message timestamp#block index`; the size is in pixels.
+     */
+    private val historyImageCache =
+        object : LruCache<String, ChatImage>(HISTORY_IMAGE_CACHE_PIXELS) {
+            override fun sizeOf(key: String, value: ChatImage): Int =
+                value.bitmap.width * value.bitmap.height
+        }
+
     private data class DecodedImages(val images: List<ChatImage>, val omitted: Int)
 
     /**
@@ -4025,6 +4185,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         budget: ImageBudget? = null,
     ): ChatImage? {
         if (base64.isEmpty() || base64.length > MAX_IMAGE_B64_CHARS) return null
+        // Once the page budget is spent, don't even decode the bytes.
+        if (budget != null && budget.pixels <= 0) return null
         val bytes = runCatching { Base64.decode(base64, Base64.DEFAULT) }.getOrNull() ?: return null
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -4045,13 +4207,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return ChatImage(bitmap.asImageBitmap(), mimeType.ifBlank { "image/png" })
     }
 
-    private fun decodeChatImages(message: JSONObject?, budget: ImageBudget? = null): DecodedImages {
+    private fun decodeChatImages(
+        message: JSONObject?,
+        budget: ImageBudget? = null,
+        cacheKey: String? = null,
+    ): DecodedImages {
         val blocks = imageBlocks(message)
         var omitted = (blocks.size - MAX_IMAGES_PER_MESSAGE).coerceAtLeast(0)
         val images = ArrayList<ChatImage>()
-        blocks.take(MAX_IMAGES_PER_MESSAGE).forEach { (data, mime) ->
+        blocks.take(MAX_IMAGES_PER_MESSAGE).forEachIndexed { index, block ->
+            val (data, mime) = block
+            val key = cacheKey?.let { "$it#$index" }
+            val cached = key?.let { historyImageCache.get(it) }
+            if (cached != null) {
+                // Already decoded and accounted for; don't charge the budget.
+                images.add(cached)
+                return@forEachIndexed
+            }
             val image = decodeChatImage(data, mime, budget)
-            if (image == null) omitted++ else images.add(image)
+            if (image == null) {
+                omitted++
+            } else {
+                images.add(image)
+                if (key != null) historyImageCache.put(key, image)
+            }
         }
         return DecodedImages(images, omitted)
     }
@@ -4061,7 +4240,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!hasImages(message)) return
         viewModelScope.launch {
             val decoded = withContext(Dispatchers.Default) {
-                decodeChatImages(message, ImageBudget(HISTORY_IMAGE_PIXEL_BUDGET))
+                decodeChatImages(
+                    message,
+                    ImageBudget(HISTORY_IMAGE_PIXEL_BUDGET),
+                    message?.optString("timestamp")?.takeIf { it.isNotBlank() },
+                )
             }
             if (decoded.images.isEmpty() && decoded.omitted == 0) return@launch
             update(id) { it.copy(images = decoded.images, imagesOmitted = decoded.omitted) }
@@ -4119,6 +4302,18 @@ private const val MAX_IMAGES_PER_MESSAGE = 8
 
 /** Pixel budget for images decoded while rebuilding a transcript (~24 MB). */
 private const val HISTORY_IMAGE_PIXEL_BUDGET = 6_000_000L
+
+/** Decoded screenshots kept across rebuilds and page growth (~24 MB). */
+private const val HISTORY_IMAGE_CACHE_PIXELS = 6_000_000
+
+/** Messages in the first history page; pulling at the top doubles it. */
+private const val HISTORY_PAGE = 40
+
+/** Relay's cap on one history reply. */
+private const val HISTORY_MAX = 2000
+
+/** Sessions whose built transcript stays in memory (≈24 MB of images each). */
+private const val HISTORY_CACHE_SESSIONS = 2
 
 /** Long edge of transcript images; 1024 px stays readable and cheap. */
 private const val TRANSCRIPT_IMAGE_MAX_DIM = 1024

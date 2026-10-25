@@ -137,7 +137,12 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import com.linuxwff.pigapp.AppUiState
 import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.ChatMsg
@@ -154,6 +159,7 @@ import com.linuxwff.pigapp.UiRequest
 import com.linuxwff.pigapp.UiSkin
 import com.linuxwff.pigapp.resolve
 import com.linuxwff.pigapp.toolPresentation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -409,6 +415,9 @@ fun PigApp(vm: AppViewModel) {
                     MessageList(
                         messages = ui.messages,
                         busy = ui.busy,
+                        loadingHistory = ui.historyLoading,
+                        loadingOlder = ui.historyLoadingOlder,
+                        hasOlderHistory = ui.historyHasOlder,
                         streamingId = ui.streamingId,
                         hideThinking = ui.hideThinkingBlock,
                         toolMode = ui.toolMode.ifBlank { ui.uiPack.layout.toolCards },
@@ -429,6 +438,8 @@ fun PigApp(vm: AppViewModel) {
                         onSuggestion = { if (!ui.busy) vm.sendPrompt(it) },
                         onCopy = vm::copyText,
                         onToolModeAll = vm::setToolMode,
+                        onLoadOlder = vm::loadOlderHistory,
+                        onRetryHistory = vm::reloadHistory,
                     )
                 }
             }
@@ -3198,6 +3209,9 @@ private fun ToolGroupCard(
 private fun MessageList(
     messages: List<ChatMsg>,
     busy: Boolean,
+    loadingHistory: Boolean,
+    loadingOlder: Boolean,
+    hasOlderHistory: Boolean,
     streamingId: String?,
     hideThinking: Boolean,
     toolMode: String,
@@ -3218,11 +3232,18 @@ private fun MessageList(
     onSuggestion: (String) -> Unit,
     onCopy: (String) -> Unit,
     onToolModeAll: (String) -> Unit,
+    onLoadOlder: () -> Unit,
+    onRetryHistory: () -> Unit,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var autoScroll by remember { mutableStateOf(true) }
     var programmaticScroll by remember { mutableStateOf(false) }
+    // Where the reader was before an older page was prepended.
+    var olderAnchor by remember { mutableStateOf<OlderAnchor?>(null) }
+    var pulled by remember { mutableStateOf(0f) }
+    var pullArmed by remember { mutableStateOf(true) }
+    val pullThreshold = with(LocalDensity.current) { 120.dp.toPx() }
     val last = messages.lastOrNull()
     val showTyping = busy && (
         last == null ||
@@ -3254,7 +3275,7 @@ private fun MessageList(
         last?.images?.size,
         showTyping,
     ) {
-        if (messages.isNotEmpty() && autoScroll) {
+        if (messages.isNotEmpty() && autoScroll && olderAnchor == null) {
             programmaticScroll = true
             try {
                 runCatching {
@@ -3266,8 +3287,68 @@ private fun MessageList(
         }
     }
 
+    // Prepending an older page shifts every item down; put the reader back on
+    // the row they were looking at instead of leaving them at the new top.
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.totalItemsCount }.collect { total ->
+            val pending = olderAnchor ?: return@collect
+            if (total <= pending.total) return@collect
+            olderAnchor = null
+            listState.scrollToItem(pending.index + (total - pending.total), pending.offset)
+        }
+    }
+    // A page that comes back without adding items must not leave an anchor
+    // behind: a later message arriving would scroll the reader somewhere else.
+    LaunchedEffect(olderAnchor) {
+        val pending = olderAnchor ?: return@LaunchedEffect
+        delay(8_000)
+        if (olderAnchor === pending) olderAnchor = null
+    }
+    // Re-arm the pull once the page has landed, so a second pull is not dead.
+    LaunchedEffect(loadingHistory) {
+        if (!loadingHistory) {
+            pulled = 0f
+            pullArmed = true
+        }
+    }
+
+    // Pulling past the top asks for the next older page: no button to hunt for.
+    // The pull is consumed so the overscroll stretch does not swallow it first.
+    val olderPageConnection = remember(hasOlderHistory, loadingHistory, pullThreshold) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+                if (available.y < 0f) {
+                    pulled = 0f
+                    pullArmed = true
+                    return Offset.Zero
+                }
+                if (available.y == 0f || !hasOlderHistory) return Offset.Zero
+                if (listState.canScrollBackward) return Offset.Zero
+                pulled += available.y
+                if (pullArmed && pulled >= pullThreshold) {
+                    pulled = 0f
+                    pullArmed = false
+                    if (!loadingHistory) {
+                        olderAnchor = OlderAnchor(
+                            listState.firstVisibleItemIndex,
+                            listState.firstVisibleItemScrollOffset,
+                            listState.layoutInfo.totalItemsCount,
+                        )
+                        onLoadOlder()
+                    }
+                }
+                return Offset(0f, available.y)
+            }
+        }
+    }
+
     if (messages.isEmpty()) {
-        EmptyState(onSuggestion, emptyAvatarSize)
+        if (loadingHistory) {
+            HistoryLoadingState(onRetry = onRetryHistory)
+        } else {
+            EmptyState(onSuggestion, emptyAvatarSize)
+        }
         return
     }
 
@@ -3278,7 +3359,9 @@ private fun MessageList(
     Box(modifier.fillMaxWidth()) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(olderPageConnection),
             contentPadding = PaddingValues(
                 start = chatPaddingH.dp,
                 end = chatPaddingH.dp,
@@ -3316,6 +3399,38 @@ private fun MessageList(
             if (showTyping) {
                 item(key = "typing") {
                     TypingRow(assistantLabel, avatarShadow)
+                }
+            }
+        }
+        // Feedback while a page is in flight; kept out of the list so it cannot
+        // shift item indices underneath the scroll anchor above.
+        AnimatedVisibility(
+            visible = loadingOlder,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 6.dp),
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(cornerRadius),
+                shadowElevation = 3.dp,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(11.dp),
+                        strokeWidth = 1.5.dp,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        packText("chat.loadingOlder", "正在载入更早的消息…"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -3362,6 +3477,54 @@ private fun MessageList(
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 }
+            }
+        }
+    }
+}
+
+/** Scroll position captured before an older page was prepended. */
+private data class OlderAnchor(val index: Int, val offset: Int, val total: Int)
+
+/**
+ * Shown instead of the empty state while the first history page is in flight:
+ * a blank transcript reads as "this session has no messages".
+ */
+@Composable
+private fun HistoryLoadingState(onRetry: () -> Unit) {
+    var slow by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(6_000)
+        slow = true
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(22.dp),
+            strokeWidth = 2.dp,
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            packText("chat.loadingHistory", "正在读取历史会话…"),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (slow) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                packText("chat.loadingHistorySlow", "比平时慢，relay 可能没有响应"),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+            )
+            TextButton(onClick = onRetry) {
+                Text(
+                    packText("chat.retryHistory", "重试"),
+                    style = MaterialTheme.typography.labelSmall,
+                )
             }
         }
     }
