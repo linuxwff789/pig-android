@@ -62,6 +62,19 @@ object RelayLauncher {
     fun isTermuxInstalled(context: Context): Boolean =
         runCatching { context.packageManager.getPackageInfo(TERMUX_PKG, 0) }.isSuccess
 
+    /**
+     * The short one-liner that only flips Termux's external-command switch.
+     * A fresh Termux refuses `RUN_COMMAND` until `allow-external-apps` is on, so
+     * the app cannot install anything by itself; this is the smallest thing the
+     * user has to paste, after which the app's own install button works (and
+     * shows progress). Pure shell, so it also works offline — the same thing is
+     * available as `enable-external-apps.sh` in every release.
+     */
+    fun enableExternalAppsCommand(): String =
+        "mkdir -p ~/.termux; f=~/.termux/termux.properties; " +
+            "sed -i '/allow-external-apps/d' \"\$f\" 2>/dev/null; " +
+            "echo 'allow-external-apps = true' >> \"\$f\" && termux-reload-settings"
+
     /** Runs the one-line Termux installer (pig + pig-relay + UI dirs). */
     fun bootstrap(context: Context, cwd: String): String? =
         runCommand(

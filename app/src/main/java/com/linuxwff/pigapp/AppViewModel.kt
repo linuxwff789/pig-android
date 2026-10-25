@@ -584,6 +584,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Paste-in-the-terminal one-liner that only enables `allow-external-apps`.
+     * Shown when Termux refused a RUN_COMMAND: until that switch is on nothing
+     * else can run, and after it the app installs by itself with progress.
+     */
+    fun copyExternalAppsCommand() {
+        val ctx = getApplication<Application>()
+        val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(
+            ClipData.newPlainText("Pig termux", RelayLauncher.enableExternalAppsCommand()),
+        )
+        ui = ui.copy(toast = str("toast.externalAppsCopied", "命令已复制：在 Termux 里粘贴并回车"))
+    }
+
+    fun copyExternalAppsAndOpen() {
+        copyExternalAppsCommand()
+        openTermux()
+    }
+
+    /**
      * Termux's answer to a RUN_COMMAND. The only actionable failure on a fresh
      * install is `allow-external-apps=false`: Termux refuses before exec, so the
      * app used to keep retrying without ever telling the user why.
@@ -596,6 +615,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             ui = ui.copy(
                 connected = false,
                 installRunning = false,
+                termuxBlocked = true,
                 setup = true,
                 error = str(
                     "error.externalAppsBlocked",
@@ -611,6 +631,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         when (outcome.kind) {
             RunCommandReceiver.KIND_BOOTSTRAP -> {
+                ui = ui.copy(termuxBlocked = false)
                 if (outcome.failed) {
                     ui = ui.copy(
                         installRunning = false,
@@ -628,6 +649,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             RunCommandReceiver.KIND_RELAY, RunCommandReceiver.KIND_RESTART -> {
+                // Pig ran, so the Termux switch is on (possibly just enabled).
+                ui = ui.copy(termuxBlocked = false)
                 // While the installer is still running the binary legitimately
                 // does not exist yet: keep the progress bar, not an error.
                 if (outcome.missingBinary && !ui.installRunning) {
@@ -2824,7 +2847,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun handle(event: JSONObject) {
         when (val type = event.optString("type")) {
             "relay_hello" -> {
-                ui = ui.copy(error = null, setup = false, setupHint = null, installRunning = false)
+                ui = ui.copy(
+                    error = null,
+                    setup = false,
+                    setupHint = null,
+                    installRunning = false,
+                    termuxBlocked = false,
+                )
                 warnedMissingExtensions = ""
                 lastPongAt = System.currentTimeMillis()
                 restoreChecked = false

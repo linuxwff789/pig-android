@@ -480,6 +480,8 @@ data class AppUiState(
     val installRunning: Boolean = false,
     /** Wall clock of the last install start; drives the elapsed/progress text. */
     val installStartedAt: Long = 0L,
+    /** Termux refused a RUN_COMMAND because allow-external-apps is off. */
+    val termuxBlocked: Boolean = false,
     val wakeLock: Boolean = true,
     val keepAlive: Boolean = true,
     /** Glow behind per-message avatars; off by default for cheaper drawing. */

@@ -68,7 +68,25 @@ to connected on its own when the relay answers).
 The app now reads the result Termux sends back for every `RUN_COMMAND`, so a
 refused command (`allow-external-apps` off) or a missing `pig-relay` shows up
 immediately with that hint, instead of looking like a request that did nothing.
-Once the switch is on and Termux has been opened once, 一键安装 works.
+
+When the switch is the blocker, the dialog offers a shorter one-liner that only
+flips it — the single step the app cannot do for you:
+
+```bash
+mkdir -p ~/.termux; f=~/.termux/termux.properties; sed -i '/allow-external-apps/d' "$f" 2>/dev/null; echo 'allow-external-apps = true' >> "$f" && termux-reload-settings
+```
+
+It is plain shell (works offline), drops any old/commented `allow-external-apps`
+line before appending, and is safe to repeat. The same thing ships as a script
+in every release if you prefer a readable version:
+
+```bash
+curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/enable-external-apps.sh | sh
+```
+
+After that the app's own install button works, with progress and the final exit
+code. Once the switch is on and
+Termux has been opened once, 一键安装 works.
 
 ## Manual
 

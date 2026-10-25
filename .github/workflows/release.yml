@@ -120,4 +120,5 @@ jobs:
             app/build/outputs/apk/release/*.apk
             pig-relay-android-arm64
             scripts/install-termux.sh
+            scripts/enable-external-apps.sh
           generate_release_notes: true

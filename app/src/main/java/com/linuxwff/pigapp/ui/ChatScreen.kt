@@ -783,6 +783,7 @@ private fun PigHeader(
 private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
     val context = LocalContext.current
     val command = RelayLauncher.installCommand(context)
+    val enableCommand = RelayLauncher.enableExternalAppsCommand()
     val termuxInstalled = RelayLauncher.isTermuxInstalled(context)
     val permitted = RelayLauncher.hasPermission(context)
     val scheme = MaterialTheme.colorScheme
@@ -857,7 +858,63 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
                     packText("setup.intro", "Pig App 只是前端：pig 和 pig-relay 要装在 Termux 里。"),
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                if (!termuxInstalled) {
+                if (ui.termuxBlocked) {
+                    // Termux refuses everything until this switch is on; it is
+                    // the only step the app cannot do for the user, so it gets
+                    // the shortest possible command of its own.
+                    Text(
+                        packText(
+                            "setup.enableTitle",
+                            "1. 让 Termux 允许 App 执行命令（只需一次）",
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        packText(
+                            "setup.enableHint",
+                            "全新 Termux 默认关闭 allow-external-apps，App 的后台命令会被直接拒绝。在 Termux 里跑这一行：",
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                    Surface(
+                        color = scheme.surfaceVariant.copy(alpha = 0.6f),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, scheme.outline.copy(alpha = 0.5f)),
+                    ) {
+                        SelectionContainer {
+                            Text(
+                                enableCommand,
+                                fontFamily = packCodeFont(),
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(10.dp),
+                            )
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = vm::copyExternalAppsAndOpen) {
+                            Text(packText("setup.enableAndOpen", "复制并打开 Termux"))
+                        }
+                        TextButton(onClick = vm::copyExternalAppsCommand) {
+                            Text(packText("setup.copyOnly", "只复制"))
+                        }
+                    }
+                    Text(
+                        packText(
+                            "setup.enableThen",
+                            "2. 粘贴回车后回到这里，点「一键安装」；它会显示进度并自动连接。",
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        packText(
+                            "setup.installOrManual",
+                            "也可以直接在 Termux 里跑下面这条，它会一并开启开关：",
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                } else if (!termuxInstalled) {
                     Text(
                         packText("setup.installTermuxStep", "1. 先从 F-Droid 安装 Termux（Play 版已停更）"),
                         style = MaterialTheme.typography.bodyMedium,
@@ -898,7 +955,7 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (termuxInstalled) {
+                    if (termuxInstalled && !ui.termuxBlocked) {
                         TextButton(onClick = vm::copyInstallCommandAndOpen) {
                             Text(packText("setup.copyAndOpen", "复制命令并打开 Termux"))
                         }
@@ -931,6 +988,9 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
                 }
                 !permitted -> TextButton(onClick = vm::openAppSettings) {
                     Text(packText("setup.permissions", "权限设置"))
+                }
+                ui.termuxBlocked -> TextButton(onClick = vm::copyExternalAppsAndOpen) {
+                    Text(packText("setup.enableAndOpen", "复制并打开 Termux"))
                 }
                 else -> TextButton(onClick = { vm.bootstrap() }) {
                     Text(packText("setup.oneClick", "一键安装"))

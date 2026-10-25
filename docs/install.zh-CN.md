@@ -44,7 +44,21 @@ curl -fsSL https://github.com/linuxwff789/pig-android/releases/download/v1.1.27/
 
 `allow-external-apps=false` 时 `RUN_COMMAND` 本身会被拦截。在干净的 Termux 上，用户不打开该开关，App 就无法运行安装脚本，因此设置对话框会给出那一行命令供你粘贴到 Termux，并带 **复制命令** 和 **打开 Termux** 两个按钮；安装期间对话框显示分阶段进度（实时输出在 Termux 窗口里，relay 一答上就自动切到已连接）。
 
-App 现在会读 Termux 对每条 `RUN_COMMAND` 回传的结果：被 `allow-external-apps` 拦截、或者 `pig-relay` 还不存在，都会立刻给出对应提示，而不是看起来什么都没发生。开关打开并且 Termux 被打开过一次后，一键安装即可使用。
+App 现在会读 Termux 对每条 `RUN_COMMAND` 回传的结果：被 `allow-external-apps` 拦截、或者 `pig-relay` 还不存在，都会立刻给出对应提示，而不是看起来什么都没发生。
+
+如果卡在开关这一步，对话框会给一条短得多的命令，只做「允许 App 执行命令」这一件：
+
+```bash
+mkdir -p ~/.termux; f=~/.termux/termux.properties; sed -i '/allow-external-apps/d' "$f" 2>/dev/null; echo 'allow-external-apps = true' >> "$f" && termux-reload-settings
+```
+
+纯 shell，离线也能跑；会先删掉旧的/被注释的 `allow-external-apps` 行再追加，重复执行安全。喜欢可读版本的话，每个 release 里也有同名脚本：
+
+```bash
+curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/enable-external-apps.sh | sh
+```
+
+回到 App 点「一键安装」就会走有进度的那条路。开关打开并且 Termux 被打开过一次后，一键安装即可使用。
 
 ## 手动安装
 
