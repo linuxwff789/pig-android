@@ -46,6 +46,9 @@ jobs:
             exit 1
           fi
 
+      - name: "UI packs: no generated windows committed"
+        run: sh scripts/check-ui-packs.sh
+
       - name: Build relay (android/arm64)
         run: |
           cd relay
