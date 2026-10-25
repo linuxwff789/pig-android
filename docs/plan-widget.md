@@ -1,3 +1,5 @@
+**English** · [简体中文](plan-widget.zh-CN.md)
+
 # Plan widgets (`setWidget` contract, v1)
 
 Any extension can show a plan as a native checklist card in the Android app —

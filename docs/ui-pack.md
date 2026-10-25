@@ -1,3 +1,5 @@
+**English** · [简体中文](ui-pack.zh-CN.md)
+
 # UI packs (M1)
 
 A UI pack is a directory of JSON files. `pig-relay` watches

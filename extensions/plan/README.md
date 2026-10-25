@@ -1,3 +1,5 @@
+**English** · [简体中文](README.zh-CN.md)
+
 # plan — optional plan-mode extension
 
 A read-only planning mode for PiG. The model investigates, writes a numbered

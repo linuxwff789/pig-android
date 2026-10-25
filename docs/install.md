@@ -1,3 +1,5 @@
+**English** · [简体中文](install.zh-CN.md)
+
 # Install the backend in Termux
 
 The Android app is a front-end. `pig` and `pig-relay` run inside Termux.

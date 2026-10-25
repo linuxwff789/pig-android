@@ -10,6 +10,16 @@ permissions:
   contents: read
 
 jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Every doc has an English + 简体中文 twin, both carry the language
+      # switcher, and no relative link or in-page anchor is dead.
+      - name: "Docs: EN/ZH twins, switchers, links"
+        run: python3 scripts/check-docs-i18n.py
+
   build:
     runs-on: ubuntu-latest
     steps:

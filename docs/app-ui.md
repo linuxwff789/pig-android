@@ -1,3 +1,5 @@
+**English** · [简体中文](app-ui.zh-CN.md)
+
 # `app-ui/1` — declarative windows for the Pig app
 
 Status: **M3.4 implemented** — all four placements, the component set plus forms

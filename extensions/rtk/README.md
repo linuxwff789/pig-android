@@ -1,3 +1,5 @@
+**English** · [简体中文](README.zh-CN.md)
+
 # rtk extension (Go port)
 
 Rewrites every `bash` tool call into its `rtk` equivalent before the command

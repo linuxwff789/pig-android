@@ -1,3 +1,5 @@
+**English** · [简体中文](README.zh-CN.md)
+
 # Pig Android
 
 A native Android client for PiG that keeps the agent running in Termux.

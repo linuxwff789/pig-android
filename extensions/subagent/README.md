@@ -1,3 +1,5 @@
+**English** · [简体中文](README.zh-CN.md)
+
 # subagent extension (Go)
 
 A `subagent` tool: the model delegates one self-contained task to a **child

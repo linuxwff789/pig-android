@@ -1,3 +1,5 @@
+**English** · [简体中文](app-ui-plan.zh-CN.md)
+
 # M3 implementation plan — declarative windows
 
 Goal: a TUI-like surface where any extension can open, update and close windows

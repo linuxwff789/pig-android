@@ -1,3 +1,5 @@
+**English** · [简体中文](protocol.zh-CN.md)
+
 # Relay protocol (`relay/1`)
 
 Loopback TCP, one JSON object per line (LF). The framing is the same as
