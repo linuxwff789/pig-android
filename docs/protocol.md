@@ -43,6 +43,23 @@ Control frames:
 | `relay_restart` | | kills and respawns pig from the same session file (`relay_restarted`); used after a context-window pin |
 | `relay_stop` | | closes the connection |
 
+## History paging
+
+`get_messages` may carry `limit: N`. pig has no paging of its own, so the relay
+returns the newest N messages itself — from the disk cache when no pig is
+attached for that session, or by trimming pig's reply — and adds two fields to
+`data`:
+
+| Field | Meaning |
+| --- | --- |
+| `historyStart` | index of the first returned message in the whole transcript; `0` means nothing older is left |
+| `historyTotal` | how many messages the relay had for that session |
+
+The window is moved back to the `user` message that opened its first turn (at
+most 24 messages) so a page never begins with a `toolResult` whose `toolCall`
+lives on the previous page. A `get_messages` without `limit` is answered whole,
+so older clients are unaffected; the disk fallback still caps at 2000 messages.
+
 ## Relay → client
 
 | Frame | Meaning |

@@ -69,21 +69,27 @@ type session struct {
 	msgMu    sync.Mutex
 	msgCache map[string]msgCacheEntry
 
+	// historyLimits maps a pending get_messages id to the page size the
+	// client asked for; the reply (pig's or the disk cache's) is cut to it.
+	historyMu     sync.Mutex
+	historyLimits map[string]int
+
 	stopOnce sync.Once
 	stopped  chan struct{}
 }
 
 func newSession(token, cwd, uiDir, sessionsDir, pigBin string) *session {
 	return &session{
-		token:        token,
-		cwd:          cwd,
-		uiDir:        uiDir,
-		sessionsDir:  sessionsDir,
-		settingsPath: filepath.Join(filepath.Dir(sessionsDir), "settings.json"),
-		pigBin:       pigBin,
-		agents:       map[string]*agentProc{},
-		msgCache:     map[string]msgCacheEntry{},
-		stopped:      make(chan struct{}),
+		token:         token,
+		cwd:           cwd,
+		uiDir:         uiDir,
+		sessionsDir:   sessionsDir,
+		settingsPath:  filepath.Join(filepath.Dir(sessionsDir), "settings.json"),
+		pigBin:        pigBin,
+		agents:        map[string]*agentProc{},
+		msgCache:      map[string]msgCacheEntry{},
+		historyLimits: map[string]int{},
+		stopped:       make(chan struct{}),
 	}
 }
 
@@ -351,7 +357,7 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 			payload := append([]byte(nil), line...)
 			a.trackFrame(s, payload)
 			if s.isActive(a) {
-				_ = s.sendRaw(s.tagResponse(a, payload))
+				_ = s.sendRaw(s.fitHistory(s.tagResponse(a, payload)))
 			}
 		}
 		if err := scanner.Err(); err != nil {
@@ -774,6 +780,13 @@ func (s *session) syntheticState(id any) frame {
 }
 
 func (s *session) syntheticMessages(id any) frame {
+	limit, limited := s.takeHistoryLimit(id)
+	all := s.cachedMessages(s.activePath)
+	start := 0
+	window := all
+	if limited {
+		window, start = clipHistory(all, limit)
+	}
 	return frame{
 		"type":        "response",
 		"id":          id,
@@ -781,13 +794,130 @@ func (s *session) syntheticMessages(id any) frame {
 		"success":     true,
 		"sessionPath": s.activePath,
 		"data": frame{
-			"messages": s.cachedMessages(s.activePath),
+			"messages":     window,
+			"historyStart": start,
+			"historyTotal": len(all),
 		},
 	}
 }
 
 // historyLimit is how many messages get_messages returns.
 const historyLimit = 2000
+
+// historyAlignSlack bounds how far a page may move back to reach the user
+// message that opened its first turn.
+const historyAlignSlack = 24
+
+// clipHistory keeps the newest `limit` messages of a transcript. The window is
+// moved back to the start of the turn that opened it, so a page does not begin
+// with a tool result whose call sits on the previous page.
+func clipHistory(messages []json.RawMessage, limit int) ([]json.RawMessage, int) {
+	if limit <= 0 || len(messages) <= limit {
+		return messages, 0
+	}
+	start := len(messages) - limit
+	for i := 0; i < historyAlignSlack && start > 0; i++ {
+		if messageRole(messages[start]) == "user" {
+			break
+		}
+		start--
+	}
+	return messages[start:], start
+}
+
+func messageRole(raw json.RawMessage) string {
+	var head struct {
+		Role string `json:"role"`
+	}
+	_ = json.Unmarshal(raw, &head)
+	return head.Role
+}
+
+// wantHistory records the page size requested for a get_messages id. The reply
+// is cut when it arrives, whoever produces it.
+func (s *session) wantHistory(id any, limit int) {
+	key := fmt.Sprint(id)
+	s.historyMu.Lock()
+	defer s.historyMu.Unlock()
+	if s.historyLimits == nil || len(s.historyLimits) > 32 {
+		s.historyLimits = map[string]int{}
+	}
+	s.historyLimits[key] = limit
+}
+
+func (s *session) takeHistoryLimit(id any) (int, bool) {
+	key := fmt.Sprint(id)
+	s.historyMu.Lock()
+	defer s.historyMu.Unlock()
+	limit, ok := s.historyLimits[key]
+	delete(s.historyLimits, key)
+	return limit, ok
+}
+
+// fitHistory trims a forwarded get_messages reply to the window the app asked
+// for. pig answers with the whole transcript, screenshots included, so a
+// 4000-message session would otherwise cross the socket as one ~18 MB line and
+// be parsed in full on the phone.
+func (s *session) fitHistory(payload []byte) []byte {
+	if !bytes.Contains(payload, []byte(`"command":"get_messages"`)) {
+		return payload
+	}
+	// One pass into known fields: get_messages replies carry nothing else, and
+	// decoding into maps would copy the whole payload twice more.
+	var env struct {
+		Type        string          `json:"type"`
+		ID          json.RawMessage `json:"id"`
+		Command     string          `json:"command"`
+		Success     bool            `json:"success"`
+		Error       string          `json:"error,omitempty"`
+		SessionPath string          `json:"sessionPath,omitempty"`
+		Data        struct {
+			Messages []json.RawMessage `json:"messages"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &env); err != nil {
+		return payload
+	}
+	var id any
+	_ = json.Unmarshal(env.ID, &id)
+	limit, ok := s.takeHistoryLimit(id)
+	if !ok || limit <= 0 {
+		return payload
+	}
+	if !env.Success || len(env.Data.Messages) == 0 {
+		return payload
+	}
+	window, start := clipHistory(env.Data.Messages, limit)
+	out, err := json.Marshal(struct {
+		Type        string          `json:"type"`
+		ID          json.RawMessage `json:"id"`
+		Command     string          `json:"command"`
+		Success     bool            `json:"success"`
+		Error       string          `json:"error,omitempty"`
+		SessionPath string          `json:"sessionPath,omitempty"`
+		Data        struct {
+			Messages     []json.RawMessage `json:"messages"`
+			HistoryStart int               `json:"historyStart"`
+			HistoryTotal int               `json:"historyTotal"`
+		} `json:"data"`
+	}{
+		Type:        env.Type,
+		ID:          env.ID,
+		Command:     env.Command,
+		Success:     env.Success,
+		Error:       env.Error,
+		SessionPath: env.SessionPath,
+		Data: struct {
+			Messages     []json.RawMessage `json:"messages"`
+			HistoryStart int               `json:"historyStart"`
+			HistoryTotal int               `json:"historyTotal"`
+		}{window, start, len(env.Data.Messages)},
+	})
+	if err != nil {
+		return payload
+	}
+	return out
+}
 
 // msgCacheKeep bounds the cache: every entry can hold a few megabytes.
 const msgCacheKeep = 4
@@ -952,10 +1082,15 @@ func (s *session) handleClientLine(line []byte) {
 		Provider    string         `json:"provider"`
 		Model       string         `json:"model"`
 		Window      *int           `json:"contextWindow"`
+		Limit       *int           `json:"limit"`
 	}
 	if err := json.Unmarshal(line, &head); err != nil {
 		_ = s.send(frame{"type": "relay_error", "message": "invalid json: " + err.Error()})
 		return
+	}
+
+	if head.Type == "get_messages" && head.Limit != nil && *head.Limit > 0 {
+		s.wantHistory(head.ID, *head.Limit)
 	}
 
 	if !strings.HasPrefix(head.Type, "relay_") {

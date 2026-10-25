@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 )
 
@@ -122,10 +125,138 @@ func BenchmarkHistoryLoad(b *testing.B) {
 			readSessionMessages(path)
 		}
 	})
+	b.Run("fit", func(b *testing.B) {
+		msgs := readSessionMessages(path)
+		raw, err := json.Marshal(msgs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		payload := []byte(`{"type":"response","id":"m1","command":"get_messages","success":true,"data":{"messages":` +
+			string(raw) + `}}`)
+		s := &session{historyLimits: map[string]int{}}
+		b.SetBytes(int64(len(payload)))
+		for i := 0; i < b.N; i++ {
+			s.wantHistory("m1", 40)
+			s.fitHistory(payload)
+		}
+	})
 	b.Run("incremental", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			s.cachedMessages(path) // warm cache, then one new line
 			writeSessionFile(nil, path, []string{`{"type":"message","message":{"role":"user","content":"x"}}`})
 		}
 	})
+}
+
+func historyEntries(roles ...string) []json.RawMessage {
+	out := make([]json.RawMessage, 0, len(roles))
+	for i, role := range roles {
+		out = append(out, json.RawMessage(
+			`{"role":"`+role+`","content":"`+strconv.Itoa(i)+`"}`,
+		))
+	}
+	return out
+}
+
+func TestClipHistoryKeepsTheNewestMessages(t *testing.T) {
+	all := historyEntries("user", "assistant", "user", "assistant")
+	window, start := clipHistory(all, 2)
+	if start != 2 {
+		t.Fatalf("start: want 2, got %d", start)
+	}
+	if len(window) != 2 || messageRole(window[0]) != "user" {
+		t.Fatalf("window: want [user assistant], got %d entries starting with %q",
+			len(window), messageRole(window[0]))
+	}
+}
+
+func TestClipHistoryStartsAtATurnBoundary(t *testing.T) {
+	// The naive cut would land on a tool result; the page moves back to the
+	// user message that opened the turn.
+	all := historyEntries("user", "assistant", "user", "assistant",
+		"toolResult", "toolResult", "assistant")
+	window, start := clipHistory(all, 3)
+	if start != 2 {
+		t.Fatalf("start: want 2, got %d", start)
+	}
+	if len(window) != 5 {
+		t.Fatalf("window: want 5, got %d", len(window))
+	}
+}
+
+func TestClipHistoryLeavesShortTranscriptsAlone(t *testing.T) {
+	all := historyEntries("user", "assistant")
+	window, start := clipHistory(all, 40)
+	if start != 0 || len(window) != 2 {
+		t.Fatalf("want the whole transcript, got start=%d len=%d", start, len(window))
+	}
+}
+
+func TestFitHistoryTrimsForwardedReply(t *testing.T) {
+	s := &session{historyLimits: map[string]int{}}
+	all := historyEntries("user", "assistant", "user", "assistant")
+	raw, err := json.Marshal(all)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte(`{"type":"response","id":"msgs-7","command":"get_messages","success":true,` +
+		`"data":{"messages":` + string(raw) + `}}`)
+	s.wantHistory("msgs-7", 2)
+	out := s.fitHistory(payload)
+	var env struct {
+		Data struct {
+			Messages     []json.RawMessage `json:"messages"`
+			HistoryStart int               `json:"historyStart"`
+			HistoryTotal int               `json:"historyTotal"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out, &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Data.HistoryStart != 2 || env.Data.HistoryTotal != 4 || len(env.Data.Messages) != 2 {
+		t.Fatalf("want start=2 total=4 len=2, got start=%d total=%d len=%d",
+			env.Data.HistoryStart, env.Data.HistoryTotal, len(env.Data.Messages))
+	}
+	// The limit is consumed: a reply for another id passes through untouched.
+	if again := s.fitHistory(payload); !bytes.Equal(again, payload) {
+		t.Fatal("a reply without a recorded limit must not be rewritten")
+	}
+}
+
+func TestSyntheticMessagesPages(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	entries := make([]string, 0, 12)
+	for i := 0; i < 4; i++ {
+		entries = append(entries,
+			`{"type":"message","message":{"role":"user","content":"u`+strconv.Itoa(i)+`"}}`,
+			`{"type":"message","message":{"role":"assistant","content":"a`+strconv.Itoa(i)+`"}}`,
+			`{"type":"message","message":{"role":"toolResult","toolCallId":"c`+strconv.Itoa(i)+`","content":"t"}}`,
+		)
+	}
+	writeSession(t, path, entries)
+	s := &session{
+		msgCache:      map[string]msgCacheEntry{},
+		historyLimits: map[string]int{},
+		activePath:    path,
+	}
+	// No agent attached: answered from the disk cache.
+	s.wantHistory("m1", 3)
+	reply := s.syntheticMessages("m1")
+	data := reply["data"].(frame)
+	window := data["messages"].([]json.RawMessage)
+	start := data["historyStart"].(int)
+	total := data["historyTotal"].(int)
+	if total != 12 {
+		t.Fatalf("total: want 12, got %d", total)
+	}
+	// The window is moved back to the user message that opened the turn.
+	if messageRole(window[0]) != "user" {
+		t.Fatalf("window must start at a user message, got %q", messageRole(window[0]))
+	}
+	if len(window) != total-start {
+		t.Fatalf("len=%d does not match start=%d total=%d", len(window), start, total)
+	}
+	if start == 0 {
+		t.Fatal("a 3-message page of 12 must report older messages")
+	}
 }
