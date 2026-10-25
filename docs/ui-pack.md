@@ -561,6 +561,39 @@ removed through `drawer.modules`.
 | `thumbSize` | 56 | pending-image thumbnail dp, 24–96 |
 | `thumbRadius` | 10 | thumbnail corner radius, 0–40 |
 | `thumbGap` | 6 | dp between thumbnails, 0–24 |
+| `innerPaddingH` / `innerPaddingV` | -1 | space between the caret and the input border; `-1` = Material's 16 dp |
+| `marginH` / `marginV` | 0 | space outside the composer surface, 0–48 / 0–32 |
+| `maxWidth` | 0 | `0` = full width, otherwise the composer is centred at most this wide (up to 1200) |
+| `maxHeight` | 0 | input well maximum height in dp, 0 = unlimited (up to 600) |
+| `selectionColor` / `selectionAlpha` | `primary` / 0.4 | text selection background |
+| `selectionHandleColor` | `primary` | selection handles |
+| `disabledSurface` / `disabledBorderAlpha` / `disabledTextColor` | `surfaceVariant` / 0.12 / `onSurfaceVariant` | field appearance while disabled |
+| `errorBorderColor` / `errorTextColor` | `error` | field appearance in the error state |
+| `fontFamily` | `` | overrides `typography.fontFamily` for the input only (`sans`, `serif`, `mono`, `cursive`, `assets/fonts/x.ttf`) |
+| `lineHeight` | 0 | multiplier over the input font size; `0` inherits |
+| `letterSpacing` | 0 | sp, -2…8 |
+| `textAlign` | `start` | `start` / `center` / `end` |
+| `placeholderFontSize` | 0 | `0` = same size as the input |
+| `sendDisabledBackground` / `sendDisabledTint` | `surfaceVariant` / `onSurfaceVariant` | the send disc while there is nothing to send |
+| `sendShape` / `stopShape` / `attachShape` | `circle` | `circle` or `rounded` |
+| `sendRadius` / `stopRadius` / `attachRadius` | -1 | corner radius for `rounded`; `-1` = size/2.4 |
+| `sendSize` / `stopSize` / `attachSize` | 0 | `0` = `components.composerButtonSize`, up to 72 |
+| `sendPadding` / `stopPadding` / `attachPadding` | 0 | insets the glyph by 2×padding (drawn size = icon size − 2p, min 6 dp) |
+| `stopBorderWidth` / `stopBorderColor` | 0 / `error` | optional ring around the stop disc |
+
+### Markdown (`chat.markdown`)
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `linkColor` | `secondary` | `[text](url)` |
+| `inlineCodeBackground` / `inlineCodeColor` | `surfaceVariant` / `onSurface` | `` `code` `` |
+| `codeBlockBackground` / `codeBlockAlpha` | `background` / 0.6 | fenced blocks |
+| `codeBlockBorderColor` | `outline` | fenced block border (opacity from `chat.codeBlockBorderAlpha`) |
+| `quoteTextColor` | `onSurfaceVariant` | `>` blocks |
+| `tableHeaderBackground` | `surfaceVariant` | table header row |
+| `tableBorderColor` / `tableBorderAlpha` | `outline` / 0.4 | row separators |
+| `tableZebraAlpha` | 0 | alternate-row tint of `tableHeaderBackground`, 0 = off |
+| `hrColor` | `outlineVariant` | `---` and the quote bar |
 
 `composer.placeholderColor`: `onSurfaceVariant` (default),
 `primary`, `secondary`, `tertiary`, `text`, `error`.

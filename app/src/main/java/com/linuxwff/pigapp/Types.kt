@@ -137,6 +137,22 @@ data class UiBubbleAppearance(
 )
 
 /** `chat.thinking`: the reasoning block above an assistant answer. */
+/** `markdown`: colours for the Markdown body (links, inline code, tables, rules). */
+data class UiMarkdownAppearance(
+    val linkColor: String = "secondary",
+    val inlineCodeBackground: String = "surfaceVariant",
+    val inlineCodeColor: String = "onSurface",
+    val codeBlockBackground: String = "background",
+    val codeBlockAlpha: Float = 0.6f,
+    val codeBlockBorderColor: String = "outline",
+    val quoteTextColor: String = "onSurfaceVariant",
+    val tableHeaderBackground: String = "surfaceVariant",
+    val tableBorderColor: String = "outline",
+    val tableBorderAlpha: Float = 0.4f,
+    val tableZebraAlpha: Float = 0f,
+    val hrColor: String = "outlineVariant",
+)
+
 data class UiThinkingAppearance(
     val show: Boolean = true,
     val collapsedByDefault: Boolean = true,

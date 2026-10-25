@@ -184,6 +184,43 @@ data class UiLayout(
     val composerThumbSize: Int = 56,
     val composerThumbRadius: Int = 10,
     val composerThumbGap: Int = 6,
+    /** Input well geometry and type; -1 / 0 / "" keep the Material default. */
+    val composerInnerPaddingH: Int = -1,
+    val composerInnerPaddingV: Int = -1,
+    val composerMarginH: Int = 0,
+    val composerMarginV: Int = 0,
+    val composerMaxWidth: Int = 0,
+    val composerMaxHeight: Int = 0,
+    val composerSelectionColor: String = "primary",
+    val composerSelectionAlpha: Float = 0.4f,
+    val composerSelectionHandleColor: String = "primary",
+    val composerDisabledSurface: String = "surfaceVariant",
+    val composerDisabledBorderAlpha: Float = 0.12f,
+    val composerDisabledTextColor: String = "onSurfaceVariant",
+    val composerErrorBorderColor: String = "error",
+    val composerErrorTextColor: String = "error",
+    val composerFontFamily: String = "",
+    val composerLineHeight: Float = 0f,
+    val composerLetterSpacing: Float = 0f,
+    val composerTextAlign: String = "start",
+    val composerPlaceholderFontSize: Int = 0,
+    /** Per-button geometry and disabled colours. */
+    val composerSendDisabledBackground: String = "surfaceVariant",
+    val composerSendDisabledTint: String = "onSurfaceVariant",
+    val composerSendShape: String = "circle",
+    val composerStopShape: String = "circle",
+    val composerAttachShape: String = "circle",
+    val composerSendRadius: Int = -1,
+    val composerStopRadius: Int = -1,
+    val composerAttachRadius: Int = -1,
+    val composerSendSize: Int = 0,
+    val composerStopSize: Int = 0,
+    val composerAttachSize: Int = 0,
+    val composerSendPadding: Int = 0,
+    val composerStopPadding: Int = 0,
+    val composerAttachPadding: Int = 0,
+    val composerStopBorderWidth: Int = 0,
+    val composerStopBorderColor: String = "error",
     /** Chat transcript appearance. */
     val chatPaddingH: Int = 14,
     val chatPaddingV: Int = 10,
@@ -198,6 +235,7 @@ data class UiLayout(
     val bubble: UiBubbleAppearance = UiBubbleAppearance(),
     val toolCard: UiToolCardAppearance = UiToolCardAppearance(),
     val thinking: UiThinkingAppearance = UiThinkingAppearance(),
+    val markdown: UiMarkdownAppearance = UiMarkdownAppearance(),
     /** Skin switcher: show, where and how (chips/list). */
     val showSkinSwitcher: Boolean = true,
     val skinSwitcherPlacement: String = "drawer",
@@ -583,6 +621,100 @@ object UiPackParser {
                 ?: d.composerThumbRadius).coerceIn(0, 40),
             composerThumbGap = (composer?.optInt("thumbGap", d.composerThumbGap)
                 ?: d.composerThumbGap).coerceIn(0, 24),
+            composerInnerPaddingH = (composer?.optInt("innerPaddingH", d.composerInnerPaddingH)
+                ?: d.composerInnerPaddingH).let { if (it < 0) -1 else it.coerceIn(0, 40) },
+            composerInnerPaddingV = (composer?.optInt("innerPaddingV", d.composerInnerPaddingV)
+                ?: d.composerInnerPaddingV).let { if (it < 0) -1 else it.coerceIn(0, 40) },
+            composerMarginH = (composer?.optInt("marginH", d.composerMarginH)
+                ?: d.composerMarginH).coerceIn(0, 48),
+            composerMarginV = (composer?.optInt("marginV", d.composerMarginV)
+                ?: d.composerMarginV).coerceIn(0, 32),
+            composerMaxWidth = (composer?.optInt("maxWidth", d.composerMaxWidth)
+                ?: d.composerMaxWidth).coerceIn(0, 1200),
+            composerMaxHeight = (composer?.optInt("maxHeight", d.composerMaxHeight)
+                ?: d.composerMaxHeight).coerceIn(0, 600),
+            composerSelectionColor = composer?.optString("selectionColor", d.composerSelectionColor)
+                ?.takeIf { it.isNotBlank() } ?: d.composerSelectionColor,
+            composerSelectionAlpha = (composer?.optDouble(
+                "selectionAlpha", d.composerSelectionAlpha.toDouble(),
+            ) ?: d.composerSelectionAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
+            composerSelectionHandleColor = composer?.optString(
+                "selectionHandleColor",
+                d.composerSelectionHandleColor,
+            )?.takeIf { it.isNotBlank() } ?: d.composerSelectionHandleColor,
+            composerDisabledSurface = composer?.optString(
+                "disabledSurface",
+                d.composerDisabledSurface,
+            )?.takeIf { it.isNotBlank() } ?: d.composerDisabledSurface,
+            composerDisabledBorderAlpha = (composer?.optDouble(
+                "disabledBorderAlpha", d.composerDisabledBorderAlpha.toDouble(),
+            ) ?: d.composerDisabledBorderAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
+            composerDisabledTextColor = composer?.optString(
+                "disabledTextColor",
+                d.composerDisabledTextColor,
+            )?.takeIf { it.isNotBlank() } ?: d.composerDisabledTextColor,
+            composerErrorBorderColor = composer?.optString(
+                "errorBorderColor",
+                d.composerErrorBorderColor,
+            )?.takeIf { it.isNotBlank() } ?: d.composerErrorBorderColor,
+            composerErrorTextColor = composer?.optString(
+                "errorTextColor",
+                d.composerErrorTextColor,
+            )?.takeIf { it.isNotBlank() } ?: d.composerErrorTextColor,
+            composerFontFamily = composer?.optString("fontFamily", d.composerFontFamily) ?: "",
+            composerLineHeight = (composer?.optDouble(
+                "lineHeight", d.composerLineHeight.toDouble(),
+            ) ?: d.composerLineHeight.toDouble()).toFloat().coerceIn(0f, 3f),
+            composerLetterSpacing = (composer?.optDouble(
+                "letterSpacing", d.composerLetterSpacing.toDouble(),
+            ) ?: d.composerLetterSpacing.toDouble()).toFloat().coerceIn(-2f, 8f),
+            composerTextAlign = composer?.optString("textAlign", d.composerTextAlign)
+                ?.takeIf { it == "start" || it == "center" || it == "end" }
+                ?: d.composerTextAlign,
+            composerPlaceholderFontSize = (composer?.optInt(
+                "placeholderFontSize",
+                d.composerPlaceholderFontSize,
+            ) ?: d.composerPlaceholderFontSize).coerceIn(0, 32),
+            composerSendDisabledBackground = composer?.optString(
+                "sendDisabledBackground",
+                d.composerSendDisabledBackground,
+            )?.takeIf { it.isNotBlank() } ?: d.composerSendDisabledBackground,
+            composerSendDisabledTint = composer?.optString(
+                "sendDisabledTint",
+                d.composerSendDisabledTint,
+            )?.takeIf { it.isNotBlank() } ?: d.composerSendDisabledTint,
+            composerSendShape = composer?.optString("sendShape", d.composerSendShape)
+                ?.takeIf { it == "circle" || it == "rounded" } ?: d.composerSendShape,
+            composerStopShape = composer?.optString("stopShape", d.composerStopShape)
+                ?.takeIf { it == "circle" || it == "rounded" } ?: d.composerStopShape,
+            composerAttachShape = composer?.optString("attachShape", d.composerAttachShape)
+                ?.takeIf { it == "circle" || it == "rounded" } ?: d.composerAttachShape,
+            composerSendRadius = (composer?.optInt("sendRadius", d.composerSendRadius)
+                ?: d.composerSendRadius).let { if (it < 0) -1 else it.coerceIn(0, 36) },
+            composerStopRadius = (composer?.optInt("stopRadius", d.composerStopRadius)
+                ?: d.composerStopRadius).let { if (it < 0) -1 else it.coerceIn(0, 36) },
+            composerAttachRadius = (composer?.optInt("attachRadius", d.composerAttachRadius)
+                ?: d.composerAttachRadius).let { if (it < 0) -1 else it.coerceIn(0, 36) },
+            composerSendSize = (composer?.optInt("sendSize", d.composerSendSize)
+                ?: d.composerSendSize).coerceIn(0, 72),
+            composerStopSize = (composer?.optInt("stopSize", d.composerStopSize)
+                ?: d.composerStopSize).coerceIn(0, 72),
+            composerAttachSize = (composer?.optInt("attachSize", d.composerAttachSize)
+                ?: d.composerAttachSize).coerceIn(0, 72),
+            composerSendPadding = (composer?.optInt("sendPadding", d.composerSendPadding)
+                ?: d.composerSendPadding).coerceIn(0, 20),
+            composerStopPadding = (composer?.optInt("stopPadding", d.composerStopPadding)
+                ?: d.composerStopPadding).coerceIn(0, 20),
+            composerAttachPadding = (composer?.optInt("attachPadding", d.composerAttachPadding)
+                ?: d.composerAttachPadding).coerceIn(0, 20),
+            composerStopBorderWidth = (composer?.optInt(
+                "stopBorderWidth",
+                d.composerStopBorderWidth,
+            ) ?: d.composerStopBorderWidth).coerceIn(0, 4),
+            composerStopBorderColor = composer?.optString(
+                "stopBorderColor",
+                d.composerStopBorderColor,
+            )?.takeIf { it.isNotBlank() } ?: d.composerStopBorderColor,
             chatPaddingH = (chat?.optInt("paddingH", d.chatPaddingH) ?: d.chatPaddingH)
                 .coerceIn(0, 64),
             chatPaddingV = (chat?.optInt("paddingV", d.chatPaddingV) ?: d.chatPaddingV)
@@ -607,6 +739,7 @@ object UiPackParser {
             bubble = parseBubble(bubbleJson, warnings),
             toolCard = parseToolCard(toolCardJson, warnings),
             thinking = parseThinking(chat?.optJSONObject("thinking"), warnings),
+            markdown = parseMarkdown(chat?.optJSONObject("markdown")),
             showSkinSwitcher = skinSwitcher?.optBoolean("show", d.showSkinSwitcher)
                 ?: d.showSkinSwitcher,
             skinSwitcherPlacement = placement.takeIf { it in placements } ?: d.skinSwitcherPlacement,
@@ -686,6 +819,30 @@ object UiPackParser {
                 d.assistantBorderAlpha.toDouble(),
             ).toFloat().coerceIn(0f, 1f),
             assistantTextColor = json.optString("assistantTextColor", d.assistantTextColor),
+        )
+    }
+
+    private fun parseMarkdown(json: JSONObject?): UiMarkdownAppearance {
+        if (json == null) return UiMarkdownAppearance()
+        val d = UiMarkdownAppearance()
+        fun token(key: String, fallback: String): String =
+            json.optString(key, fallback).takeIf { it.isNotBlank() } ?: fallback
+        return UiMarkdownAppearance(
+            linkColor = token("linkColor", d.linkColor),
+            inlineCodeBackground = token("inlineCodeBackground", d.inlineCodeBackground),
+            inlineCodeColor = token("inlineCodeColor", d.inlineCodeColor),
+            codeBlockBackground = token("codeBlockBackground", d.codeBlockBackground),
+            codeBlockAlpha = json.optDouble("codeBlockAlpha", d.codeBlockAlpha.toDouble())
+                .toFloat().coerceIn(0f, 1f),
+            codeBlockBorderColor = token("codeBlockBorderColor", d.codeBlockBorderColor),
+            quoteTextColor = token("quoteTextColor", d.quoteTextColor),
+            tableHeaderBackground = token("tableHeaderBackground", d.tableHeaderBackground),
+            tableBorderColor = token("tableBorderColor", d.tableBorderColor),
+            tableBorderAlpha = json.optDouble("tableBorderAlpha", d.tableBorderAlpha.toDouble())
+                .toFloat().coerceIn(0f, 1f),
+            tableZebraAlpha = json.optDouble("tableZebraAlpha", d.tableZebraAlpha.toDouble())
+                .toFloat().coerceIn(0f, 1f),
+            hrColor = token("hrColor", d.hrColor),
         )
     }
 
