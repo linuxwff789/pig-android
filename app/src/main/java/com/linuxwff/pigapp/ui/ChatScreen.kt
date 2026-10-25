@@ -4476,12 +4476,15 @@ private fun Composer(
         "end" -> TextAlign.End
         else -> TextAlign.Start
     }
+    val composerFamily = if (layout.composerFontFamily.isNotBlank()) {
+        packFontFamily(LocalUiPack.current, layout.composerFontFamily)
+    } else {
+        null
+    }
     fun composerTextStyle(base: TextStyle, size: Int): TextStyle {
         var style = if (size > 0) base.copy(fontSize = size.sp) else base
-        if (layout.composerFontFamily.isNotBlank()) {
-            style = style.copy(
-                fontFamily = packFontFamily(LocalUiPack.current, layout.composerFontFamily),
-            )
+        if (composerFamily != null) {
+            style = style.copy(fontFamily = composerFamily)
         }
         if (layout.composerLineHeight > 0f) {
             style = style.copy(lineHeight = (style.fontSize.value * layout.composerLineHeight).sp)
