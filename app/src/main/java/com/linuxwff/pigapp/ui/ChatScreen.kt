@@ -4506,7 +4506,7 @@ private fun Composer(
         if (kind == "circle") {
             CircleShape
         } else {
-            RoundedCornerShape((if (radius >= 0) radius else (size.value / 2.4f)).dp)
+            RoundedCornerShape((if (radius >= 0) radius.toFloat() else size.value / 2.4f).dp)
         }
     val attachSize = (layout.composerAttachSize.takeIf { it > 0 } ?: components.composerButtonSize).dp
     val sendSize = (layout.composerSendSize.takeIf { it > 0 } ?: components.composerButtonSize).dp
