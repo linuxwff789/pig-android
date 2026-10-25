@@ -58,6 +58,14 @@ func onSessionStart(ctx sdk.Context, _ map[string]any) (any, error) {
 	return nil, nil
 }
 
+// onAgentStart repaints the card when a turn begins. setWidget is a push, not a
+// query, so a client that reconnected while this pig kept running has no card
+// until something renders again; the next turn is a reliable moment to do it.
+func onAgentStart(ctx sdk.Context, _ map[string]any) (any, error) {
+	render(ctx)
+	return nil, nil
+}
+
 func onBeforeAgentStart(_ sdk.Context, data map[string]any) (any, error) {
 	options, _ := data["systemPromptOptions"].(map[string]any)
 	if options == nil {

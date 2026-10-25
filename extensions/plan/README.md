@@ -72,6 +72,12 @@ or execution is active.
 
 ## Display
 
+The card is repainted on `session_start` (a new pig process) and on
+`agent_start` (every turn), because `setWidget` is a push: the app cannot ask
+for it again after a reconnect. The relay replays the last frame per widget key
+when a client attaches, and the app keeps a per-session snapshot as a second
+fallback.
+
 The widget is one JSON line following
 [docs/plan-widget.md](../../docs/plan-widget.md):
 

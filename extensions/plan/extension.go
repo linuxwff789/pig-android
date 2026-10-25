@@ -60,6 +60,7 @@ func Extension() *sdk.Extension {
 	ext.Command("plan", "计划模式：/plan [on|off|go|show|clear|add|done|undo|rm]", handlePlan)
 	ext.Command("todos", "显示计划清单与进度", handleTodos)
 	ext.OnEvent(sdk.EventSessionStart, onSessionStart)
+	ext.OnEvent(sdk.EventAgentStart, onAgentStart)
 	ext.OnEvent(sdk.EventBeforeAgentStart, onBeforeAgentStart)
 	ext.OnEvent(sdk.EventToolCall, onToolCall)
 	ext.OnEvent(sdk.EventTurnEnd, onTurnEnd)

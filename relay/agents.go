@@ -29,7 +29,13 @@ type agentProc struct {
 	streamText  string
 	activeTools map[string]toolProgress
 	pendingUI   map[string]json.RawMessage
-	busy        bool
+	// The host pushes setWidget/setStatus/setTitle once and never repeats them,
+	// so the last frame per key is kept here: a client that reconnects (the app
+	// was killed, not the relay) gets its cards and status line back.
+	widgets  map[string]json.RawMessage
+	statuses map[string]json.RawMessage
+	title    json.RawMessage
+	busy     bool
 }
 
 type toolProgress struct {
@@ -184,6 +190,11 @@ func (a *agentProc) trackFrame(s *session, payload []byte) {
 		PartialResult json.RawMessage `json:"partialResult"`
 		ID            string          `json:"id"`
 		Method        string          `json:"method"`
+		WidgetKey     string          `json:"widgetKey"`
+		WidgetLines   []string        `json:"widgetLines"`
+		StatusKey     string          `json:"statusKey"`
+		StatusText    *string         `json:"statusText"`
+		Title         string          `json:"title"`
 	}
 	if !bytes.Contains(payload, []byte(`"type"`)) {
 		return
@@ -253,6 +264,40 @@ func (a *agentProc) trackFrame(s *session, payload []byte) {
 		if head.ID != "" && answerable {
 			a.mu.Lock()
 			a.pendingUI[head.ID] = append([]byte(nil), payload...)
+			a.mu.Unlock()
+		}
+		// Remember the state-carrying UI frames, including their clear form, so
+		// a reconnecting client is not left with a stale card or status line.
+		switch head.Method {
+		case "setWidget":
+			key := head.WidgetKey
+			if key == "" {
+				key = "widget"
+			}
+			a.mu.Lock()
+			if len(head.WidgetLines) == 0 {
+				delete(a.widgets, key)
+			} else {
+				a.widgets[key] = append([]byte(nil), payload...)
+			}
+			a.mu.Unlock()
+		case "setStatus":
+			if head.StatusKey != "" {
+				a.mu.Lock()
+				if head.StatusText == nil || *head.StatusText == "" {
+					delete(a.statuses, head.StatusKey)
+				} else {
+					a.statuses[head.StatusKey] = append([]byte(nil), payload...)
+				}
+				a.mu.Unlock()
+			}
+		case "setTitle":
+			a.mu.Lock()
+			if head.Title == "" {
+				a.title = nil
+			} else {
+				a.title = append([]byte(nil), payload...)
+			}
 			a.mu.Unlock()
 		}
 	}
@@ -342,6 +387,8 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 		path:        path,
 		activeTools: map[string]toolProgress{},
 		pendingUI:   map[string]json.RawMessage{},
+		widgets:     map[string]json.RawMessage{},
+		statuses:    map[string]json.RawMessage{},
 	}
 
 	go func() {
@@ -576,8 +623,29 @@ func (s *session) replayAgent(a *agentProc) {
 	for id, tool := range a.activeTools {
 		tools[id] = tool
 	}
+	title := a.title
+	widgets := make(map[string]json.RawMessage, len(a.widgets))
+	for key, raw := range a.widgets {
+		widgets[key] = raw
+	}
+	statuses := make(map[string]json.RawMessage, len(a.statuses))
+	for key, raw := range a.statuses {
+		statuses[key] = raw
+	}
 	a.mu.Unlock()
 
+	// Card and status frames first: the client drew them before the disconnect
+	// and has no way to ask for them again. They are keyed, so replaying an
+	// unchanged frame is a no-op in the UI.
+	if title != nil {
+		_ = s.sendRaw(title)
+	}
+	for _, key := range sortedRawKeys(widgets) {
+		_ = s.sendRaw(widgets[key])
+	}
+	for _, key := range sortedRawKeys(statuses) {
+		_ = s.sendRaw(statuses[key])
+	}
 	for _, raw := range pending {
 		_ = s.sendRaw(raw)
 	}
@@ -634,6 +702,17 @@ func (s *session) attach(conn net.Conn) (*connWriter, uint64, error) {
 	}
 	s.replayAgent(s.activeAgent())
 	return out, gen, nil
+}
+
+// sortedRawKeys keeps replayed frames in a stable order, so two reconnects of
+// the same agent render identically.
+func sortedRawKeys(frames map[string]json.RawMessage) []string {
+	keys := make([]string, 0, len(frames))
+	for key := range frames {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func (s *session) detach(conn net.Conn, gen uint64) {

@@ -101,6 +101,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Composer text per session, so switching away never loses a draft. */
     private val drafts = LinkedHashMap<String, String>()
     private var draftsFlushedAt = 0L
+    /** Last cards each session showed, keyed by session file. setWidget is a
+     *  push and no RPC asks for widgets again, so a client that was away for the
+     *  push (or for the relay that cached it) would start with no card at all. */
+    private val widgetSnapshots = LinkedHashMap<String, JSONObject>()
+    /** Session file the cards in [ui] belong to; "" while no frame arrived. */
+    private var widgetsFile = ""
     /** Thinking level to restore once the pending set_model is confirmed. */
     private var pendingThinkingRestore: String? = null
     /** `provider/model` -> last thinking level the user picked for it. */
@@ -170,6 +176,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
         thinkingByModel = loadThinkingLevels()
         drafts.putAll(loadDrafts())
+        widgetSnapshots.putAll(loadWidgetSnapshots())
         // Upgrades from builds without `packPinned` treated any stored id as a
         // hand-made choice; a fresh install has no `activePackId` at all.
         val pinned = if (prefs.contains("packPinned")) {
@@ -2076,6 +2083,99 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         prefs.edit().putString("drafts", JSONObject(drafts as Map<*, *>).toString()).apply()
     }
 
+    /** Remember the cards the session that owns [file] shows. An empty list
+     *  drops the entry, so a cleared card is not resurrected later. */
+    private fun rememberWidgets(file: String = ui.sessionFile) {
+        if (file.isBlank()) return
+        val widgets = ui.widgets
+        if (widgets.isEmpty()) {
+            if (widgetSnapshots.remove(file) != null) saveWidgetSnapshots()
+            return
+        }
+        val array = JSONArray()
+        widgets.forEach { widget ->
+            array.put(
+                JSONObject()
+                    .put("key", widget.key)
+                    .put("lines", JSONArray(widget.lines))
+                    .put("placement", widget.placement),
+            )
+        }
+        widgetSnapshots.remove(file)
+        widgetSnapshots[file] = JSONObject()
+            .put("at", System.currentTimeMillis())
+            .put("widgets", array)
+        while (widgetSnapshots.size > WIDGET_SNAPSHOT_SESSIONS) {
+            widgetSnapshots.remove(widgetSnapshots.keys.first())
+        }
+        saveWidgetSnapshots()
+    }
+
+    private fun saveWidgetSnapshots() {
+        if (widgetSnapshots.isEmpty()) {
+            prefs.edit().remove("widgetSnapshots").apply()
+            return
+        }
+        val root = JSONObject()
+        widgetSnapshots.forEach { (file, entry) -> root.put(file, entry) }
+        prefs.edit().putString("widgetSnapshots", root.toString()).apply()
+    }
+
+    private fun loadWidgetSnapshots(): Map<String, JSONObject> {
+        val raw = prefs.getString("widgetSnapshots", "").orEmpty()
+        if (raw.isBlank()) return emptyMap()
+        val root = runCatching { JSONObject(raw) }.getOrNull() ?: return emptyMap()
+        val out = LinkedHashMap<String, JSONObject>()
+        root.keys().forEach { file ->
+            val entry = root.optJSONObject(file)
+            if (file.isNotBlank() && entry != null) out[file] = entry
+        }
+        return out
+    }
+
+    /** Cards to draw for [file] until an extension pushes again. Live frames win
+     *  over the snapshot; frames that arrived before the file was known belong to
+     *  the conversation that is being adopted. */
+    private fun widgetsForSession(file: String): List<AppWidget> {
+        if (widgetsFile == file) return ui.widgets
+        val snapshot = snapshotWidgets(file)
+        if (ui.widgets.isEmpty()) {
+            widgetsFile = file
+            return snapshot
+        }
+        val merged = LinkedHashMap<String, AppWidget>()
+        snapshot.forEach { merged[it.key] = it }
+        ui.widgets.forEach { merged[it.key] = it }
+        widgetsFile = file
+        return merged.values.toList()
+    }
+
+    private fun snapshotWidgets(file: String): List<AppWidget> {
+        val entry = widgetSnapshots[file] ?: return emptyList()
+        val at = entry.optLong("at", 0L)
+        if (at > 0 && System.currentTimeMillis() - at > WIDGET_SNAPSHOT_TTL_MS) return emptyList()
+        val array = entry.optJSONArray("widgets") ?: return emptyList()
+        val out = ArrayList<AppWidget>(array.length())
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val key = item.optString("key", "")
+            val lines = item.optJSONArray("lines")
+            if (key.isBlank() || lines == null || lines.length() == 0) continue
+            out.add(
+                AppWidget(
+                    key = key,
+                    lines = (0 until lines.length()).map { lines.optString(it) },
+                    placement = if (item.optString("placement", "aboveEditor") == "belowEditor") {
+                        "belowEditor"
+                    } else {
+                        "aboveEditor"
+                    },
+                ),
+            )
+        }
+        return out
+    }
+
     private fun loadDrafts(): Map<String, String> {
         val raw = prefs.getString("drafts", "").orEmpty()
         if (raw.isBlank()) return emptyMap()
@@ -2148,6 +2248,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             widgets = ui.widgets.filterNot { it.key == key },
             dismissedWidgets = ui.dismissedWidgets + (key to widget.lines.joinToString("\n")),
         )
+        rememberWidgets(widgetsFile.ifBlank { ui.sessionFile })
     }
 
     /** Collapse/expand a widget card. Stored in prefs so it survives a restart. */
@@ -2380,6 +2481,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             "aboveEditor"
         }
+        // Frames that arrive while a switch is in flight already belong to the
+        // target session, whose file the next get_state reports.
+        val owner = desiredSessionPath ?: ui.sessionFile
         val next = ui.widgets.filterNot { it.key == key }.toMutableList()
         val dismissed = ui.dismissedWidgets.toMutableMap()
         // An empty list means "remove": RPC mode reports a cleared widget as an
@@ -2391,6 +2495,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // new; hiding it must not swallow the next update.
             if (dismissed[key] == content) {
                 ui = ui.copy(widgets = next, dismissedWidgets = dismissed)
+                widgetsFile = owner
+                rememberWidgets(owner)
                 return
             }
             dismissed.remove(key)
@@ -2399,6 +2505,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             dismissed.remove(key)
         }
         ui = ui.copy(widgets = next, dismissedWidgets = dismissed)
+        widgetsFile = owner
+        rememberWidgets(owner)
     }
 
     fun assetHash(path: String): String = packAssetHashes[path] ?: ""
@@ -3043,6 +3151,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // getting the file it did not have keeps what is typed.
                 val conversationChanged = sessionFile.isNotBlank() &&
                     ui.sessionFile.isNotBlank() && sessionFile != ui.sessionFile
+                // Another conversation also brings its own cards. They are pushed,
+                // never queried, so draw the snapshot taken when they last arrived
+                // until the extension (or the relay's replay) says otherwise.
+                val restoredWidgets = if (
+                    sessionFile.isNotBlank() &&
+                    (conversationChanged || ui.sessionFile.isBlank())
+                ) {
+                    widgetsForSession(sessionFile)
+                } else {
+                    ui.widgets
+                }
                 var status = ui.status
                 var toast = ui.toast
                 if ((status == "starting" && settledNow) || status == "switching") status = ""
@@ -3106,6 +3225,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     sessionId = sessionId,
                     sessionFile = sessionFile,
                     draftEpoch = if (conversationChanged) ui.draftEpoch + 1 else ui.draftEpoch,
+                    widgets = restoredWidgets,
                     // No session attached: no history is coming, so don't leave
                     // the reader on the "reading history" spinner.
                     historyLoading = if (sessionFile.isBlank()) false else ui.historyLoading,
@@ -4376,6 +4496,13 @@ private const val HISTORY_PAGE = 40
 /** How long a new session may take to replace its runtime before the app treats
  *  whatever the backend reports as the new conversation (~10 s in practice). */
 private const val NEW_SESSION_SETTLE_MS = 20_000L
+
+/** Sessions whose widget cards are kept for the next reconnect. */
+private const val WIDGET_SNAPSHOT_SESSIONS = 20
+
+/** A card snapshot older than this is not drawn: the extension may have cleared
+ *  it while the app was away, and nothing would ever correct it. */
+private const val WIDGET_SNAPSHOT_TTL_MS = 7L * 24 * 60 * 60 * 1000
 
 /** Relay's cap on one history reply. */
 private const val HISTORY_MAX = 2000

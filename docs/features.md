@@ -34,6 +34,14 @@ The app is designed to survive screen locks, Doze and process death:
   tool progress (`relay_tool`) and unanswered dialogs, then continues live
   deltas. If `get_state` says the pig is streaming on the saved session, the app
   skips `switch_session` and binds the partial assistant bubble instead.
+- **Cards survive a reconnect**: `setWidget`, `setStatus` and `setTitle` are
+  pushed once and have no query RPC, so the relay keeps the last frame per key
+  for each agent (including its clear form) and replays them on attach, switch
+  and parked-session promotion. The app also stores the cards of a session in
+  its own prefs and draws them when the session is opened (`widgetSnapshots`,
+  capped at 20 sessions, ignored after 7 days); live frames and the relay's
+  replay always win over that snapshot. Together they cover an app restart with
+  the relay alive, a relay restart, and both going away.
 
 ## Sessions and settings
 
@@ -234,7 +242,9 @@ shows them next to its own activity label (`处理中 · ⚡ 38.2 tok/s`), and a
 `statusText` clears only that key. Extension lines outlive the turn that wrote
 them, so they are shown as a plain label — the spinner belongs to the app's own
 activity (thinking/working/compacting) and stops with it. Widgets
-(`ctx.ui.setWidget`) render above or below the composer as before. A widget
+(`ctx.ui.setWidget`) render above or below the composer as before, and are
+restored on reconnect (see above); extensions should still re-render stateful
+cards on `session_start` so they also come back after a relay restart. A widget
 whose key is `plan` / `plan-todos` / `todos` and whose lines follow the plan
 contract becomes a checklist card (title, progress bar, `☑/☐` steps) — any
 extension can opt in, so users can pick our optional plan extension or a

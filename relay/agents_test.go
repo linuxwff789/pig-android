@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 )
 
 func writeSession(t *testing.T, path string, entries []string) {
@@ -258,5 +262,75 @@ func TestSyntheticMessagesPages(t *testing.T) {
 	}
 	if start == 0 {
 		t.Fatal("a 3-message page of 12 must report older messages")
+	}
+}
+
+// A reconnecting client cannot ask for widgets or status lines: the host pushes
+// each one once. The relay keeps the last frame per key (including the clear
+// form) and replays them, so a restarted app still gets its cards back.
+func TestReplayAgentRestoresWidgetsStatusAndTitle(t *testing.T) {
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s := &session{out: &connWriter{conn: server}}
+	a := &agentProc{
+		activeTools: map[string]toolProgress{},
+		pendingUI:   map[string]json.RawMessage{},
+		widgets:     map[string]json.RawMessage{},
+		statuses:    map[string]json.RawMessage{},
+	}
+	frames := []string{
+		`{"type":"extension_ui_request","id":"t","method":"setTitle","title":"pig"}`,
+		`{"type":"extension_ui_request","id":"w","method":"setWidget","widgetKey":"plan","widgetLines":["{\"plan\":{}}"],"widgetPlacement":"aboveEditor"}`,
+		`{"type":"extension_ui_request","id":"s","method":"setStatus","statusKey":"plan","statusText":"\u23f8 plan"}`,
+	}
+	for _, frame := range frames {
+		a.trackFrame(s, []byte(frame))
+	}
+
+	lines := make(chan string, 8)
+	go func() {
+		scanner := bufio.NewScanner(client)
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+		close(lines)
+	}()
+	s.replayAgent(a)
+
+	want := []string{`"method":"setTitle"`, `"method":"setWidget"`, `"method":"setStatus"`}
+	for index, marker := range want {
+		select {
+		case line := <-lines:
+			if !strings.Contains(line, marker) {
+				t.Fatalf("frame %d = %s, want %s", index, line, marker)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("frame %d (%s) was not replayed", index, marker)
+		}
+	}
+}
+
+func TestTrackFrameForgetsClearedWidgetAndStatus(t *testing.T) {
+	s := &session{}
+	a := &agentProc{
+		activeTools: map[string]toolProgress{},
+		pendingUI:   map[string]json.RawMessage{},
+		widgets:     map[string]json.RawMessage{},
+		statuses:    map[string]json.RawMessage{},
+	}
+	a.trackFrame(s, []byte(`{"type":"extension_ui_request","method":"setWidget","widgetKey":"plan","widgetLines":["a"]}`))
+	a.trackFrame(s, []byte(`{"type":"extension_ui_request","method":"setStatus","statusKey":"plan","statusText":"x"}`))
+	a.trackFrame(s, []byte(`{"type":"extension_ui_request","method":"setTitle","title":"t"}`))
+	if len(a.widgets) != 1 || len(a.statuses) != 1 || a.title == nil {
+		t.Fatalf("frames not remembered: %d widgets, %d statuses, title=%v", len(a.widgets), len(a.statuses), a.title)
+	}
+
+	a.trackFrame(s, []byte(`{"type":"extension_ui_request","method":"setWidget","widgetKey":"plan","widgetLines":[]}`))
+	a.trackFrame(s, []byte(`{"type":"extension_ui_request","method":"setStatus","statusKey":"plan"}`))
+	a.trackFrame(s, []byte(`{"type":"extension_ui_request","method":"setStatus","statusKey":"other","statusText":""}`))
+	a.trackFrame(s, []byte(`{"type":"extension_ui_request","method":"setTitle","title":""}`))
+	if len(a.widgets) != 0 || len(a.statuses) != 0 || a.title != nil {
+		t.Fatalf("cleared frames survived: %d widgets, %d statuses, title=%v", len(a.widgets), len(a.statuses), a.title)
 	}
 }
