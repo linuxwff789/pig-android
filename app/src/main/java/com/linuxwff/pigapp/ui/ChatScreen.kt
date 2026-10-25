@@ -782,10 +782,7 @@ private fun PigHeader(
 @Composable
 private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
     val context = LocalContext.current
-    val command = """
-        pkg install -y curl
-        curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh | sh
-    """.trimIndent()
+    val command = RelayLauncher.installCommand(context)
     val termuxInstalled = RelayLauncher.isTermuxInstalled(context)
     val permitted = RelayLauncher.hasPermission(context)
     PackAlertDialog(

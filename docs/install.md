@@ -10,12 +10,13 @@ Install Termux from F-Droid (the Play Store build is obsolete), open it once so
 `pkg` initializes, then:
 
 ```bash
-pkg install -y curl
 curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh | sh
 ```
 
-`pkg install -y curl` matters: a very fresh Termux may not have `curl` yet, and
-both this installer and the official PiG installer need it.
+Nothing has to be installed first: Termux's bootstrap already ships `curl` (and
+the installer checks for it anyway). The installer also switches the main repo
+to a Chinese mirror *before* its first `pkg install`, so the Go toolchain
+download already uses the mirror; the app's 一键安装 runs the same command.
 
 Pass the app's release to install the relay published with it (the app does this
 for you; this is the manual form):
@@ -49,7 +50,7 @@ effect, grant the Pig app `com.termux.permission.RUN_COMMAND`, and press retry.
 
 `RUN_COMMAND` itself is blocked while `allow-external-apps=false`. On a clean
 Termux the app cannot run the installer until the user enables that switch, so
-the setup dialog gives you the two lines to paste into Termux. Once the switch
+the setup dialog gives you the one line to paste into Termux. Once the switch
 is on and Termux has been opened once, 一键安装 works.
 
 ## Manual

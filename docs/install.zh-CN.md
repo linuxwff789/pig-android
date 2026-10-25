@@ -9,11 +9,12 @@ Android App 是前端。`pig` 和 `pig-relay` 运行在 Termux 里。
 从 F-Droid 安装 Termux（Play Store 版本已过时），打开一次让 `pkg` 完成初始化，然后：
 
 ```bash
-pkg install -y curl
 curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh | sh
 ```
 
-`pkg install -y curl` 很关键：全新的 Termux 可能还没有 `curl`，而本安装脚本和官方 PiG 安装脚本都需要它。
+不需要先装任何东西：Termux 的 bootstrap 自带 `curl`（脚本里也会再检查一次）。
+安装脚本会在**第一次 `pkg install` 之前**就把主仓库换成国内镜像，所以后面下载 Go
+工具链时已经走镜像了；App 的一键安装跑的就是同一条命令。
 
 带上 App 的版本号可以装与它同批发布的 relay（App 一键安装会自动这样传；手动写法）：
 
@@ -36,7 +37,7 @@ curl -fsSL https://github.com/linuxwff789/pig-android/releases/download/v1.1.27/
 
 ### 为什么不直接用 App 内的按钮？
 
-`allow-external-apps=false` 时 `RUN_COMMAND` 本身会被拦截。在干净的 Termux 上，用户不打开该开关，App 就无法运行安装脚本，因此设置对话框会给出两行命令供你粘贴到 Termux。开关打开并且 Termux 被打开过一次后，一键安装即可使用。
+`allow-external-apps=false` 时 `RUN_COMMAND` 本身会被拦截。在干净的 Termux 上，用户不打开该开关，App 就无法运行安装脚本，因此设置对话框会给出那一行命令供你粘贴到 Termux。开关打开并且 Termux 被打开过一次后，一键安装即可使用。
 
 ## 手动安装
 

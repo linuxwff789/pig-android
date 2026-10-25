@@ -32,6 +32,28 @@ object RelayLauncher {
         return version.takeIf { RELEASE_VERSION.matches(it) }?.let { "v$it" }
     }
 
+    /** The Termux one-liner that installs the backend: shown in the setup dialog
+     *  and run by [bootstrap].
+     *
+     *  The relay is published with this app version, so the installer is taken
+     *  from this release (the tagged script is missing for some old releases, so
+     *  the latest one is the fallback). No `pkg install` runs before it: Termux's
+     *  bootstrap ships curl, and the script itself points the repo at a mirror
+     *  before its first install. The download goes to a file first, so a failed
+     *  fetch cannot look like a successful install with nothing to do. */
+    fun installCommand(context: Context): String {
+        val tag = releaseTag(context)
+        val script = if (tag != null) {
+            "$REPO/releases/download/$tag/install-termux.sh"
+        } else {
+            INSTALL_SCRIPT
+        }
+        val pin = if (tag != null) " $tag" else ""
+        return "mkdir -p \"\$PREFIX/tmp\"; p=\$PREFIX/tmp/pig-install.sh; " +
+            "{ curl -fsSL $script -o \"\$p\" || curl -fsSL $INSTALL_SCRIPT -o \"\$p\"; } && " +
+            "sh \"\$p\"$pin"
+    }
+
     fun hasPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, RUN_COMMAND) == PackageManager.PERMISSION_GRANTED
 
@@ -46,18 +68,7 @@ object RelayLauncher {
         if (!isTermuxInstalled(context)) {
             return AppViewModel.packString("relay.termuxMissing", "Termux 未安装")
         }
-        // The relay is published with this app version, so install that one
-        // instead of whatever happens to be newest. The tagged script can be
-        // missing (an older release), so fall back to the latest script.
-        val tag = releaseTag(context)
-        val script = if (tag != null) {
-            "$REPO/releases/download/$tag/install-termux.sh"
-        } else {
-            INSTALL_SCRIPT
-        }
-        val pin = if (tag != null) " -s -- $tag" else ""
-        val command = "pkg install -y curl >/dev/null 2>&1; " +
-            "{ curl -fsSL $script || curl -fsSL $INSTALL_SCRIPT; } | sh$pin"
+        val command = installCommand(context)
         val intent = Intent().apply {
             setClassName(TERMUX_PKG, "com.termux.app.RunCommandService")
             action = "com.termux.RUN_COMMAND"
