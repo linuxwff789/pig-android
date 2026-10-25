@@ -9,8 +9,12 @@ None of this is needed to *use* the app — see [install.md](install.md) for tha
 
 ```bash
 cd relay
-go build -trimpath -ldflags="-s -w" -o "$PREFIX/bin/pig-relay" .
+go build -trimpath -ldflags="-s -w -X main.buildVersion=dev" -o "$PREFIX/bin/pig-relay" .
 ```
+
+`main.buildVersion` is what `pig-relay --version` reports next to the protocol
+(`relay/1 1.1.27`); the release workflow stamps the tag into it, and the Termux
+installer replaces a relay whose version differs from the app's.
 
 The relay carries the extensions it ships with: `relay/embedded/` holds copies
 of `extensions/` that the binary embeds and extracts to

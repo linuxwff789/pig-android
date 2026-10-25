@@ -33,6 +33,11 @@ import (
 
 const protocol = "relay/1"
 
+// buildVersion is the release this binary was built from ("1.1.27"), set by the
+// release workflow with -ldflags "-X main.buildVersion=...". The Termux
+// installer compares it so the relay matches the app that installed it.
+var buildVersion = "dev"
+
 // hadClient records whether any connection ever authenticated. A relay that
 // has never had a client may be a leftover from an older app install whose
 // token no longer matches; it exits instead of blocking the port.
@@ -512,7 +517,7 @@ func main() {
 	flag.Parse()
 
 	if *readOnly {
-		fmt.Println(protocol)
+		fmt.Println(protocol, buildVersion)
 		return
 	}
 	if *token == "" && *tokenF != "" {
@@ -550,7 +555,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("listen: %v", err)
 	}
-	log.Printf("pig-relay %s on %s (cwd=%s ui=%s pig=%s)", protocol, listener.Addr(), *cwd, *uiDir, *pigBin)
+	log.Printf("pig-relay %s %s on %s (cwd=%s ui=%s pig=%s)", protocol, buildVersion, listener.Addr(), *cwd, *uiDir, *pigBin)
 
 	agent := newSession(*token, *cwd, *uiDir, sessionsDir, *pigBin)
 	go agent.watchUI()

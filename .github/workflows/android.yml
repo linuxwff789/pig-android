@@ -55,7 +55,7 @@ jobs:
           go vet ./...
           go test ./...
           CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build \
-            -trimpath -ldflags="-s -w" \
+            -trimpath -ldflags="-s -w -X main.buildVersion=dev-${GITHUB_SHA::7}" \
             -o "$RUNNER_TEMP/pig-relay-android-arm64" .
 
       - name: Build debug APK

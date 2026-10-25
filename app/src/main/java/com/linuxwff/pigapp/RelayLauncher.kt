@@ -2,6 +2,7 @@ package com.linuxwff.pigapp
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.PowerManager
@@ -15,8 +16,21 @@ object RelayLauncher {
     private const val RELAY_BIN = "/data/data/com.termux/files/usr/bin/pig-relay"
     private const val WAKE_LOCK_BIN = "/data/data/com.termux/files/usr/bin/termux-wake-lock"
     private const val TERMUX_ACTIVITY = "com.termux.app.TermuxActivity"
+    private const val REPO = "https://github.com/linuxwff789/pig-android"
     private const val INSTALL_SCRIPT =
-        "https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh"
+        "$REPO/releases/latest/download/install-termux.sh"
+    private val RELEASE_VERSION = Regex("""\d+\.\d+\.\d+""")
+
+    /** The release this app was built from, or null for a debug/CI build: those
+     *  carry a version that has no release, so they use the latest one. */
+    private fun releaseTag(context: Context): String? {
+        val debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (debuggable) return null
+        val version = runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull().orEmpty()
+        return version.takeIf { RELEASE_VERSION.matches(it) }?.let { "v$it" }
+    }
 
     fun hasPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, RUN_COMMAND) == PackageManager.PERMISSION_GRANTED
@@ -32,7 +46,18 @@ object RelayLauncher {
         if (!isTermuxInstalled(context)) {
             return AppViewModel.packString("relay.termuxMissing", "Termux 未安装")
         }
-        val command = "pkg install -y curl >/dev/null 2>&1; curl -fsSL $INSTALL_SCRIPT | sh"
+        // The relay is published with this app version, so install that one
+        // instead of whatever happens to be newest. The tagged script can be
+        // missing (an older release), so fall back to the latest script.
+        val tag = releaseTag(context)
+        val script = if (tag != null) {
+            "$REPO/releases/download/$tag/install-termux.sh"
+        } else {
+            INSTALL_SCRIPT
+        }
+        val pin = if (tag != null) " -s -- $tag" else ""
+        val command = "pkg install -y curl >/dev/null 2>&1; " +
+            "{ curl -fsSL $script || curl -fsSL $INSTALL_SCRIPT; } | sh$pin"
         val intent = Intent().apply {
             setClassName(TERMUX_PKG, "com.termux.app.RunCommandService")
             action = "com.termux.RUN_COMMAND"

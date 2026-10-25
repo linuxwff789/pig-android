@@ -15,11 +15,22 @@ curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/i
 
 `pkg install -y curl` 很关键：全新的 Termux 可能还没有 `curl`，而本安装脚本和官方 PiG 安装脚本都需要它。
 
-它做三件事：
+带上 App 的版本号可以装与它同批发布的 relay（App 一键安装会自动这样传；手动写法）：
 
-1. 缺少 `pig` 时，用官方 `https://pi-in-go.dev/install.sh` 安装；
-2. 从最新发布下载 `pig-relay-android-arm64` 到 `$PREFIX/bin/pig-relay`；
-3. 创建 `~/.pig/android-ui/{theme,layout,windows}`。
+```bash
+curl -fsSL https://github.com/linuxwff789/pig-android/releases/download/v1.1.27/install-termux.sh | sh -s -- v1.1.27
+```
+
+它做五件事：
+
+1. 当 Termux 主仓库还指向 `packages.termux.dev`、且这次确实要用 `pkg install`
+   （缺 curl 或缺 Go）时换成国内镜像；默认清华 TUNA，`PIG_TERMUX_MIRROR=…` 换别的，
+   `PIG_NO_MIRROR=1` 跳过，`PIG_FORCE_MIRROR=1` 强制换；旧文件备份为 `sources.list.bak-pig`；
+2. 缺少 `pig` 时，用官方 `https://pi-in-go.dev/install.sh` 安装；
+3. 缺少 Go 工具链时用 `pkg install golang` 安装——relay 首次启动要用它编译自带的 plan 扩展；
+4. 下载 `pig-relay-android-arm64` 到 `$PREFIX/bin/pig-relay`，版本不同会原子替换
+   （`pig-relay --version` 会打印版本号，所以旧版本是被升级而不是被跳过）；
+5. 创建 `~/.pig/android-ui/{theme,layout,windows}`。
 
 它还会在 `~/.termux/termux.properties` 中启用 Termux 的外部命令开关（保留 `.bak-pig` 备份），并运行 `termux-reload-settings`。**打开一次 Termux App** 让该属性生效，授予 Pig App `com.termux.permission.RUN_COMMAND` 权限，然后按重试。
 

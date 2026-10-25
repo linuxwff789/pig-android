@@ -51,8 +51,14 @@ jobs:
           cd relay
           go vet ./...
           go test ./...
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION_NAME="dev-${GITHUB_SHA::7}"
+          else
+            VERSION_NAME="${GITHUB_REF_NAME#v}"
+          fi
+          echo "relay buildVersion=$VERSION_NAME"
           CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build \
-            -trimpath -ldflags="-s -w" \
+            -trimpath -ldflags="-s -w -X main.buildVersion=$VERSION_NAME" \
             -o "$GITHUB_WORKSPACE/pig-relay-android-arm64" .
 
       - name: Decode keystore

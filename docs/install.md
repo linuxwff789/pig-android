@@ -17,13 +17,28 @@ curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/i
 `pkg install -y curl` matters: a very fresh Termux may not have `curl` yet, and
 both this installer and the official PiG installer need it.
 
-It does three things:
+Pass the app's release to install the relay published with it (the app does this
+for you; this is the manual form):
 
-1. installs `pig` with the official `https://pi-in-go.dev/install.sh` when
+```bash
+curl -fsSL https://github.com/linuxwff789/pig-android/releases/download/v1.1.27/install-termux.sh | sh -s -- v1.1.27
+```
+
+It does five things:
+
+1. points the Termux main repo at a Chinese mirror when it still uses
+   `packages.termux.dev` and this run has to `pkg install` something (curl or
+   Go); TUNA by default, `PIG_TERMUX_MIRROR=…` picks another, `PIG_NO_MIRROR=1`
+   skips it, `PIG_FORCE_MIRROR=1` does it anyway, and the old file stays as
+   `sources.list.bak-pig`);
+2. installs `pig` with the official `https://pi-in-go.dev/install.sh` when
    `pig` is missing;
-2. downloads `pig-relay-android-arm64` from the latest release into
-   `$PREFIX/bin/pig-relay`;
-3. creates `~/.pig/android-ui/{theme,layout,windows}`.
+3. installs the Go toolchain with `pkg install golang` when it is missing — the
+   relay builds the plan extension it carries on first start;
+4. downloads `pig-relay-android-arm64` into `$PREFIX/bin/pig-relay`, replacing
+   an older version atomically (`pig-relay --version` prints the release, so a
+   mismatch is upgraded rather than kept);
+5. creates `~/.pig/android-ui/{theme,layout,windows}`.
 
 It also enables Termux's external-command switch in
 `~/.termux/termux.properties` (keeping a `.bak-pig` backup) and runs

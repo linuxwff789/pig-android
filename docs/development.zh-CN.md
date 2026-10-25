@@ -8,8 +8,12 @@
 
 ```bash
 cd relay
-go build -trimpath -ldflags="-s -w" -o "$PREFIX/bin/pig-relay" .
+go build -trimpath -ldflags="-s -w -X main.buildVersion=dev" -o "$PREFIX/bin/pig-relay" .
 ```
+
+`main.buildVersion` 就是 `pig-relay --version` 在协议后面打印的版本
+（`relay/1 1.1.27`）；发布流程会把 tag 写进去，Termux 安装脚本发现版本与 App
+不一致时会替换。
 
 relay 随二进制分发它自带的扩展：`relay/embedded/` 是 `extensions/` 的副本，二进制内嵌，
 首次启动时解出到 `~/.pig/agent/extensions/<name>/` 并调用 `pig install` 注册。
