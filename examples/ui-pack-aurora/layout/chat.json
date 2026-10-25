@@ -274,5 +274,31 @@
       "packManager",
       "panels"
     ]
+  },
+  "bubble": {
+    "borderWidth": 1,
+    "borderColor": "primary",
+    "userBackground": "brand",
+    "radiusTR": 20,
+    "radiusBR": 20,
+    "textAlign": "start"
+  },
+  "toolCard": {
+    "borderColor": "secondary",
+    "iconTint": "primary",
+    "iconBackground": "primary",
+    "diffAddColor": "success",
+    "diffRemoveColor": "error"
+  },
+  "chrome": {
+    "statusColor": "primary",
+    "statusBackground": "surfaceVariant",
+    "statusBackgroundAlpha": 0.7,
+    "toastContainer": "inverseSurface",
+    "dialogRadius": 20,
+    "chipShape": "rounded",
+    "chipRadius": 8,
+    "chipBackground": "primary",
+    "emptyTitleColor": "primary"
   }
 }
