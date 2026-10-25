@@ -554,6 +554,10 @@ func main() {
 
 	agent := newSession(*token, *cwd, *uiDir, sessionsDir, *pigBin)
 	go agent.watchUI()
+	// Installing the extension the relay carries can compile it (~seconds on a
+	// cold pig cache); listening first keeps the handshake fast, startAgent
+	// waits for this to finish.
+	go agent.installEmbeddedExtensions()
 
 	go func() {
 		sig := make(chan os.Signal, 1)

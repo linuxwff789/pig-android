@@ -11,6 +11,11 @@ cd relay
 go build -trimpath -ldflags="-s -w" -o "$PREFIX/bin/pig-relay" .
 ```
 
+relay 随二进制分发它自带的扩展：`relay/embedded/` 是 `extensions/` 的副本，二进制内嵌，
+首次启动时解出到 `~/.pig/agent/extensions/<name>/` 并调用 `pig install` 注册。
+`relay/embedded/` 是生成产物——改完扩展要跑 `sh scripts/sync-embedded-extensions.sh`
+并提交；CI 会在它过期时报错。用户自己配置的 plan 扩展（仓库副本、其它包）优先于内嵌副本。
+
 ## 发布构建
 
 ```bash

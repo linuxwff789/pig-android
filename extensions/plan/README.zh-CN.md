@@ -11,6 +11,14 @@ PiG 的只读规划模式。模型先做调查、写出编号计划，在你放�
 
 ## 安装
 
+`pig-relay` 自带这个扩展：首次启动（以及每次更新到不同版本）时，relay 会把源码写到
+`~/.pig/agent/extensions/plan/` 并调用 `pig install` 注册，所以装或更新 relay
+就等于装了这个扩展，不需要另外下载。你自己配置过的 plan 扩展优先：只要
+`settings.json` 里已经列了一个（例如本仓库的检出目录），relay 就什么都不做，
+不会重复加载。
+
+手动安装（改扩展本身时用）：
+
 ```bash
 git clone https://github.com/linuxwff789/pig-android
 pig install ./pig-android/extensions/plan

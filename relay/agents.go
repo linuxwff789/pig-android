@@ -82,6 +82,9 @@ type session struct {
 
 	stopOnce sync.Once
 	stopped  chan struct{}
+	// extReady closes once the extensions the relay carries are written and
+	// registered; a pig started before that would miss them.
+	extReady chan struct{}
 }
 
 func newSession(token, cwd, uiDir, sessionsDir, pigBin string) *session {
@@ -96,6 +99,7 @@ func newSession(token, cwd, uiDir, sessionsDir, pigBin string) *session {
 		msgCache:      map[string]msgCacheEntry{},
 		historyLimits: map[string]int{},
 		stopped:       make(chan struct{}),
+		extReady:      make(chan struct{}),
 	}
 }
 
@@ -357,6 +361,9 @@ func (s *session) mapAgentPath(a *agentProc, path string) {
 // startAgent launches pig with --session (when path is set) so no switch is
 // needed for history sessions.
 func (s *session) startAgent(path string, load bool) (*agentProc, error) {
+	// The embedded extensions are extracted and registered in the background;
+	// the first pig has to see them, or the session starts without /plan.
+	<-s.extReady
 	args := []string{"--mode", "rpc"}
 	if load && path != "" {
 		args = append(args, "--session", path)

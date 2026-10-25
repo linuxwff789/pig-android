@@ -12,6 +12,14 @@ cd relay
 go build -trimpath -ldflags="-s -w" -o "$PREFIX/bin/pig-relay" .
 ```
 
+The relay carries the extensions it ships with: `relay/embedded/` holds copies
+of `extensions/` that the binary embeds and extracts to
+`~/.pig/agent/extensions/<name>/` on first start, registering them with
+`pig install`. `relay/embedded/` is generated — after editing an extension run
+`sh scripts/sync-embedded-extensions.sh` and commit the result; CI fails when it
+is stale. A plan extension the user configured (a repository checkout, another
+package) always wins over the embedded copy.
+
 ## Release build
 
 ```bash

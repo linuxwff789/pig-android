@@ -13,6 +13,16 @@ your own.
 
 ## Install
 
+`pig-relay` carries this extension. On its first start (and after every update
+that changes it) the relay writes the sources to
+`~/.pig/agent/extensions/plan/` and runs `pig install` for it, so installing or
+updating the relay installs the extension too — nothing to download separately.
+A plan extension you configured yourself always wins: if `settings.json` lists
+one (for example this repository's checkout), the relay leaves everything
+alone, so the extension is never loaded twice.
+
+To install by hand (for hacking on it):
+
 ```bash
 git clone https://github.com/linuxwff789/pig-android
 pig install ./pig-android/extensions/plan

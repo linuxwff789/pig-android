@@ -47,7 +47,7 @@ off.
 | 💬 **A real transcript** | Streaming Markdown — GFM headings, lists, tables with alignment, code fences — plus collapsible `思考` blocks, copy buttons and a `回到底部` pill. |
 | 🧰 **Tool cards** | Collapse / summary / expand (long-press the chip to apply to all), `write` shows lines and bytes, `edit` shows added/removed counts and a coloured diff. |
 | 🧩 **Extension dialogs** | `confirm` / `select` / `input` / `editor` answered natively, themed by the pack, body selectable and copyable; tap to park a prompt and bring it back from the banner. |
-| 📋 **Plan checklist** | Any extension that emits a `setWidget` plan becomes a native card with progress bar and `☑ / ☐` steps — no registry, no allow-list. |
+| 📋 **Plan checklist** | Any extension that emits a `setWidget` plan becomes a native card with progress bar and `☑ / ☐` steps — no registry, no allow-list. The bundled plan extension ships with `pig-relay`. |
 | 🗂 **Sessions** | Drawer with search, rename and delete; per-session drafts; a session that is still being created keeps what you type. |
 | 🎛 **Models** | Searchable picker with context size, thinking and image support; pin a default; override a provider's wrong `contextWindow` on the `ctx` line. |
 | 🖼 **Images both ways** | Tool and assistant images, a system photo picker, Markdown images, and a full-screen viewer that saves to `Pictures/Pig`. |

@@ -32,6 +32,16 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Check embedded extensions are in sync
+        run: |
+          sh scripts/sync-embedded-extensions.sh
+          if [ -n "$(git status --porcelain -- relay/embedded)" ]; then
+            echo "relay/embedded is stale; run scripts/sync-embedded-extensions.sh and commit" >&2
+            git --no-pager diff --stat -- relay/embedded >&2
+            exit 1
+          fi
+
+
       - uses: actions/setup-go@v5
         with:
           go-version: "stable"
