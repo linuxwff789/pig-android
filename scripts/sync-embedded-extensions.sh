@@ -3,9 +3,16 @@
 # binary embeds them and extracts them on first start (no network, no extra
 # download). Go sources get a .txt suffix so the relay module does not compile
 # them: they belong to pig, not to the relay.
-# Run this after editing extensions/plan and commit the result.
+#
+#   extensions/plan     -> relay/embedded/plan/      (one extension)
+#   extensions/pigkit   -> relay/embedded/pigkit/    (the pigkit module: the
+#                          provider window the app shows, custom endpoints,
+#                          model speed, memory, ...)
+#
+# Run this after editing either tree and commit the result.
 set -e
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
 src="$root/extensions/plan"
 dst="$root/relay/embedded/plan"
 
@@ -18,3 +25,20 @@ for name in commands.go events.go extension.go policy.go steps.go go.mod; do
 done
 [ -f "$src/README.md" ] && cp "$src/README.md" "$dst/README.md"
 echo "embedded: extensions/plan -> relay/embedded/plan"
+
+src="$root/extensions/pigkit"
+dst="$root/relay/embedded/pigkit"
+
+[ -d "$src" ] || { echo "missing $src" >&2; exit 1; }
+rm -rf "$dst"
+mkdir -p "$dst"
+# Every Go source and the module file; the directory layout (one package per
+# subdirectory) has to survive, pig builds each package against the module root.
+(
+    cd "$src" &&
+    find . -type f \( -name '*.go' -o -name 'go.mod' \) | sed 's|^\./||' | sort
+) | while IFS= read -r rel; do
+    mkdir -p "$dst/$(dirname "$rel")"
+    cp "$src/$rel" "$dst/$rel.txt"
+done
+echo "embedded: extensions/pigkit -> relay/embedded/pigkit"

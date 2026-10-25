@@ -22,7 +22,7 @@ curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/i
 curl -fsSL https://github.com/linuxwff789/pig-android/releases/download/v1.1.27/install-termux.sh | sh -s -- v1.1.27
 ```
 
-它做五件事：
+它做六件事：
 
 1. 当 Termux 主仓库还指向 `packages.termux.dev`、且这次确实要用 `pkg install`
    （缺 curl 或缺 Go）时换成国内镜像；默认清华 TUNA，`PIG_TERMUX_MIRROR=…` 换别的，
@@ -31,7 +31,10 @@ curl -fsSL https://github.com/linuxwff789/pig-android/releases/download/v1.1.27/
 3. 缺少 Go 工具链时用 `pkg install golang` 安装——relay 首次启动要用它编译自带的 plan 扩展；
 4. 下载 `pig-relay-android-arm64` 到 `$PREFIX/bin/pig-relay`，版本不同会原子替换
    （`pig-relay --version` 会打印版本号，所以旧版本是被升级而不是被跳过）；
-5. 创建 `~/.pig/android-ui/{theme,layout,windows}`。
+5. 创建 `~/.pig/android-ui/{theme,layout,windows}`；
+6. relay 二进制里自带 `pigkit` 扩展（App 里「模型供应商」窗口、自定义端点、model-speed、
+   memory、questionnaire、codegraph）：首次启动时解出到 `~/.pig/agent/pigkit/`，并把每个包
+   注册进 `settings.json`。不需要再单独下载；你自己已有的同名目录不会被覆盖。
 
 它还会在 `~/.termux/termux.properties` 中启用 Termux 的外部命令开关（保留 `.bak-pig` 备份），并运行 `termux-reload-settings`。**打开一次 Termux App** 让该属性生效，授予 Pig App `com.termux.permission.RUN_COMMAND` 权限，然后按重试。
 

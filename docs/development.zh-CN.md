@@ -16,9 +16,17 @@ go build -trimpath -ldflags="-s -w -X main.buildVersion=dev" -o "$PREFIX/bin/pig
 不一致时会替换。
 
 relay 随二进制分发它自带的扩展：`relay/embedded/` 是 `extensions/` 的副本，二进制内嵌，
-首次启动时解出到 `~/.pig/agent/extensions/<name>/` 并调用 `pig install` 注册。
+首次启动时解出：
+
+- `extensions/plan` → `~/.pig/agent/extensions/plan/`，并调用 `pig install` 注册；
+  用户自己配置的 plan 扩展（仓库副本、其它包）优先于内嵌副本。
+- `extensions/pigkit`（App 自己界面背后的模块：`/provider-ui` 供应商窗口、自定义端点、
+  model-speed、memory、questionnaire、codegraph）→ `~/.pig/agent/pigkit/`，并把每个包以
+  `pigkit/<name>` 追加到 `settings.json` 的 `packages`。没有 `.embedded-hash` 标记的包目录
+  视为用户自己的：不覆盖、也不重复注册；已有其它路径提供同名包时也不再加。
+
 `relay/embedded/` 是生成产物——改完扩展要跑 `sh scripts/sync-embedded-extensions.sh`
-并提交；CI 会在它过期时报错。用户自己配置的 plan 扩展（仓库副本、其它包）优先于内嵌副本。
+并提交；CI 会在它过期时报错。
 
 ## 发布构建
 

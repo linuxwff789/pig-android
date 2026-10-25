@@ -17,12 +17,22 @@ go build -trimpath -ldflags="-s -w -X main.buildVersion=dev" -o "$PREFIX/bin/pig
 installer replaces a relay whose version differs from the app's.
 
 The relay carries the extensions it ships with: `relay/embedded/` holds copies
-of `extensions/` that the binary embeds and extracts to
-`~/.pig/agent/extensions/<name>/` on first start, registering them with
-`pig install`. `relay/embedded/` is generated — after editing an extension run
+of `extensions/` that the binary embeds and extracts on first start.
+
+- `extensions/plan` is written to `~/.pig/agent/extensions/plan/` and
+  registered with `pig install`. A plan extension the user configured (a
+  repository checkout, another package) always wins over the embedded copy.
+- `extensions/pigkit` (the module behind the app's own UI: `/provider-ui` for
+  the provider window, custom endpoints, model speed, memory, questionnaire,
+  codegraph) is written to `~/.pig/agent/pigkit/` and each package is appended
+  to the `packages` list in `settings.json` as `pigkit/<name>`. A package
+  directory without the relay's `.embedded-hash` marker is the user's: it is
+  left untouched and never registered twice, and an entry that already names
+  the same package from somewhere else wins.
+
+`relay/embedded/` is generated — after editing an extension run
 `sh scripts/sync-embedded-extensions.sh` and commit the result; CI fails when it
-is stale. A plan extension the user configured (a repository checkout, another
-package) always wins over the embedded copy.
+is stale.
 
 ## Release build
 

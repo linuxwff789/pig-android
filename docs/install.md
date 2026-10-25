@@ -25,7 +25,7 @@ for you; this is the manual form):
 curl -fsSL https://github.com/linuxwff789/pig-android/releases/download/v1.1.27/install-termux.sh | sh -s -- v1.1.27
 ```
 
-It does five things:
+It does six things:
 
 1. points the Termux main repo at a Chinese mirror when it still uses
    `packages.termux.dev` and this run has to `pkg install` something (curl or
@@ -39,7 +39,13 @@ It does five things:
 4. downloads `pig-relay-android-arm64` into `$PREFIX/bin/pig-relay`, replacing
    an older version atomically (`pig-relay --version` prints the release, so a
    mismatch is upgraded rather than kept);
-5. creates `~/.pig/android-ui/{theme,layout,windows}`.
+5. creates `~/.pig/android-ui/{theme,layout,windows}`;
+6. ships the `pigkit` extensions inside the relay binary itself (the provider
+   window the app opens as 模型供应商, custom endpoints, model speed, memory,
+   questionnaire, codegraph): on first start the relay writes them to
+   `~/.pig/agent/pigkit/` and registers each one in `settings.json`. Nothing
+   else has to be downloaded, and a directory you already own is never
+   overwritten.
 
 It also enables Termux's external-command switch in
 `~/.termux/termux.properties` (keeping a `.bak-pig` backup) and runs

@@ -432,6 +432,8 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 			}
 			if s.isActive(a) {
 				_ = s.send(frame{"type": "relay_log", "message": line})
+			} else {
+				logf("pig stderr: %s", line)
 			}
 		}
 	}()
@@ -463,6 +465,7 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 		if wasActive {
 			_ = s.send(frame{"type": "relay_exit", "code": code})
 		}
+		logf("pig exited: code=%d err=%v path=%q", code, err, a.path)
 	}()
 
 	return a, nil
@@ -1148,6 +1151,12 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 			var err error
 			a, err = s.ensureAgent(s.activePath, s.activePath != "")
 			if err != nil {
+				// Dropping the frame silently leaves the app waiting forever.
+				logf("cannot start pig for %s: %v", typ, err)
+				_ = s.send(frame{
+					"type": "response", "id": id, "command": typ,
+					"success": false, "error": "cannot start pig: " + err.Error(),
+				})
 				return
 			}
 		}

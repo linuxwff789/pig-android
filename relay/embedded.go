@@ -37,6 +37,16 @@ func (s *session) installEmbeddedExtensions() {
 	defer close(s.extReady)
 
 	agentDir := filepath.Dir(s.settingsPath)
+	// The pigkit module first: the app's own buttons (`ext:` actions in the UI
+	// pack) call its commands, and a backend without it silently answers with
+	// built-ins only. Its `packages` entries are written before plan reads them.
+	s.installEmbeddedPigkit(agentDir)
+	s.installEmbeddedPlan(agentDir)
+}
+
+// installEmbeddedPlan writes the plan extension the relay carries into
+// <agent>/extensions/plan and registers it with `pig install`.
+func (s *session) installEmbeddedPlan(agentDir string) {
 	entries := settingsPackages(s.settingsPath)
 	target := filepath.Join(agentDir, "extensions", embeddedPlanName)
 
