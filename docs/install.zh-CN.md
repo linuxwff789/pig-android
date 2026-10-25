@@ -103,5 +103,6 @@ App ── TCP 127.0.0.1:8791 ──▶ pig-relay ── stdio ──▶ pig --m
 | `pkg: command not found` | 你不在 Termux 中，或 Termux 太旧。从 F-Droid 重新安装。 |
 | `curl: not found` | `pkg install -y curl`。 |
 | `curl: (35) TLS connect error: error:00000000:lib(0)::reason(0)` | 代理/中间盒掐断了握手。App 会先试 GitHub 再试 jsDelivr；也可以自己下脚本：`curl -fsSL --tls-max 1.2 https://cdn.jsdelivr.net/gh/linuxwff789/pig-android@main/scripts/install-termux.sh -o "$PREFIX/tmp/i.sh"`。relay 二进制可设 `PIG_RELAY_MIRRORS`（URL 前缀，如 `https://ghfast.top/`）再跑脚本。 |
+| `github.com` 连不上但 API 正常 | 安装脚本会退回 `api.github.com/.../releases/assets/<id>`（它再跳到 `objects.githubusercontent.com`，又是另一个主机）。脚本本身可以绕开 `github.com`：`curl -fsSL -H 'Accept: application/vnd.github.raw' "https://api.github.com/repos/linuxwff789/pig-android/contents/scripts/install-termux.sh?ref=main" -o "$PREFIX/tmp/i.sh"`。 |
 | 重装后残留的 relay / token | `pkill -x pig-relay`，然后按重试。如果 relay 从未有过客户端，它会在 token 错误时退出。 |
 | App 不显示模型/窗口 | 检查 `ps -A | grep pig`；重启 App。 |

@@ -135,5 +135,6 @@ button that runs the same script through Termux.
 | `pkg: command not found` | You are not in Termux, or Termux is very old. Reinstall from F-Droid. |
 | `curl: not found` | `pkg install -y curl`. |
 | `curl: (35) TLS connect error: error:00000000:lib(0)::reason(0)` | A proxy or middlebox killed the handshake. The app tries GitHub and then jsDelivr; retry, or fetch the script yourself: `curl -fsSL --tls-max 1.2 https://cdn.jsdelivr.net/gh/linuxwff789/pig-android@main/scripts/install-termux.sh -o "$PREFIX/tmp/i.sh"`. For the relay binary set `PIG_RELAY_MIRRORS` to a URL prefix (e.g. `https://ghfast.top/`) before running the script. |
+| `github.com` unreachable but the API works | The installer falls back to `api.github.com/.../releases/assets/<id>` (redirects to `objects.githubusercontent.com`, a different host). To fetch the script itself without `github.com`: `curl -fsSL -H 'Accept: application/vnd.github.raw' "https://api.github.com/repos/linuxwff789/pig-android/contents/scripts/install-termux.sh?ref=main" -o "$PREFIX/tmp/i.sh"`. |
 | Stale relay / token after reinstall | `pkill -x pig-relay`, then press retry. The relay exits on a bad token if it never had a client. |
 | App shows no model/windows | Check `ps -A | grep pig`; restart the app. |

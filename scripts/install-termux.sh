@@ -33,32 +33,67 @@ say() { printf '==> %s\n' "$*"; }
 # flaky proxies and middleboxes fail on TLS 1.3/HTTP2 with
 # "error:00000000:lib(0)::reason(0)". Never leave a partial file behind for the
 # next step to execute.
-fetch() {
-    url=$1
-    dest=$2
-    tmp="$dest.part.$$"
-    attempt=1
-    while [ "$attempt" -le 3 ]; do
-        extra=""
-        [ "$attempt" -ge 2 ] && extra="--tls-max 1.2 --http1.1"
-        if curl -fsSL $extra --connect-timeout 20 --retry 1 --retry-all-errors \
-            --retry-delay 2 -o "$tmp" "$url"; then
-            if [ -s "$tmp" ]; then
-                mv -f "$tmp" "$dest"
+curl_get() {  # url dest [extra curl args...]
+    # POSIX sh has no locals, so every name here is prefixed: a caller's $tmp
+    # and $dest must survive the call (the relay step checks $tmp afterwards).
+    _cg_url=$1
+    _cg_dest=$2
+    shift 2
+    _cg_tmp="$_cg_dest.part.$$"
+    _cg_attempt=1
+    while [ "$_cg_attempt" -le 3 ]; do
+        _cg_extra=""
+        [ "$_cg_attempt" -ge 2 ] && _cg_extra="--tls-max 1.2 --http1.1"
+        if curl -fsSL $_cg_extra --connect-timeout 20 --retry 1 --retry-all-errors \
+            --retry-delay 2 "$@" -o "$_cg_tmp" "$_cg_url"; then
+            if [ -s "$_cg_tmp" ]; then
+                mv -f "$_cg_tmp" "$_cg_dest"
                 return 0
             fi
-            say "downloaded 0 bytes: $url"
+            say "downloaded 0 bytes: $_cg_url"
         else
-            code=$?
-            say "download failed (curl exit $code): $url"
-            [ -n "$extra" ] || say "retrying with --tls-max 1.2 --http1.1"
+            _cg_code=$?
+            say "download failed (curl exit $_cg_code): $_cg_url"
+            [ -n "$_cg_extra" ] || say "retrying with --tls-max 1.2 --http1.1"
         fi
-        rm -f "$tmp"
-        attempt=$((attempt + 1))
-        [ "$attempt" -le 3 ] && sleep 2
+        rm -f "$_cg_tmp"
+        _cg_attempt=$((_cg_attempt + 1))
+        [ "$_cg_attempt" -le 3 ] && sleep 2
     done
-    rm -f "$tmp"
+    rm -f "$_cg_tmp"
     return 1
+}
+
+fetch() {
+    curl_get "$1" "$2"
+}
+
+# github.com can be unreachable while the API host is fine (same repository,
+# same asset): the asset endpoint answers with a redirect to
+# objects.githubusercontent.com, a different host again. Used when the plain
+# download link fails.
+fetch_relay_api() {
+    _api_dest=$1
+    _api_base="https://api.github.com/repos/linuxwff789/pig-android/releases"
+    if [ -n "$version" ]; then
+        _api_release="$_api_base/tags/v$version"
+    else
+        _api_release="$_api_base/latest"
+    fi
+    _api_json="$PREFIX/tmp/.pig-release.$$.json"
+    if ! curl_get "$_api_release" "$_api_json"; then
+        rm -f "$_api_json"
+        return 1
+    fi
+    _api_id=$(awk '/"id":/ { id=$0 } /"name": "pig-relay-android-arm64"/ { print id; exit }' "$_api_json" |
+        sed 's/[^0-9]//g')
+    rm -f "$_api_json"
+    if [ -z "$_api_id" ]; then
+        say "api.github.com: $_api_release does not list pig-relay-android-arm64"
+        return 1
+    fi
+    say "trying the release asset API: api.github.com/.../assets/$_api_id"
+    curl_get "$_api_base/assets/$_api_id" "$_api_dest" -H 'Accept: application/octet-stream'
 }
 
 # A fresh Termux points its main repo at packages.termux.dev, which is slow or
@@ -185,6 +220,9 @@ else
         [ "$url" = "$RELAY_URL" ] || say "trying mirror: $url"
         fetch "$url" "$tmp" && { ok=1; break; }
     done
+    if [ "$ok" = 0 ] && fetch_relay_api "$tmp"; then
+        ok=1
+    fi
     if [ "$ok" = 0 ]; then
         say "could not download $RELAY_URL"
         say "hint: download it another way and place it at $RELAY (chmod 700),"
