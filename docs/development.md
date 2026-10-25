@@ -71,7 +71,10 @@ manually. The keystore comes from the `RELEASE_KEYSTORE_BASE64`,
 Actions secrets; the version name is the tag without `v` and the version code
 is the commit count. The local backup lives at
 `~/.pig-android-release/pig-release.p12` (not in the repo). A tag also creates a
-GitHub Release with the APK attached. The release key differs from the debug
+GitHub Release with the APK attached (plus `pig-relay-android-arm64` and
+`install-termux.sh`). A release can carry its own summary: `release-notes/<tag>.md`
+is prepended to the generated "What's Changed" list, see
+[release-notes/README.md](../release-notes/README.md). The release key differs from the debug
 key, so installing a release APK over an installed debug build requires
 uninstalling the debug app once.
 

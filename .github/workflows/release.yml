@@ -97,10 +97,25 @@ jobs:
           path: pig-relay-android-arm64
           if-no-files-found: error
 
+      # A curated summary per release: release-notes/<tag>.md is prepended to
+      # the generated "What's Changed" list. The file is optional.
+      - name: Compose release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          body="$RUNNER_TEMP/release-body.md"
+          if [ -f "release-notes/$GITHUB_REF_NAME.md" ]; then
+            cp "release-notes/$GITHUB_REF_NAME.md" "$body"
+            echo "release notes: release-notes/$GITHUB_REF_NAME.md ($(wc -c < "$body") bytes)"
+          else
+            printf '## %s\n' "$GITHUB_REF_NAME" > "$body"
+            echo "release notes: generated list only"
+          fi
+
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          body_path: ${{ runner.temp }}/release-body.md
           files: |
             app/build/outputs/apk/release/*.apk
             pig-relay-android-arm64
