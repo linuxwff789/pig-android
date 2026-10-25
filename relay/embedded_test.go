@@ -198,3 +198,44 @@ func TestPackageProvidedMatchesByName(t *testing.T) {
 		t.Fatalf("unrelated entry counted as provider-ui")
 	}
 }
+
+func TestSeedEmbeddedUIFillsOnlyMissingFiles(t *testing.T) {
+	ui := filepath.Join(t.TempDir(), "android-ui")
+	// A user's own theme must survive: the seed only fills holes.
+	own := `{"primary":"#123456"}`
+	if err := os.MkdirAll(filepath.Join(ui, "theme"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ui, "theme", "colors.json"), []byte(own), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &session{uiDir: ui}
+	s.seedEmbeddedUI()
+
+	if _, err := os.Stat(filepath.Join(ui, "manifest.json")); err != nil {
+		t.Fatalf("manifest.json not seeded: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(ui, "theme", "colors.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != own {
+		t.Fatalf("user theme was overwritten")
+	}
+	// windows/ is rendered by the owning extension, never seeded.
+	if _, err := os.Stat(filepath.Join(ui, "windows")); !os.IsNotExist(err) {
+		t.Fatalf("windows/ should not be seeded")
+	}
+
+	// A second start changes nothing (missing files are already there).
+	s.seedEmbeddedUI()
+	again, err := os.ReadFile(filepath.Join(ui, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, _ := os.ReadFile(filepath.Join(ui, "manifest.json"))
+	if string(again) != string(first) {
+		t.Fatalf("manifest changed between seeds")
+	}
+}

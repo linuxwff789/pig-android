@@ -29,6 +29,14 @@ of `extensions/` that the binary embeds and extracts on first start.
   directory without the relay's `.embedded-hash` marker is the user's: it is
   left untouched and never registered twice, and an entry that already names
   the same package from somewhere else wins.
+- `examples/ui-pack-compact` (the pack the app ships) is written into
+  `~/.pig/android-ui` as `relay/embedded/ui`. Only missing files are added, so a
+  hand-edited theme or layout stays, and `windows/` is never shipped: a window is
+  rendered by the extension that owns it (`provider-ui` writes
+  `windows/providers.json` from the user's `custom-endpoints.json`).
+  `scripts/check-ui-packs.sh` (CI) rejects a committed provider window —
+  committing a live `~/.pig/android-ui` once leaked a real provider URL into the
+  APK.
 
 `relay/embedded/` is generated — after editing an extension run
 `sh scripts/sync-embedded-extensions.sh` and commit the result; CI fails when it

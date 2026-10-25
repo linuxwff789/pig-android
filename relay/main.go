@@ -558,6 +558,9 @@ func main() {
 	log.Printf("pig-relay %s %s on %s (cwd=%s ui=%s pig=%s)", protocol, buildVersion, listener.Addr(), *cwd, *uiDir, *pigBin)
 
 	agent := newSession(*token, *cwd, *uiDir, sessionsDir, *pigBin)
+	// Fill a fresh ui dir before the watcher takes its first snapshot, so the
+	// app's first push is a pack it can parse.
+	agent.seedEmbeddedUI()
 	go agent.watchUI()
 	// Installing the extension the relay carries can compile it (~seconds on a
 	// cold pig cache); listening first keeps the handshake fast, startAgent

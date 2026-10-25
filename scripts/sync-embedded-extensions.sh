@@ -8,6 +8,10 @@
 #   extensions/pigkit   -> relay/embedded/pigkit/    (the pigkit module: the
 #                          provider window the app shows, custom endpoints,
 #                          model speed, memory, ...)
+#   examples/ui-pack-compact
+#                       -> relay/embedded/ui/        (default UI pack; the relay
+#                          fills a fresh ~/.pig/android-ui with it, no windows/
+#                          because those are rendered at runtime)
 #
 # Run this after editing either tree and commit the result.
 set -e
@@ -42,3 +46,21 @@ mkdir -p "$dst"
     cp "$src/$rel" "$dst/$rel.txt"
 done
 echo "embedded: extensions/pigkit -> relay/embedded/pigkit"
+
+# The pack the app ships as its default. `windows/` is excluded: the relay only
+# seeds files that are missing, and a window is rendered by whichever extension
+# owns it (provider-ui writes windows/providers.json from the live config).
+src="$root/examples/ui-pack-compact"
+dst="$root/relay/embedded/ui"
+
+[ -d "$src" ] || { echo "missing $src" >&2; exit 1; }
+rm -rf "$dst"
+mkdir -p "$dst"
+(
+    cd "$src" &&
+    find . -type f ! -path './windows/*' | sed 's|^\./||' | sort
+) | while IFS= read -r rel; do
+    mkdir -p "$dst/$(dirname "$rel")"
+    cp "$src/$rel" "$dst/$rel"
+done
+echo "embedded: examples/ui-pack-compact -> relay/embedded/ui"

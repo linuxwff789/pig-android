@@ -24,6 +24,11 @@ relay 随二进制分发它自带的扩展：`relay/embedded/` 是 `extensions/`
   model-speed、memory、questionnaire、codegraph）→ `~/.pig/agent/pigkit/`，并把每个包以
   `pigkit/<name>` 追加到 `settings.json` 的 `packages`。没有 `.embedded-hash` 标记的包目录
   视为用户自己的：不覆盖、也不重复注册；已有其它路径提供同名包时也不再加。
+- `examples/ui-pack-compact`（App 自带的那套 pack）→ `~/.pig/android-ui`，源文件在
+  `relay/embedded/ui`。只补缺失文件（手改过的主题/布局保留），并且**永远不包含
+  `windows/`**：窗口由拥有它的扩展渲染（`provider-ui` 按用户的 `custom-endpoints.json`
+  写 `windows/providers.json`）。CI 的 `scripts/check-ui-packs.sh` 会拒绝提交
+  生成的供应商窗口——曾经把 `~/.pig/android-ui` 拷进示例，结果真实供应商 URL 进了 APK。
 
 `relay/embedded/` 是生成产物——改完扩展要跑 `sh scripts/sync-embedded-extensions.sh`
 并提交；CI 会在它过期时报错。

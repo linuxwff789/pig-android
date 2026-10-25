@@ -1,0 +1,18 @@
+{
+  "background": "#0A0C12",
+  "surface": "#12151E",
+  "surfaceVariant": "#1A1F2B",
+  "primary": "#A78BFA",
+  "secondary": "#7DD3FC",
+  "accent": "#22D3EE",
+  "text": "#ECEEF5",
+  "textMuted": "#98A2B8",
+  "danger": "#FB7185",
+  "cornerRadius": 10,
+  "cardRadius": 8,
+  "bubbleRadius": 12,
+  "chipRadius": 4,
+  "composerRadius": 14,
+  "composerElevation": 4,
+  "bubbleElevation": 4
+}
