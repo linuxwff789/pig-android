@@ -30,15 +30,25 @@ curl -fsSL https://github.com/linuxwff789/pig-android/releases/download/v1.1.27/
 2. 缺少 `pig` 时，用官方 `https://pi-in-go.dev/install.sh` 安装；
 3. 缺少 Go 工具链时用 `pkg install golang` 安装——relay 首次启动要用它编译自带的 plan 扩展；
 4. 下载 `pig-relay-android-arm64` 到 `$PREFIX/bin/pig-relay`，版本不同会原子替换
-   （`pig-relay --version` 会打印版本号，所以旧版本是被升级而不是被跳过）；
-5. 创建 `~/.pig/android-ui/{theme,layout,windows}`；
+   （`pig-relay --version` 会打印版本号，所以旧版本是被升级而不是被跳过）；不带 tag
+   运行时会先问 GitHub「latest 是哪个 tag」，所以 `sh install-termux.sh` 也会升级旧 relay
+   —— 旧 relay 里没有新的内嵌扩展；
+5. 创建 `~/.pig/android-ui/{theme,layout,windows}`；relay 启动时会把默认 UI pack
+   （`manifest.json`、主题、布局、文案、导航）**补齐**到这个目录——只补缺失文件，
+   你改过的不会被动——否则 App 收到的 pack 缺少 `manifest.json`，只能报
+   「UI pack 未应用」并退回内置主题；
 6. relay 二进制里自带 `pigkit` 扩展（App 里「模型供应商」窗口、自定义端点、model-speed、
    memory、questionnaire、codegraph）：首次启动时解出到 `~/.pig/agent/pigkit/`，并把每个包
    注册进 `settings.json`。不需要再单独下载；你自己已有的同名目录不会被覆盖。
 
 它还会在 `~/.termux/termux.properties` 中启用 Termux 的外部命令开关（保留 `.bak-pig` 备份），并运行 `termux-reload-settings`。**打开一次 Termux App** 让该属性生效，授予 Pig App `com.termux.permission.RUN_COMMAND` 权限，然后按重试。
 
-最后它用 RPC 模式启动一次 `pig` 并请求扩展列表：工具链装不上、扩展编译不出来时会当场报出来，而不是过一阵变成「App 里只有内置命令」。
+最后它用 RPC 模式启动一次 `pig` 并请求扩展列表：工具链装不上、扩展编译不出来时会当场报出来，而不是过一阵变成「App 里只有内置命令」。失败时会自动跑一次
+`pig update --extensions` 再探一次（缓存的失败构建只有强制重建才会好）。
+
+所有下载都带重试，并在 TLS/HTTP2 断连（curl 退出码 35/53/56 等）时自动退回
+HTTP/1.1；下载先写 `.part`、校验非空（relay 还校验 ELF magic）后才替换，所以失败
+不会留下半截脚本或半个二进制。
 
 ### 为什么不直接用 App 内的按钮？
 
