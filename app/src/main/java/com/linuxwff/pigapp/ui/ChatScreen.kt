@@ -4977,7 +4977,7 @@ private fun PendingDialog(request: UiRequest, vm: AppViewModel) {
                             packIcon("warning", "warning"),
                             contentDescription = null,
                             modifier = Modifier.size(toolCard.iconSize.dp),
-                            tint = packColor(appearance.iconTint),
+                            tint = scheme.secondary,
                         )
                     }
                     Spacer(Modifier.width(10.dp))
