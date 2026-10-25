@@ -41,7 +41,21 @@ jobs:
       - name: Build debug APK
         run: |
           chmod +x gradlew
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          set +e
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace > "$RUNNER_TEMP/gradle.log" 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            # Surface compiler errors as check-run annotations: the job log is
+            # not readable without admin rights, annotations are.
+            grep -E "^e: " "$RUNNER_TEMP/gradle.log" | head -40 | while IFS= read -r line; do
+              echo "::error::${line#e: }"
+            done
+            grep -A 6 "What went wrong" "$RUNNER_TEMP/gradle.log" | head -24 | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+          fi
+          tail -40 "$RUNNER_TEMP/gradle.log"
+          exit "$status"
 
       - uses: actions/upload-artifact@v4
         with:

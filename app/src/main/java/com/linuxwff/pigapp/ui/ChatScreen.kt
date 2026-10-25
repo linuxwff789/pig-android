@@ -52,7 +52,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
@@ -115,17 +120,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -3531,25 +3540,6 @@ private fun HistoryLoadingState(onRetry: () -> Unit) {
 }
 
 @Composable
-private fun packColor(name: String): Color = when (name) {
-    "primary" -> MaterialTheme.colorScheme.primary
-    "secondary" -> MaterialTheme.colorScheme.secondary
-    "tertiary" -> MaterialTheme.colorScheme.tertiary
-    "onSurface" -> MaterialTheme.colorScheme.onSurface
-    "onSurfaceVariant" -> MaterialTheme.colorScheme.onSurfaceVariant
-    "onPrimary" -> MaterialTheme.colorScheme.onPrimary
-    "surface" -> MaterialTheme.colorScheme.surface
-    "surfaceVariant" -> MaterialTheme.colorScheme.surfaceVariant
-    "background" -> MaterialTheme.colorScheme.background
-    "outline" -> MaterialTheme.colorScheme.outline
-    "error" -> MaterialTheme.colorScheme.error
-    "success" -> MaterialTheme.colorScheme.tertiary
-    "warning" -> MaterialTheme.colorScheme.secondary
-    "none", "transparent" -> Color.Transparent
-    else -> MaterialTheme.colorScheme.onSurfaceVariant
-}
-
-@Composable
 private fun toolSurfaceColor(appearance: com.linuxwff.pigapp.UiToolCardAppearance): Color {
     val scheme = MaterialTheme.colorScheme
     val base = when (appearance.background) {
@@ -4470,7 +4460,6 @@ private fun Composer(
 ) {
     val scheme = MaterialTheme.colorScheme
     val components = packComponents()
-    val buttonSize = components.composerButtonSize.dp
     val theme = packTheme()
     val composerRadius = if (layout.composerRadius >= 0) {
         layout.composerRadius
@@ -4482,9 +4471,66 @@ private fun Composer(
     } else {
         theme.composerElevation
     }
-    val inputStyle = MaterialTheme.typography.bodyMedium.let { base ->
-        if (layout.composerFontSize > 0) base.copy(fontSize = layout.composerFontSize.sp) else base
-    }.copy(color = packColor(layout.composerTextColor))
+    val composerAlign = when (layout.composerTextAlign) {
+        "center" -> TextAlign.Center
+        "end" -> TextAlign.End
+        else -> TextAlign.Start
+    }
+    val composerFamily = if (layout.composerFontFamily.isNotBlank()) {
+        packFontFamily(LocalUiPack.current, layout.composerFontFamily)
+    } else {
+        null
+    }
+    fun composerTextStyle(base: TextStyle, size: Int): TextStyle {
+        var style = if (size > 0) base.copy(fontSize = size.sp) else base
+        if (composerFamily != null) {
+            style = style.copy(fontFamily = composerFamily)
+        }
+        if (layout.composerLineHeight > 0f) {
+            style = style.copy(lineHeight = (style.fontSize.value * layout.composerLineHeight).sp)
+        }
+        if (layout.composerLetterSpacing != 0f) {
+            style = style.copy(letterSpacing = layout.composerLetterSpacing.sp)
+        }
+        return style.copy(textAlign = composerAlign)
+    }
+    val inputStyle = composerTextStyle(MaterialTheme.typography.bodyMedium, layout.composerFontSize)
+        .copy(color = packColor(layout.composerTextColor))
+    val placeholderStyle = composerTextStyle(
+        MaterialTheme.typography.bodyMedium,
+        layout.composerPlaceholderFontSize.takeIf { it > 0 } ?: layout.composerFontSize,
+    )
+    fun insetIcon(size: Dp, padding: Int): Dp =
+        if (padding <= 0) size else (size.value - padding * 2).coerceAtLeast(6f).dp
+    fun disc(kind: String, size: Dp, radius: Int): Shape =
+        if (kind == "circle") {
+            CircleShape
+        } else {
+            RoundedCornerShape((if (radius >= 0) radius else (size.value / 2.4f)).dp)
+        }
+    val attachSize = (layout.composerAttachSize.takeIf { it > 0 } ?: components.composerButtonSize).dp
+    val sendSize = (layout.composerSendSize.takeIf { it > 0 } ?: components.composerButtonSize).dp
+    val stopSize = (layout.composerStopSize.takeIf { it > 0 } ?: components.composerButtonSize).dp
+    val attachShape = disc(layout.composerAttachShape, attachSize, layout.composerAttachRadius)
+    val sendShape = disc(layout.composerSendShape, sendSize, layout.composerSendRadius)
+    val stopShape = disc(layout.composerStopShape, stopSize, layout.composerStopRadius)
+    val sendDisabledBackground = packColor(layout.composerSendDisabledBackground)
+    val sendDisabledTint = packColor(layout.composerSendDisabledTint)
+    val selectionColors = TextSelectionColors(
+        handleColor = packColor(layout.composerSelectionHandleColor),
+        backgroundColor = packColor(layout.composerSelectionColor)
+            .copy(alpha = layout.composerSelectionAlpha),
+    )
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val fieldShape = RoundedCornerShape(layout.composerInputRadius.dp)
+    val fieldBorder = if (focused) {
+        scheme.primary.copy(alpha = (layout.composerInputBorderAlpha + 0.2f).coerceAtMost(1f))
+    } else {
+        scheme.outline.copy(alpha = layout.composerInputBorderAlpha)
+    }
+    val innerH = (layout.composerInnerPaddingH.takeIf { it >= 0 } ?: 16).dp
+    val innerV = (layout.composerInnerPaddingV.takeIf { it >= 0 } ?: 16).dp
     val buttonIconSize = (layout.composerButtonIconSize.takeIf { it > 0 } ?: 21).dp
     val attachIconSize = layout.composerAttachIconSize.takeIf { it > 0 }?.dp ?: buttonIconSize
     val attachTint = packColor(layout.composerAttachTint)
@@ -4511,11 +4557,28 @@ private fun Composer(
         topEnd = composerRadius.dp,
     )
 
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = layout.composerMarginH.dp,
+                vertical = layout.composerMarginV.dp,
+            ),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
     Surface(
         color = scheme.surface.copy(alpha = layout.composerSurfaceAlpha),
         shape = shape,
         shadowElevation = composerElevation.dp,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (layout.composerMaxWidth > 0) {
+                    Modifier.widthIn(max = layout.composerMaxWidth.dp)
+                } else {
+                    Modifier
+                },
+            ),
     ) {
         Column(
             Modifier
@@ -4540,8 +4603,8 @@ private fun Composer(
             Row(verticalAlignment = Alignment.Bottom) {
                 Box(
                     Modifier
-                        .size(buttonSize)
-                        .clip(CircleShape)
+                        .size(attachSize)
+                        .clip(attachShape)
                         .background(attachBackground)
                         .clickable(enabled = connected) { onPickImages() },
                     contentAlignment = Alignment.Center,
@@ -4549,73 +4612,94 @@ private fun Composer(
                     Icon(
                         packIcon("image", "image"),
                         contentDescription = packText("a11y.attachImage", "添加图片"),
-                        modifier = Modifier.size(attachIconSize),
+                        modifier = Modifier.size(
+                            insetIcon(attachIconSize, layout.composerAttachPadding),
+                        ),
                         tint = attachTint,
                     )
                 }
                 Spacer(Modifier.width(layout.composerAttachGap.dp))
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    modifier = Modifier
-                        .weight(1f)
-                        .then(
-                            if (layout.composerMinHeight > 0) {
-                                Modifier.heightIn(min = layout.composerMinHeight.dp)
-                            } else {
-                                Modifier
-                            },
-                        ),
-                    textStyle = inputStyle,
-                    placeholder = {
-                        Text(
-                            if (busy) {
-                                packText("composer.steerPlaceholder", "插队指令…")
-                            } else {
-                                layout.composerPlaceholder
-                            },
-                            style = MaterialTheme.typography.bodyMedium.let { base ->
-                                if (layout.composerFontSize > 0) {
-                                    base.copy(fontSize = layout.composerFontSize.sp)
+                CompositionLocalProvider(LocalTextSelectionColors provides selectionColors) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .then(
+                                if (layout.composerMinHeight > 0) {
+                                    Modifier.heightIn(min = layout.composerMinHeight.dp)
                                 } else {
-                                    base
-                                }
-                            },
-                            color = placeholderColor.copy(alpha = layout.composerPlaceholderAlpha),
+                                    Modifier
+                                },
+                            )
+                            .then(
+                                if (layout.composerMaxHeight > 0) {
+                                    Modifier.heightIn(max = layout.composerMaxHeight.dp)
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .clip(fieldShape)
+                            .background(inputSurface.copy(alpha = layout.composerInputAlpha))
+                            .border(1.dp, fieldBorder, fieldShape)
+                            .padding(horizontal = innerH, vertical = innerV),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        if (value.isEmpty()) {
+                            Text(
+                                if (busy) {
+                                    packText("composer.steerPlaceholder", "插队指令…")
+                                } else {
+                                    layout.composerPlaceholder
+                                },
+                                style = placeholderStyle,
+                                color = placeholderColor.copy(
+                                    alpha = layout.composerPlaceholderAlpha,
+                                ),
+                            )
+                        }
+                        BasicTextField(
+                            value = value,
+                            onValueChange = onValueChange,
+                            modifier = Modifier.fillMaxWidth(),
+                            textStyle = inputStyle,
+                            cursorBrush = SolidColor(cursorColor),
+                            maxLines = layout.composerMaxLines,
+                            interactionSource = interaction,
+                            keyboardOptions = KeyboardOptions(
+                                imeAction = if (layout.sendOnEnter) ImeAction.Send else ImeAction.Default,
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onSend = { if (layout.sendOnEnter) onSubmit() },
+                            ),
                         )
-                    },
-                    maxLines = layout.composerMaxLines,
-                    shape = RoundedCornerShape(layout.composerInputRadius.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = scheme.primary.copy(
-                            alpha = (layout.composerInputBorderAlpha + 0.2f).coerceAtMost(1f),
-                        ),
-                        unfocusedBorderColor = scheme.outline.copy(alpha = layout.composerInputBorderAlpha),
-                        focusedContainerColor = inputSurface.copy(alpha = layout.composerInputAlpha),
-                        unfocusedContainerColor = inputSurface.copy(alpha = layout.composerInputAlpha),
-                        cursorColor = cursorColor,
-                    ),
-                    keyboardOptions = KeyboardOptions(
-                        imeAction = if (layout.sendOnEnter) ImeAction.Send else ImeAction.Default,
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onSend = { if (layout.sendOnEnter) onSubmit() },
-                    ),
-                )
+                    }
+                }
                 Spacer(Modifier.width(8.dp))
                 if (busy) {
                     Box(
                         Modifier
-                            .size(buttonSize)
-                            .clip(CircleShape)
+                            .size(stopSize)
+                            .clip(stopShape)
                             .background(stopBackground)
+                            .then(
+                                if (layout.composerStopBorderWidth > 0) {
+                                    Modifier.border(
+                                        layout.composerStopBorderWidth.dp,
+                                        packColor(layout.composerStopBorderColor),
+                                        stopShape,
+                                    )
+                                } else {
+                                    Modifier
+                                },
+                            )
                             .clickable { onStop() },
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             packIcon("stop", "stop"),
                             contentDescription = packText("a11y.stop", "停止"),
-                            modifier = Modifier.size(buttonIconSize),
+                            modifier = Modifier.size(
+                                insetIcon(buttonIconSize, layout.composerStopPadding),
+                            ),
                             tint = stopTint,
                         )
                     }
@@ -4623,14 +4707,14 @@ private fun Composer(
                         Spacer(Modifier.width(6.dp))
                         Box(
                             Modifier
-                                .size(buttonSize)
+                                .size(sendSize)
                                 .shadow(
                                     layout.composerSendGlow.dp,
-                                    CircleShape,
+                                    sendShape,
                                     ambientColor = scheme.primary,
                                     spotColor = scheme.primary,
                                 )
-                                .clip(CircleShape)
+                                .clip(sendShape)
                                 .then(
                                     if (layout.composerSendStyle == "solid") {
                                         Modifier.background(sendBackground)
@@ -4649,7 +4733,9 @@ private fun Composer(
                             Icon(
                                 packIcon("send", "send"),
                                 contentDescription = packText("a11y.steer", "插队"),
-                                modifier = Modifier.size(buttonIconSize),
+                                modifier = Modifier.size(
+                                    insetIcon(buttonIconSize, layout.composerSendPadding),
+                                ),
                                 tint = sendTint,
                             )
                         }
@@ -4657,12 +4743,12 @@ private fun Composer(
                 } else {
                     Box(
                         Modifier
-                            .size(buttonSize)
+                            .size(sendSize)
                             .then(
                                 if (canSend && layout.composerSendGlow > 0) {
                                     Modifier.shadow(
                                         layout.composerSendGlow.dp,
-                                        CircleShape,
+                                        sendShape,
                                         ambientColor = scheme.primary,
                                         spotColor = scheme.primary,
                                     )
@@ -4670,10 +4756,10 @@ private fun Composer(
                                     Modifier
                                 },
                             )
-                            .clip(CircleShape)
+                            .clip(sendShape)
                             .background(
                                 when {
-                                    !canSend -> SolidColor(scheme.surfaceVariant)
+                                    !canSend -> SolidColor(sendDisabledBackground)
                                     layout.composerSendStyle == "solid" -> SolidColor(sendBackground)
                                     else -> brandBrush()
                                 },
@@ -4684,8 +4770,10 @@ private fun Composer(
                         Icon(
                             packIcon("send", "send"),
                             contentDescription = packText("a11y.send", "发送"),
-                            modifier = Modifier.size(buttonIconSize),
-                            tint = if (canSend) sendTint else scheme.onSurfaceVariant,
+                            modifier = Modifier.size(
+                                insetIcon(buttonIconSize, layout.composerSendPadding),
+                            ),
+                            tint = if (canSend) sendTint else sendDisabledTint,
                         )
                     }
                 }
@@ -4707,6 +4795,7 @@ private fun Composer(
                 )
             }
         }
+    }
     }
 }
 
