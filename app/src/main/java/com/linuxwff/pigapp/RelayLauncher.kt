@@ -51,8 +51,13 @@ object RelayLauncher {
             INSTALL_SCRIPT
         }
         val pin = if (tag != null) " $tag" else ""
+        // `curl` on a fresh Termux occasionally dies mid-TLS (exit 53 /
+        // engine not found, 35, 56) and both URLs used to be tried exactly
+        // once, leaving an empty script that `sh` then failed on. Retry, and
+        // fall back to HTTP/1.1 for the last attempt.
         return "mkdir -p \"\$PREFIX/tmp\"; p=\$PREFIX/tmp/pig-install.sh; " +
-            "{ curl -fsSL $script -o \"\$p\" || curl -fsSL $INSTALL_SCRIPT -o \"\$p\"; } && " +
+            "{ curl -fsSL --retry 3 --retry-delay 1 $script -o \"\$p\" || " +
+            "curl -fsSL --http1.1 --retry 2 --retry-delay 1 $INSTALL_SCRIPT -o \"\$p\"; } && " +
             "sh \"\$p\"$pin"
     }
 

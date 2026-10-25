@@ -398,6 +398,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Set when Termux refused RUN_COMMAND; stops the retry loop from spamming it. */
     private var runBlockedByTermux = false
     private var warnedMissingExtensions = ""
+    private var warnedIncompleteRelayPack = false
 
     private fun isCommandRegistered(command: String): Boolean {
         val name = command.trim().removePrefix("/").substringBefore(' ').trim()
@@ -2502,8 +2503,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     return
                 }
                 // Sending an unregistered slash command makes pig treat it as a
-                // chat message; say what is actually wrong instead.
-                if (!isCommandRegistered(command)) {
+                // chat message; say what is actually wrong instead. Until the
+                // first get_commands reply the list is empty, and blocking on
+                // that would make a working extension look missing.
+                if (ui.commands.isNotEmpty() && !isCommandRegistered(command)) {
                     warnMissingExtensions(listOf(command.substringBefore(' ')))
                     return
                 }
@@ -2574,7 +2577,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 return
             }
-            if (!isCommandRegistered(item.command)) {
+            if (ui.commands.isNotEmpty() && !isCommandRegistered(item.command)) {
                 warnMissingExtensions(listOf(item.command.substringBefore(' ')))
                 return
             }
@@ -2855,6 +2858,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     termuxBlocked = false,
                 )
                 warnedMissingExtensions = ""
+                warnedIncompleteRelayPack = false
                 lastPongAt = System.currentTimeMillis()
                 restoreChecked = false
                 restorePending = false
@@ -4037,10 +4041,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         relayAssets = assets
         relayHashes = hashes
         relayHash = hash
+        // A relay images before it seeded a default pack (or a ui dir where
+        // only extensions have written something) pushes files without
+        // manifest.json. Older app versions turned that into the red
+        // "UI pack 未应用: manifest.json 缺失" toast on every fresh install;
+        // keeping the current theme is the honest answer.
+        if (files["manifest.json"].isNullOrBlank()) {
+            if (files.isNotEmpty() && !warnedIncompleteRelayPack) {
+                warnedIncompleteRelayPack = true
+                ui = ui.copy(
+                    toast = str(
+                        "toast.packIncomplete",
+                        "relay 没有提供 manifest.json（relay 版本过旧），继续使用当前主题",
+                    ),
+                )
+            }
+            return
+        }
         val relayName = runCatching {
             JSONObject(files["manifest.json"].orEmpty()).optString("name")
         }.getOrNull().orEmpty()
         ui = ui.copy(relayPackName = relayName.ifBlank { ui.relayPackName })
+        // provider-ui rewrites this window after every save/refresh; the new
+        // provider is only usable once the app asks for the model list again.
+        if (files.containsKey("windows/providers.json")) requestModels()
         // A pack the user picked by hand outranks the relay; the default
         // bundled theme steps aside so Termux keeps driving the look.
         if (packPinnedByUser) return
