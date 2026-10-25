@@ -173,7 +173,12 @@ func save(ctx sdk.Context, form map[string]any) error {
 			if len(models) > 0 {
 				message = fmt.Sprintf("%s供应商 %q；刷新失败（%v），沿用缓存 %d 个模型", action, id, fetchErr, len(models))
 			} else {
-				message = fmt.Sprintf("%s供应商 %q；获取模型列表失败：%v（可稍后点「刷新」）", action, id, fetchErr)
+				// Written to disk but useless for the running session: the
+				// provider will not show up in /model until it has models.
+				message = fmt.Sprintf(
+					"%s供应商 %q，已写入 %s；但拿不到模型列表（%v），当前会话还没注册它。"+
+						"点「刷新列表」重试，或关掉「自动获取」手动填模型 ID",
+					action, id, endpointsPath(), fetchErr)
 			}
 		} else {
 			models = fetched
@@ -191,9 +196,12 @@ func save(ctx sdk.Context, form map[string]any) error {
 			return nil
 		}
 		message += "，当前会话已生效"
+		return succeed(ctx, message)
 	}
 
-	return succeed(ctx, message)
+	// Nothing to register: say so in red instead of a quiet "已添加", which
+	// reads like success while /model shows nothing.
+	return fail(ctx, message)
 }
 
 func remove(ctx sdk.Context, id string) error {
@@ -245,6 +253,15 @@ func refresh(ctx sdk.Context, id string) error {
 	}
 	models, err := fetchProviderModels(def)
 	if err != nil {
+		// A refresh is a network call; keep the last good list rather than
+		// dropping the provider out of the session on a hiccup.
+		if cached := cachedModels(id); len(cached) > 0 {
+			if regErr := register(id, def, cached); regErr == nil {
+				return fail(ctx, fmt.Sprintf(
+					"刷新 %q 失败（%v），沿用缓存 %d 个模型，当前会话仍然可用",
+					id, err, len(cached)))
+			}
+		}
 		return fail(ctx, fmt.Sprintf("刷新 %q 失败: %v", id, err))
 	}
 	if err := writeModelCache(id, models); err != nil {

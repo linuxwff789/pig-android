@@ -85,11 +85,24 @@ func fetchProviderModels(def map[string]any) ([]any, error) {
 	key := resolveValue(str(def, "apiKey"))
 
 	headers := map[string]string{}
-	if key != "" {
+	// Per-provider headers come from the same config file custom-endpoints
+	// reads; a provider that needs them (a proxy token, an Azure api-version)
+	// can only be added from this window if they are sent here too.
+	for _, field := range []string{"headers", "modelsHeaders"} {
+		raw, _ := def[field].(map[string]any)
+		for name, value := range raw {
+			if text, ok := value.(string); ok {
+				headers[name] = resolveValue(text)
+			}
+		}
+	}
+	if key != "" && !hasHeader(headers, "authorization") && !hasHeader(headers, "x-api-key") {
 		switch {
 		case api == "anthropic-messages":
 			headers["x-api-key"] = key
-			headers["anthropic-version"] = "2023-06-01"
+			if !hasHeader(headers, "anthropic-version") {
+				headers["anthropic-version"] = "2023-06-01"
+			}
 		case strings.HasPrefix(api, "google"):
 			separator := "?"
 			if strings.Contains(url, "?") {
@@ -191,6 +204,18 @@ func firstString(object map[string]any, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+// hasHeader reports whether name is already set, case-insensitively (HTTP
+// header names are case-insensitive, and an explicit config header must win
+// over the apiKey fallback).
+func hasHeader(headers map[string]string, name string) bool {
+	for key := range headers {
+		if strings.EqualFold(key, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func firstNumber(object map[string]any, keys ...string) float64 {
