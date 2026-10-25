@@ -90,6 +90,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var modelSwitchAccepted = false
     /** A `new_session` is in flight; the banner stays until it is ready. */
     private var awaitingNewSession = false
+    /** Session the user left when `new_session` was requested. pig swaps its
+     *  runtime in place, so a `get_state` reply that still reports this one comes
+     *  from the runtime being replaced, not from the new conversation. */
+    private var newSessionFromFile = ""
+    private var newSessionFromId = ""
+    private var newSessionAt = 0L
     /** Prompts typed while the new session was still starting, in send order. */
     private val pendingNewSessionPrompts = mutableListOf<JSONObject>()
     /** Composer text per session, so switching away never loses a draft. */
@@ -1936,6 +1942,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         toolPartialRaw.clear()
         ui = ui.copy(
             status = "switching",
+            // Another conversation: the composer loads that session's draft.
+            draftEpoch = ui.draftEpoch + 1,
             extensionStatuses = emptyMap(),
             pendingAgentRestart = false,
             // Widgets belong to the agent of the session that wrote them.
@@ -1954,6 +1962,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun newSession() {
+        // A get_state reply that still reports this session describes the runtime
+        // pig is replacing; the draft and the queued prompt must not follow it.
+        newSessionFromFile = ui.sessionFile
+        newSessionFromId = ui.sessionId
+        newSessionAt = System.currentTimeMillis()
+        // The new conversation starts empty. Text kept under the placeholder key
+        // belongs to a conversation that never got a file, so it has no key of
+        // its own to live under and would leak into this one.
+        drafts.remove(pendingDraftKey)
+        saveDrafts(force = true)
         currentAssistant = null
         toolPartialRaw.clear()
         clearLive()
@@ -1987,6 +2005,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             dismissedWidgets = emptyMap(),
             contextPercent = null,
             contextTokens = 0,
+            // Even when the storage key stays the placeholder (a conversation
+            // that never got a file), the composer must start empty.
+            draftEpoch = ui.draftEpoch + 1,
             contextWindowActual = 0,
             contextCompacted = false,
             cacheHitRate = null,
@@ -2003,9 +2024,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Composer key for the session that is being created but has no file yet. */
     private val pendingDraftKey = "\u0000pending"
 
-    /** Key the composer should store its text under right now. */
-    fun draftKey(): String = ui.sessionFile.ifBlank {
-        if (awaitingNewSession || ui.status == "starting") pendingDraftKey else ""
+    /** Key the composer should store its text under right now. It is never
+     *  empty: a conversation without a session file yet keeps its text under the
+     *  placeholder key, and [adoptPendingDraft] hands it over once pig reports
+     *  the file. An empty key dropped whatever the user typed. */
+    fun draftKey(): String = ui.sessionFile.ifBlank { pendingDraftKey }
+
+    /** Move text typed into a conversation that had no session file onto the file
+     *  it just gained. Called before `ui.sessionFile` changes, so the composer
+     *  finds the text under the new key instead of resetting to empty. */
+    private fun adoptPendingDraft(target: String) {
+        if (target.isBlank() || target == pendingDraftKey) return
+        val pending = drafts[pendingDraftKey] ?: return
+        if (drafts[target].isNullOrBlank()) drafts[target] = pending
+        drafts.remove(pendingDraftKey)
+        saveDrafts(force = true)
+    }
+
+    /** True once a get_state reply describes the session `new_session` created.
+     *  Until then the reply may still be the old runtime's, and adopting it moved
+     *  the draft (and the queued prompt) onto the conversation the user left. */
+    private fun newSessionSettled(sessionId: String, sessionFile: String): Boolean {
+        if (System.currentTimeMillis() - newSessionAt > NEW_SESSION_SETTLE_MS) return true
+        if (sessionId.isNotBlank() && newSessionFromId.isNotBlank() && sessionId != newSessionFromId) return true
+        if (sessionFile.isNotBlank() && sessionFile != newSessionFromFile) return true
+        // Nothing to confuse it with (the relay had no agent yet): a blank file is
+        // the new session rather than the previous one.
+        return newSessionFromFile.isBlank() && newSessionFromId.isBlank() && sessionFile.isBlank()
     }
 
     fun draftText(key: String): String = if (key.isEmpty()) "" else drafts[key].orEmpty()
@@ -2947,10 +2992,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     model?.optString("provider")?.takeIf { it.isNotBlank() },
                     model?.optString("id")?.takeIf { it.isNotBlank() },
                 ).joinToString("/")
-                val sessionId = data.optString("sessionId", "")
-                val sessionFile = data.optString("sessionFile", ui.sessionFile)
+                val reportedSessionId = data.optString("sessionId", "")
+                val reportedFile = data.optString("sessionFile", ui.sessionFile)
                 val streaming = data.optBoolean("isStreaming", false)
                 val live = data.optBoolean("live", true)
+                // While a new session is being created, a reply that still
+                // describes the session being replaced must not be adopted as the
+                // new conversation, or its draft follows the wrong file. The same
+                // reply can arrive late, after the new session settled, so a
+                // straggler is ignored for as long as no switch is in flight.
+                val straggler = desiredSessionPath == null && !restorePending &&
+                    reportedFile.isNotBlank() && reportedFile == newSessionFromFile &&
+                    ui.sessionFile.isNotBlank() && ui.sessionFile != reportedFile
+                val settledNow = !straggler &&
+                    (!awaitingNewSession || newSessionSettled(reportedSessionId, reportedFile))
+                val sessionId = if (settledNow) reportedSessionId else ui.sessionId
+                val sessionFile = if (settledNow) reportedFile else ui.sessionFile
                 val switched = sessionId.isNotBlank() &&
                     ui.sessionId.isNotBlank() &&
                     sessionId != ui.sessionId
@@ -2967,24 +3024,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // The reply to the get_state issued after new_session means the
                 // backend is ready: the transcript shown above is already the
                 // new one (the user may have typed into it), so only the banner
-                // goes away.
-                if (awaitingNewSession) {
+                // goes away. A reply from the runtime being replaced does not
+                // count, or the queued prompt would run in the old session.
+                if (awaitingNewSession && settledNow) {
                     awaitingNewSession = false
                     if (!liveActive) currentAssistant = null
-                    // A draft typed into the new conversation now belongs to its
-                    // file, not to the placeholder key.
-                    val pending = drafts.remove(pendingDraftKey)
-                    if (!pending.isNullOrBlank() && sessionFile.isNotBlank()) {
-                        drafts[sessionFile] = pending
-                    }
-                    saveDrafts(force = true)
+                    adoptPendingDraft(sessionFile)
                     flushPendingPrompts()
                 }
+                // A conversation that opened without any session file kept its
+                // draft under the placeholder key; adopt the file as soon as pig
+                // reports one, so the composer key change keeps the text.
+                if (ui.sessionFile.isBlank() && sessionFile.isNotBlank()) {
+                    adoptPendingDraft(sessionFile)
+                }
+                // A different session file is a different conversation, so the
+                // composer has to load its draft. A conversation that is only now
+                // getting the file it did not have keeps what is typed.
+                val conversationChanged = sessionFile.isNotBlank() &&
+                    ui.sessionFile.isNotBlank() && sessionFile != ui.sessionFile
                 var status = ui.status
                 var toast = ui.toast
-                if (status == "starting" || status == "switching") status = ""
+                if ((status == "starting" && settledNow) || status == "switching") status = ""
 
-                if (!restoreChecked) {
+                if (!restoreChecked && settledNow) {
                     restoreChecked = true
                     val saved = savedSession()
                     if (saved != null && (sessionFile.isBlank() || sessionFile != saved)) {
@@ -3042,6 +3105,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     model = label,
                     sessionId = sessionId,
                     sessionFile = sessionFile,
+                    draftEpoch = if (conversationChanged) ui.draftEpoch + 1 else ui.draftEpoch,
                     // No session attached: no history is coming, so don't leave
                     // the reader on the "reading history" spinner.
                     historyLoading = if (sessionFile.isBlank()) false else ui.historyLoading,
@@ -4308,6 +4372,10 @@ private const val HISTORY_IMAGE_CACHE_PIXELS = 6_000_000
 
 /** Messages in the first history page; pulling at the top doubles it. */
 private const val HISTORY_PAGE = 40
+
+/** How long a new session may take to replace its runtime before the app treats
+ *  whatever the backend reports as the new conversation (~10 s in practice). */
+private const val NEW_SESSION_SETTLE_MS = 20_000L
 
 /** Relay's cap on one history reply. */
 private const val HISTORY_MAX = 2000

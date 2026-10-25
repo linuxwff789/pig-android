@@ -420,6 +420,10 @@ data class AppUiState(
     val sessions: List<SessionInfo> = emptyList(),
     val sessionsLoading: Boolean = false,
     val sessionFile: String = "",
+    /** Bumped when the open conversation changes (a new session or a switch), so
+     *  the composer reloads its draft then — and not when a session that had no
+     *  file yet merely gets one. */
+    val draftEpoch: Int = 0,
     val pendingSwitch: SessionInfo? = null,
     val windows: List<AppWindow> = emptyList(),
     val windowError: String? = null,

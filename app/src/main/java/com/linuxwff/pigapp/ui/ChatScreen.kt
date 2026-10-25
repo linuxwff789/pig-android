@@ -182,7 +182,9 @@ fun PigApp(vm: AppViewModel) {
     // session switches and app restarts). A conversation that is still being
     // created uses a placeholder key until its file exists.
     val draftKey = vm.draftKey()
-    var draft by remember(draftKey) { mutableStateOf(vm.draftText(draftKey)) }
+    // Keyed on the conversation, not on the storage key: adopting the session
+    // file of a conversation that had none must not reset what is typed.
+    var draft by remember(ui.draftEpoch) { mutableStateOf(vm.draftText(draftKey)) }
     LaunchedEffect(draftKey, draft) { vm.setDraft(draftKey, draft) }
     var showSettings by remember { mutableStateOf(false) }
     var showStats by remember { mutableStateOf(false) }
@@ -411,7 +413,11 @@ fun PigApp(vm: AppViewModel) {
                         }
                         Composer(
                             value = draft,
-                            onValueChange = { draft = it },
+                            // Store every keystroke, not just the last value a
+                            // LaunchedEffect flushed: the session file can be
+                            // adopted between two frames, and then the draft has
+                            // to be found under the new key already.
+                            onValueChange = { draft = it; vm.setDraft(draftKey, it) },
                             busy = ui.busy,
                             connected = ui.connected,
                             attachments = ui.attachments,

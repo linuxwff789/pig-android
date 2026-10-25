@@ -67,7 +67,8 @@ usage statistics, performance work). See [Release build](#release-build).
   live process (badge 未发送) and parks that process when you switch away —
   switching back resumes the same conversation. The composer keeps a draft per
   session (also persisted), so typing, switching away and coming back never
-  loses text.
+  loses text, and text typed while a new session is still being created moves
+  onto its file once pig reports one.
 - Settings is a resizable dialog whose sizes come from the UI pack
   (`layout/chat.json` → `settings`, presets + `defaultSize`); a pack can also pin
   one fixed size. It also has a custom auto-compaction threshold (presets
