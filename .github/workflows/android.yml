@@ -22,6 +22,22 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+          cache: false
+
+      # The relay ships with every release; catch a broken build (or a failing
+      # history/page test) on the PR instead of at tag time.
+      - name: "Relay: vet, test, cross-compile"
+        run: |
+          cd relay
+          go vet ./...
+          go test ./...
+          CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build \
+            -trimpath -ldflags="-s -w" \
+            -o "$RUNNER_TEMP/pig-relay-android-arm64" .
+
       - name: Build debug APK
         run: |
           chmod +x gradlew

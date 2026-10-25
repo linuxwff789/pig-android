@@ -39,6 +39,8 @@ jobs:
       - name: Build relay (android/arm64)
         run: |
           cd relay
+          go vet ./...
+          go test ./...
           CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build \
             -trimpath -ldflags="-s -w" \
             -o "$GITHUB_WORKSPACE/pig-relay-android-arm64" .
