@@ -155,10 +155,12 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import com.linuxwff.pigapp.AppLog
 import com.linuxwff.pigapp.AppUiState
 import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.ChatMsg
 import com.linuxwff.pigapp.LocalPackInfo
+import com.linuxwff.pigapp.LogExporter
 import com.linuxwff.pigapp.PendingImage
 import com.linuxwff.pigapp.RelayLauncher
 import com.linuxwff.pigapp.Role
