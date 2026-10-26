@@ -65,6 +65,9 @@ object AppLog {
         // A pack push and a message history are megabytes of JSON; stringifying
         // them only to cut 2400 chars wastes the little memory this app has.
         when {
+            // One line per streamed chunk and one per keepalive would drown
+            // everything else; the final `message_end` carries the result.
+            type == "relay_pong" || type == "message_update" -> Unit
             type == "relay_ui_pack" -> {
                 val names = frame.optJSONObject("files")?.keys()
                     ?.asSequence()?.joinToString(",").orEmpty()
