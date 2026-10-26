@@ -149,6 +149,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         current = this
+        AppLog.attach(getApplication<Application>())
+        AppLog.fact("relay", "127.0.0.1:$port")
         ui = ui.copy(
             commands = builtinCommands(),
             avatarShadow = if (prefs.contains("avatarShadow")) {
@@ -290,6 +292,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * The current pig is a child of the relay, so this waits for an idle turn.
      */
     fun restartRelay() {
+        AppLog.event("vm", "restart relay requested")
         if (ui.busy || ui.status == "compacting") {
             ui = ui.copy(
                 toast = str("toast.relayRestartBusy", "本轮结束后再重启 relay"),
@@ -415,6 +418,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val key = missing.joinToString(",")
         if (key == warnedMissingExtensions) return
         warnedMissingExtensions = key
+        AppLog.event("vm", "missing extension commands: ${missing.joinToString(",")}")
         val text = str(
             "error.extensionsMissing",
             "pig 的扩展没加载：{commands} 不可用。在 Termux 里运行 pig update" +
@@ -548,6 +552,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun bootstrap() {
+        AppLog.event("vm", "install requested (bootstrap)")
         val error = RelayLauncher.bootstrap(getApplication(), cwd)
         runBlockedByTermux = false
         ui = ui.copy(
@@ -609,6 +614,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * app used to keep retrying without ever telling the user why.
      */
     private fun handleRunCommandOutcome(outcome: RunCommandOutcome) {
+        AppLog.event(
+            "termux",
+            "runcommand kind=${outcome.kind} exit=${outcome.exitCode} " +
+                "err=${outcome.errmsg.take(300)} stderr=${outcome.stderr.take(300)}",
+        )
         if (outcome.blockedByTermux) {
             runBlockedByTermux = true
             autoReconnectJob?.cancel()
@@ -1407,6 +1417,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun sendPrompt(raw: String, steer: Boolean = true) {
         val text = raw.trim()
+        AppLog.event("prompt", text.take(400))
         val attachments = ui.attachments
         if (text.isEmpty() && attachments.isEmpty()) return
         if (text.startsWith("/")) {
@@ -1487,6 +1498,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun selectModel(model: ModelInfo) {
+        AppLog.event("model", "switch to ${model.provider}/${model.id}")
         modelSwitchAccepted = false
         // Restore the level this model was last used with. The set_model reply
         // sends it after the switch is confirmed, so it cannot be applied to
@@ -2498,6 +2510,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             action.startsWith("ext:") -> {
                 val command = action.removePrefix("ext:").trim()
+                AppLog.event("action", "window $windowId -> $command")
                 if (command.isEmpty()) {
                     ui = ui.copy(toast = str("toast.extMissingCommand", "ext 动作缺少命令名"))
                     return
@@ -2768,6 +2781,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun appendNotice(text: String) {
         if (text.isBlank()) return
+        AppLog.event("notice", text)
         append(ChatMsg(id = "n${nextId++}", role = Role.NOTICE, text = text, isError = true))
         noticesCache = null
         val key = noticeKey() ?: return
@@ -2859,6 +2873,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 warnedMissingExtensions = ""
                 warnedIncompleteRelayPack = false
+                AppLog.event(
+                    "vm",
+                    "relay hello: protocol=${event.optString("protocol")} " +
+                        "cwd=${event.optString("cwd")} ui=${event.optString("uiDir")} " +
+                        "pigPid=${event.optInt("pigPid")}",
+                )
                 lastPongAt = System.currentTimeMillis()
                 restoreChecked = false
                 restorePending = false
@@ -3596,6 +3616,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }
                 }.distinctBy { it.name }
+                AppLog.event("cmds", "${list.size}: " + list.joinToString(" ") { it.name })
                 ui = ui.copy(commands = list)
                 // The UI pack's own buttons (nav.json, windows) call extension
                 // commands. pig degrades to built-ins silently when its packages
@@ -3623,6 +3644,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     models = list
                     modelsLoading = false
+                    AppLog.event("models", "${list.size} available")
                     ui = ui.copy(availableModelCount = list.size)
                 }
             }
@@ -4121,6 +4143,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val parsed = result.pack
         if (parsed == null) {
             val message = result.warnings.firstOrNull() ?: "unknown error"
+            AppLog.event("pack", "rejected: $message (${files.size} files)")
             ui = ui.copy(
                 uiPackError = message,
                 toast = str("error.packNotApplied", "UI pack 未应用: {error}")
@@ -4130,6 +4153,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         val pack = parsed.copy(fontFiles = materializeFonts(assets))
         basePack = pack
+        AppLog.event(
+            "pack",
+            "applied ${pack.name} v${pack.version} · ${files.size} files · hash=${hash.take(12)}" +
+                if (result.warnings.isEmpty()) "" else " · warnings: ${result.warnings.joinToString("; ")}",
+        )
+        AppLog.fact("pack", "${pack.name} v${pack.version} (${files.size} files)")
         val preferredSkin = prefs.getString("skinId", "").orEmpty()
         val skinId = pack.skins.firstOrNull { it.id == preferredSkin }?.id
             ?: pack.defaultSkin.takeIf { id -> pack.skins.any { it.id == id } }

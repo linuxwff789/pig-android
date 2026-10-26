@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asSharedFlow
  */
 class RunCommandReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        AppLog.attach(context.applicationContext)
         val kind = intent.getStringExtra(EXTRA_KIND).orEmpty()
         // Termux puts everything in one nested bundle: stdout/stderr/exitCode/
         // err/errmsg of the execution command.
@@ -35,6 +36,11 @@ class RunCommandReceiver : BroadcastReceiver() {
             errmsg = result.getString(EXTRA_ERRMSG).orEmpty(),
         )
         Log.i("RunCommandReceiver", "kind=$kind exit=$exitCode errmsg=${outcome.errmsg.take(200)}")
+        AppLog.event(
+            "termux",
+            "result kind=$kind exit=$exitCode errmsg=${outcome.errmsg.take(400)} " +
+                "stdout=${outcome.stdout.take(400)} stderr=${outcome.stderr.take(600)}",
+        )
         RunCommandFeedback.emit(outcome)
     }
 

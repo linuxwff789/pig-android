@@ -58,6 +58,7 @@ class RelayClient(
 
     fun connect() {
         if (job?.isActive == true) return
+        AppLog.event("relay", "connecting to $host:$port")
         val gen = ++generation
         job = scope.launch {
             var lastError: Exception? = null
@@ -69,6 +70,7 @@ class RelayClient(
                     s = Socket()
                     s.connect(InetSocketAddress(host, port), 1500)
                     if (gen != generation) return@launch
+                    AppLog.event("relay", "tcp connected")
                     s.soTimeout = 0
                     socket = s
                     writer = BufferedWriter(OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8))
@@ -80,11 +82,24 @@ class RelayClient(
                     while (isActive && gen == generation) {
                         val line = reader.readLine() ?: break
                         if (line.isBlank()) continue
-                        val obj = runCatching { JSONObject(line) }.getOrNull() ?: continue
+                        val obj = runCatching { JSONObject(line) }.getOrNull()
+                        if (obj == null) {
+                            AppLog.frame("<-?", line)
+                            continue
+                        }
+                        AppLog.frame("<-", obj)
                         eventChannel.trySend(obj)
                     }
                 } catch (e: Exception) {
                     lastError = e
+                    // Retries are silent by design; keep the first failure (and
+                    // then every twentieth) so an export still shows why.
+                    if (attempt < 1 || attempt % 20 == 0) {
+                        AppLog.event(
+                            "relay",
+                            "socket error #${attempt + 1}: ${e.javaClass.simpleName}: ${e.message}",
+                        )
+                    }
                 } finally {
                     // Only the current generation may touch the shared socket
                     // or flip the connected flag; an older connect attempt must
@@ -129,7 +144,12 @@ class RelayClient(
 
     @Synchronized
     private fun sendNow(obj: JSONObject) {
-        val w = writer ?: return
+        val w = writer
+        if (w == null) {
+            AppLog.event("relay", "drop (not connected): ${obj.optString("type")}")
+            return
+        }
+        AppLog.frame("->", obj)
         try {
             w.write(obj.toString())
             w.write("\n")
@@ -140,6 +160,7 @@ class RelayClient(
     }
 
     fun close() {
+        AppLog.event("relay", "close requested")
         generation++
         job?.cancel()
         job = null

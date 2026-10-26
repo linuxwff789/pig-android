@@ -171,8 +171,10 @@ import com.linuxwff.pigapp.UiRequest
 import com.linuxwff.pigapp.UiSkin
 import com.linuxwff.pigapp.resolve
 import com.linuxwff.pigapp.toolPresentation
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1154,6 +1156,43 @@ private fun SettingsDialog(
         "settings.updateCommandCopied",
         "已复制 Termux 更新命令，粘贴到 Termux 执行",
     )
+    var exportingLog by remember { mutableStateOf(false) }
+    var logStatus by remember { mutableStateOf("") }
+    var logFailed by remember { mutableStateOf(false) }
+    var pendingLog by remember { mutableStateOf<String?>(null) }
+    val logScope = rememberCoroutineScope()
+    val msgLogExporting = packText("settings.logsExporting", "导出中…")
+    val msgLogSaved = packText("settings.logsSaved", "已保存到 {path}")
+    val msgLogFailed = packText("settings.logsFailed", "导出失败：{error}")
+    val msgLogCancelled = packText("settings.logsCancelled", "已取消导出")
+    // Android 10+ writes to Download/Pig without a permission; below that the
+    // system file picker is the only way onto "sdcard" without asking for
+    // WRITE_EXTERNAL_STORAGE.
+    val logSaver = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain"),
+    ) { uri ->
+        val text = pendingLog
+        pendingLog = null
+        exportingLog = false
+        if (text == null || uri == null) {
+            logStatus = msgLogCancelled
+            return@rememberLauncherForActivityResult
+        }
+        val result = runCatching {
+            context.contentResolver.openOutputStream(uri)?.use {
+                it.write(text.toByteArray(Charsets.UTF_8))
+            } ?: error("无法写入所选位置")
+        }
+        logFailed = result.isFailure
+        logStatus = result.fold(
+            onSuccess = {
+                msgLogSaved.replace("{path}", uri.lastPathSegment ?: uri.toString())
+            },
+            onFailure = { error ->
+                msgLogFailed.replace("{error}", error.message ?: error.toString())
+            },
+        )
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -1918,6 +1957,69 @@ private fun SettingsDialog(
                 ui.uiPackError?.let {
                     Text(it, style = MaterialTheme.typography.labelSmall, color = scheme.error)
                 }
+                    }
+                    HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                packText("settings.logs", "诊断日志"),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                packText(
+                                    "settings.logsHint",
+                                    "连接、帧、安装结果和错误；导出到 Download/Pig（token 与密钥已打码）",
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = scheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(
+                            enabled = !exportingLog,
+                            onClick = {
+                                if (exportingLog) return@TextButton
+                                exportingLog = true
+                                logFailed = false
+                                logStatus = msgLogExporting
+                                val app = context.applicationContext
+                                val name = AppLog.suggestedName()
+                                logScope.launch {
+                                    val text = withContext(Dispatchers.IO) { AppLog.exportText(app) }
+                                    val saved = withContext(Dispatchers.IO) {
+                                        LogExporter.direct(app, text, name)
+                                    }
+                                    if (saved != null) {
+                                        exportingLog = false
+                                        logStatus = msgLogSaved.replace("{path}", saved.location)
+                                    } else {
+                                        pendingLog = text
+                                        runCatching { logSaver.launch(name) }.onFailure { error ->
+                                            exportingLog = false
+                                            logFailed = true
+                                            logStatus = msgLogFailed.replace(
+                                                "{error}",
+                                                error.message ?: error.toString(),
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                        ) {
+                            Text(
+                                if (exportingLog) {
+                                    msgLogExporting
+                                } else {
+                                    packText("settings.logsExport", "导出")
+                                },
+                            )
+                        }
+                    }
+                    if (logStatus.isNotBlank()) {
+                        Text(
+                            logStatus,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (logFailed) scheme.error else scheme.primary,
+                        )
                     }
                     HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
                     Row(

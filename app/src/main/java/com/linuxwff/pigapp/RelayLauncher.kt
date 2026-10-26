@@ -211,6 +211,7 @@ object RelayLauncher {
                 resultPendingIntent(context, kind, requestCode),
             )
         }
+        AppLog.event("termux", "run [$label]: ${AppLog.redact(command).take(600)}")
         return try {
             context.startService(intent)
             null
