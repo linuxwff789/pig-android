@@ -42,6 +42,24 @@ of `extensions/` that the binary embeds and extracts on first start.
 `sh scripts/sync-embedded-extensions.sh` and commit the result; CI fails when it
 is stale.
 
+## Fresh-device simulation
+
+`tools/fresh-device-sim/sim.sh` runs the Termux half on a real userspace: the
+official `termux-packages` bootstrap is extracted under `~/.cache/...` and run
+through `proot`, so the install script sees an empty `$PREFIX`, no `pig`, no Go
+and a fresh `$HOME`. The app half is `tools/fresh-device-sim/app-sim.py`, which
+sends the frames the APK sends and checks the UI pack, the pigkit commands, the
+provider window and `/providerui.save` (reachable and unreachable endpoints).
+
+```sh
+tools/fresh-device-sim/sim.sh all      # wipe, install, then replay the app
+tools/fresh-device-sim/sim.sh destroy  # ~1 GB of bootstrap + Go toolchain
+```
+
+It needs network (bootstrap, Termux packages, the official pig installer) and
+about five minutes on a phone; it is not part of CI. See the README there for
+per-step commands and for what is a proot artifact rather than a bug.
+
 ## Release build
 
 ```bash

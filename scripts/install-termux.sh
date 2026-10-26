@@ -98,15 +98,33 @@ fetch_relay_api() {
 
 # A fresh Termux points its main repo at packages.termux.dev, which is slow or
 # unreachable in China, and the Go toolchain below is the first big download.
-# Only the official host is rewritten, so a mirror the user picked stays, and
-# only when this run needs `pkg install` at all.
+# termux-tools (>= 1.45) picks a mirror itself and rewrites sources.list from
+# chosen_mirrors, so editing sources.list only holds until the first `pkg` call:
+# point chosen_mirrors at a mainland mirror (what `termux-change-repo` writes)
+# and leave a choice the user already made alone. Older termux-tools has no
+# chosen_mirrors, hence the sources.list branch below.
 SOURCES="$PREFIX/etc/apt/sources.list"
+MIRROR_DIR="$PREFIX/etc/termux/mirrors"
+CHOSEN="$PREFIX/etc/termux/chosen_mirrors"
+MIRROR_FILE="$MIRROR_DIR/chinese_mainland/mirrors.tuna.tsinghua.edu.cn"
 NEED_PKG=0
 command -v curl >/dev/null 2>&1 || NEED_PKG=1
 command -v go >/dev/null 2>&1 || NEED_PKG=1
 [ "${PIG_FORCE_MIRROR:-0}" = "1" ] && NEED_PKG=1
 MIRRORED=0
-if [ "$NEED_PKG" = 1 ] && [ "${PIG_NO_MIRROR:-0}" != "1" ] && [ -f "$SOURCES" ] &&
+if [ "$NEED_PKG" = 1 ] && [ "${PIG_NO_MIRROR:-0}" != "1" ] && [ ! -e "$CHOSEN" ] &&
+    [ -f "$MIRROR_FILE" ]; then
+    cp -f "$SOURCES" "$SOURCES.bak-pig" 2>/dev/null || true
+    ln -sfn "$MIRROR_FILE" "$CHOSEN"
+    main=$(. "$MIRROR_FILE" >/dev/null 2>&1; printf '%s' "${MAIN:-}") || true
+    if [ -n "$main" ]; then
+        mkdir -p "$PREFIX/etc/apt"
+        printf 'deb %s stable main\n' "$main" > "$SOURCES"
+    fi
+    MIRRORED=1
+    say "Termux mirror -> ${main:-$MIRROR} (chosen_mirrors; backup: $SOURCES.bak-pig)"
+    apt-get update -y >/dev/null 2>&1 || say "apt update failed; keeping the mirror for the next try"
+elif [ "$NEED_PKG" = 1 ] && [ "${PIG_NO_MIRROR:-0}" != "1" ] && [ -f "$SOURCES" ] &&
     grep -qE '^[[:space:]]*deb[[:space:]]+https?://packages(-cf)?\.termux\.dev/apt/termux-main' "$SOURCES"; then
     cp "$SOURCES" "$SOURCES.bak-pig"
     sed -i -E "s#^[[:space:]]*deb[[:space:]]+https?://packages(-cf)?\.termux\.dev/apt/termux-main.*#deb $MIRROR stable main#" "$SOURCES"
@@ -168,8 +186,11 @@ if ! command -v go >/dev/null 2>&1; then
             say "install failed; restoring the official repo and retrying once"
             cp "$SOURCES.bak-pig" "$SOURCES"
             apt-get update -y >/dev/null 2>&1 || true
+            TERMUX_PKG_NO_MIRROR_SELECT=1 pkg install -y golang ||
+                say "Go install failed; run 'pkg install golang' to enable /plan"
+        else
+            pkg install -y golang || say "Go install failed; run 'pkg install golang' to enable /plan"
         fi
-        pkg install -y golang || say "Go install failed; run 'pkg install golang' to enable /plan"
     fi
 else
     say "Go already installed: $(command -v go)"

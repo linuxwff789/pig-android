@@ -33,6 +33,22 @@ relay 随二进制分发它自带的扩展：`relay/embedded/` 是 `extensions/`
 `relay/embedded/` 是生成产物——改完扩展要跑 `sh scripts/sync-embedded-extensions.sh`
 并提交；CI 会在它过期时报错。
 
+## 新机模拟
+
+`tools/fresh-device-sim/sim.sh` 用真实的 Termux 用户空间跑「Termux 那一半」：官方
+`termux-packages` bootstrap 解压到 `~/.cache/...` 后用 `proot` 运行，所以安装脚本看到的
+是空 `$PREFIX`、没有 `pig`、没有 Go、全新的 `$HOME`。「App 那一半」由
+`tools/fresh-device-sim/app-sim.py` 扮演：发 App 会发的那些帧，检查 UI pack、pigkit 命令、
+供应商窗口，以及 `/providerui.save`（端点可用/不可用两种情况）。
+
+```sh
+tools/fresh-device-sim/sim.sh all      # 清空设备 → 安装 → 回放 App
+tools/fresh-device-sim/sim.sh destroy  # 占约 1 GB（bootstrap + Go 工具链）
+```
+
+需要联网（bootstrap、Termux 软件包、官方 pig 安装脚本），手机上约五分钟；不进 CI。
+分步命令和「哪些是 proot 的假象而不是 bug」见该目录的 README。
+
 ## 发布构建
 
 ```bash

@@ -9,3 +9,7 @@ relay/pig-relay
 .DS_Store
 .kotlin/
 .codegraph/
+
+# python bytecode
+__pycache__/
+*.pyc
