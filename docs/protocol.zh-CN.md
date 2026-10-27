@@ -167,6 +167,10 @@ App 原生的 模型供应商 页面通过这些帧读写
   `agent/custom-endpoints.json`）始终包含，所以备份是敏感文件。
 - 缓存与噪音不打包：`crash-output/`、`backups/`、`.log` 文件、
   `node_modules/`、`__pycache__/`、`.git/` 和符号链接。
+- relay 自己写的、启动时会重建的内容也不打包：带 `.embedded-hash` 的目录
+  （`agent/pigkit/<pkg>` 源码和 `agent/extensions/plan`），以及根 marker 存在时的
+  pigkit `go.mod`/marker。旁边没有 marker 的用户包会保留。二进制
+  （`$PREFIX/bin/pig`、`pig-relay`）和 `~/.pig/cache` 从来就不在归档里。
 - 每个 chunk 最多 48 KiB 原始字节；归档上限 1 GiB，同一时间只允许一个传输。
 
 恢复就是同样的字节反着走。relay 先写入暂存文件，校验声明的 `size` 和
@@ -179,6 +183,9 @@ SHA-256，通过后才动现有数据：
 → {"type":"relay_restore_end","id":"r1","sha256":"…"}
 ← {"type":"relay_restore_done","id":"r1","entries":312,"bytes":9123456,"backup":"/…/.pig/backups/pig-auto-before-restore-20261027-120500.tar.gz"}
 ```
+
+恢复不会带回 Go 编译缓存（`~/.pig/cache`）：relay 会重新释放内置源码，pig 第一次
+启动时重新编译（和全新安装做的事一样）。
 
 解压前，relay 会先把当前数据完整备份到 `~/.pig/backups/`。成功后会清理
 `settings.json`：删掉指向 relay 自己安装的扩展（目前是 `plan`）另一份副本的 package

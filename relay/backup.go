@@ -126,12 +126,33 @@ func (f backupFilter) skipDir(path, name string) bool {
 	if !f.includeSessions && path == filepath.Join(f.agentDir, "sessions") {
 		return true
 	}
+	// A copy the relay wrote itself is recreated on every start. Backing it up
+	// wastes space and can resurrect old extension sources over the shipped
+	// ones (and a stale plan copy used to make pig refuse to start). The pigkit
+	// root is exempt: user packages may live next to the managed ones, and only
+	// the marked subdirectories are ours.
+	if path != filepath.Join(f.agentDir, "pigkit") && f.relayManaged(path) {
+		return true
+	}
 	return false
 }
 
-func (f backupFilter) skipFile(name string) bool {
+func (f backupFilter) relayManaged(path string) bool {
+	_, err := os.Stat(filepath.Join(path, ".embedded-hash"))
+	return err == nil
+}
+
+func (f backupFilter) skipFile(path, name string) bool {
 	if strings.HasSuffix(name, ".log") || strings.HasSuffix(name, ".sock") ||
 		strings.HasSuffix(name, ".pid") || name == ".DS_Store" {
+		return true
+	}
+	// The marker and the module file are recreated with the embedded sources.
+	if name == ".embedded-hash" {
+		return true
+	}
+	pigkitRoot := filepath.Join(f.agentDir, "pigkit")
+	if path == filepath.Join(pigkitRoot, "go.mod") && f.relayManaged(pigkitRoot) {
 		return true
 	}
 	return false
@@ -161,7 +182,7 @@ func (f backupFilter) walk(fn func(path string, info os.FileInfo) error) (int, i
 			if d.Type()&os.ModeSymlink != 0 || !d.Type().IsRegular() {
 				return nil
 			}
-			if f.skipFile(d.Name()) {
+			if f.skipFile(path, d.Name()) {
 				return nil
 			}
 			info, err := d.Info()

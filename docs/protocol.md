@@ -212,6 +212,11 @@ same connection:
   backup is sensitive.
 - Caches and noise are not archived: `crash-output/`, `backups/`, `.log`
   files, `node_modules/`, `__pycache__/`, `.git/` and symlinks.
+- So is anything the relay wrote itself and recreates on start: a directory
+  carrying `.embedded-hash` (the `agent/pigkit/<pkg>` sources and
+  `agent/extensions/plan`), plus the pigkit `go.mod`/marker when the root marker
+  is present. Unmarked user packages next to them are kept. Binaries
+  (`$PREFIX/bin/pig`, `pig-relay`) and `~/.pig/cache` were never in the archive.
 - Chunks are at most 48 KiB of raw bytes; the archive is capped at 1 GiB and
   only one transfer runs at a time.
 
@@ -225,6 +230,10 @@ enforces the announced `size` and verifies the SHA-256 before touching anything:
 → {"type":"relay_restore_end","id":"r1","sha256":"…"}
 ← {"type":"relay_restore_done","id":"r1","entries":312,"bytes":9123456,"backup":"/…/.pig/backups/pig-auto-before-restore-20261027-120500.tar.gz"}
 ```
+
+Restoring does not bring back the Go build cache (`~/.pig/cache`): the relay
+re-extracts the embedded sources and the first pig start compiles them again
+(the same work a fresh install does).
 
 Before extracting, the relay writes an automatic full backup to
 `~/.pig/backups/`. On success it also sanitizes `settings.json`: package entries

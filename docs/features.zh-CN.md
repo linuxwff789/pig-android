@@ -74,15 +74,18 @@ app 的设计目标是能在锁屏、Doze 和进程被杀后存活：
   走系统保存对话框。两个开关决定内容：**会话记录**（体积大头，几十 MB）和
   **UI pack**；API key、`models.json`、`settings.json`、
   `custom-endpoints.json`、扩展和 `~/.pig/state` 始终包含。因此文件里有
-  **明文密钥** —— 第一次导出前对话框会明确提示。缓存、崩溃输出、日志和符号
-  链接不打包。
+  **明文密钥** —— 第一次导出前对话框会明确提示。二进制、`~/.pig/cache`（编译好的
+  Go 扩展 runner）、崩溃输出、日志和符号链接不打包。relay 自己写的、启动时会重建的
+  副本也不打包（带 `.embedded-hash` 的目录，如 `agent/pigkit/<pkg>` 和
+  `agent/extensions/plan`）；没有 marker 的用户包会保留。
 - **导入备份** 选择一个 `.tar.gz` 并确认一次。relay 先校验 checksum，把当前
   数据完整备份到 `~/.pig/backups/`，再把归档合并进 `~/.pig`（同名文件被覆盖，
   归档里没有的会话保留）。只接受 `.pig/` 下的条目，路径穿越、符号链接和设备
   文件会被忽略。恢复后的 `settings.json` 会做清理：指向 relay 自带扩展（例如 `plan`）
   另一份副本（开发机 checkout）的 package 条目会被移除，优先保留内置副本，避免
   备份让 pig 陷入退出/重试循环。完成后 relay 会停掉所有 pig 进程，确保恢复的设置、模型和密钥
-  真正生效；App 自动重连并重新加载 UI pack 与会话列表。
+  真正生效；App 自动重连并重新加载 UI pack 与会话列表。Go 编译缓存不在备份里，
+  所以恢复后第一次启动会重新编译内置扩展（手机上几秒到一分钟），和全新安装一样。
 - **卸载 pig 与 pig-relay** 会停止两个进程，并删除 `$PREFIX/bin/pig`、
   `pig-relay` 和旧的 `pig-relay.*` 副本以及安装回执。可选的
   **同时删除 ~/.pig 数据**（默认关闭）会连配置、密钥、模型、会话和 UI pack

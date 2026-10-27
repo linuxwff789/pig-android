@@ -266,3 +266,58 @@ func TestSanitizeRestoredSettings(t *testing.T) {
 		t.Fatalf("unexpected change without embedded plan: %v %q", removed, warning)
 	}
 }
+
+func TestBackupSkipsRelayManagedSources(t *testing.T) {
+	home := t.TempDir()
+	agent := filepath.Join(home, ".pig", "agent")
+	// Relay-managed pigkit root + one managed package, plus a user package
+	// sitting next to it that must survive.
+	writeFile(t, filepath.Join(agent, "pigkit", "go.mod"), "module example.com/pigkit\n")
+	writeFile(t, filepath.Join(agent, "pigkit", ".embedded-hash"), "relay")
+	writeFile(t, filepath.Join(agent, "pigkit", "managed", "extension.go"), "package managed")
+	writeFile(t, filepath.Join(agent, "pigkit", "managed", ".embedded-hash"), "relay")
+	writeFile(t, filepath.Join(agent, "pigkit", "mine", "extension.go"), "package mine")
+	// The embedded plan copy is relay-managed; a user extension is not.
+	writeFile(t, filepath.Join(agent, "extensions", "plan", "extension.go"), "package plan")
+	writeFile(t, filepath.Join(agent, "extensions", "plan", ".embedded-hash"), "relay")
+	writeFile(t, filepath.Join(agent, "extensions", "pi-permission-system", "config.json"), "{}")
+
+	s := testSession(t, home)
+	var buf bytes.Buffer
+	if _, err := s.newBackupFilter(true, true).write(&buf); err != nil {
+		t.Fatal(err)
+	}
+	gz, err := gzip.NewReader(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := tar.NewReader(gz)
+	var names []string
+	for {
+		hdr, err := tr.Next()
+		if err != nil {
+			break
+		}
+		names = append(names, hdr.Name)
+	}
+	joined := strings.Join(names, "\n")
+	for _, want := range []string{
+		".pig/agent/pigkit/mine/extension.go",
+		".pig/agent/extensions/pi-permission-system/config.json",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("%q missing from archive:\n%s", want, joined)
+		}
+	}
+	for _, unwanted := range []string{
+		".pig/agent/pigkit/managed/",
+		".pig/agent/pigkit/go.mod",
+		".pig/agent/pigkit/.embedded-hash",
+		".pig/agent/extensions/plan/",
+		".embedded-hash",
+	} {
+		if strings.Contains(joined, unwanted) {
+			t.Fatalf("%q should not be archived:\n%s", unwanted, joined)
+		}
+	}
+}

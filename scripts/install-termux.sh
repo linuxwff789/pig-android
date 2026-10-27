@@ -204,6 +204,22 @@ relay_version() {
     [ -x "$RELAY" ] || return 0
     "$RELAY" --version 2>/dev/null | awk 'NR == 1 { print $2 }'
 }
+# version_gt A B: true when A is a newer dotted version than B. A pre-1.1.27
+# relay prints only `relay/1`, which yields an empty version; a local `dev-...`
+# build parses as 0, so a tagged release can replace it.
+version_gt() {
+    awk -v a="$1" -v b="$2" 'BEGIN {
+        na = split(a, x, "."); nb = split(b, y, ".");
+        n = na > nb ? na : nb;
+        for (i = 1; i <= n; i++) {
+            ai = (i <= na ? x[i] + 0 : 0);
+            bi = (i <= nb ? y[i] + 0 : 0);
+            if (ai > bi) exit 0;
+            if (ai < bi) exit 1;
+        }
+        exit 1;
+    }'
+}
 have=$(relay_version)
 
 # No tag passed: ask GitHub what "latest" currently is. Without this an
@@ -225,6 +241,10 @@ RELAY_URL="${PIG_RELAY_URL:-$base/pig-relay-android-arm64}"
 
 if [ -n "$version" ] && [ "$have" = "$version" ]; then
     say "pig-relay already at $version"
+elif [ -n "$version" ] && [ -n "$have" ] && version_gt "$have" "$version"; then
+    # Reinstalling an older app must not downgrade a relay that was already
+    # updated: this script is pinned to the app's own tag.
+    say "pig-relay $have is newer than this app's $version; keeping it"
 elif [ -z "$version" ] && [ -n "$have" ]; then
     say "pig-relay already installed: $have (could not resolve the latest release)"
 else

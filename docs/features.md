@@ -91,7 +91,11 @@ the same loopback socket (protocol: `docs/protocol.md`).
   and **UI pack**; API keys, `models.json`, `settings.json`,
   `custom-endpoints.json`, extensions and `~/.pig/state` are always included.
   The file therefore contains **plaintext secrets** - the dialog says so before
-  the first export. Caches, crash output, logs and symlinks are skipped.
+  the first export. Binaries, `~/.pig/cache` (compiled Go extension runners),
+  crash output, logs and symlinks are skipped. So are copies the relay itself
+  wrote and recreates at start (`.embedded-hash` directories such as
+  `agent/pigkit/<pkg>` and `agent/extensions/plan`); user packages without that
+  marker stay in the archive.
 - **导入备份** picks a `.tar.gz` and asks once. The relay verifies the checksum,
   writes an automatic full backup to `~/.pig/backups/` first, then merges the
   archive over `~/.pig` (restored files overwrite same-named ones; sessions not
@@ -101,7 +105,10 @@ the same loopback socket (protocol: `docs/protocol.md`).
   (e.g. a development checkout of `plan`) are dropped in favour of the embedded
   copy, so a backup cannot leave pig in an exit/retry loop. Afterwards the relay stops every pig process
   so the restored settings, models and keys are actually loaded, and the app
-  reconnects and reloads the pack and session list.
+  reconnects and reloads the pack and session list. The Go build cache is not
+  part of a backup, so the first start after a restore recompiles the embedded
+  extensions (seconds to about a minute on a phone) - the same work a fresh
+  install does.
 - **卸载 pig 与 pig-relay** stops both processes and deletes
   `$PREFIX/bin/pig`, `pig-relay` and the older `pig-relay.*` copies, plus the
   install receipt. An optional switch **同时删除 ~/.pig 数据** (off by default)
