@@ -142,8 +142,9 @@ If the app cannot connect, its setup dialog shows the one-liner and a 一键安�
 button that runs the same script through Termux.
 
 After the backend is installed, a fresh `~/.pig` still has no model provider. Open
-Pig, use **添加供应商** in the first-run banner (or import a backup), then pick a
-model; built-in providers can be configured with `pig login` in Termux.
+Pig, use **添加供应商** in the first-run banner (or Settings → 连接 → 模型供应商),
+or import a backup, then pick a model; built-in providers can be configured
+with `pig login` in Termux.
 
 When only the APK was updated, the old relay keeps running. Settings → 连接
 shows `relay <version> · App <version>`; an older relay gets an **更新 relay**

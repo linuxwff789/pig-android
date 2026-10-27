@@ -1143,6 +1143,26 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 				"success": true, "sessionPath": s.activePath, "data": frame{},
 			})
 		}
+	case "get_available_models":
+		// A fresh backend has no agent yet; without an answer the app never
+		// learns that the model list is empty and cannot show its setup banner.
+		if a := s.activeAgent(); a != nil {
+			_ = a.pig.write(line)
+		} else {
+			_ = s.send(frame{
+				"type": "response", "id": id, "command": "get_available_models",
+				"success": true, "data": frame{"models": []any{}},
+			})
+		}
+	case "get_available_thinking_levels":
+		if a := s.activeAgent(); a != nil {
+			_ = a.pig.write(line)
+		} else {
+			_ = s.send(frame{
+				"type": "response", "id": id, "command": "get_available_thinking_levels",
+				"success": true, "data": frame{"levels": []any{}},
+			})
+		}
 	case "prompt":
 		a := s.activeAgent()
 		if a == nil {

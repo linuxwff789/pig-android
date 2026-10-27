@@ -1490,6 +1490,34 @@ private fun SettingsDialog(
                         color = scheme.primary,
                     )
                 }
+                // Always available, even when the UI pack has no nav entry or a
+                // local pack replaced it: this is the way to configure a fresh
+                // backend.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            packText("settings.providerManager", "模型供应商"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            packText(
+                                "settings.providerManagerHint",
+                                "添加/编辑自定义端点，刷新模型列表并选择要启用的模型",
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(
+                        enabled = ui.connected,
+                        onClick = {
+                            onDismiss()
+                            vm.openProviderManager()
+                        },
+                    ) {
+                        Text(packText("settings.providerManagerAction", "管理"))
+                    }
+                }
 
                 HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
                 SettingToggle(

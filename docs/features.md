@@ -208,7 +208,10 @@ A fresh `~/.pig` has no providers, so `get_available_models` is empty. The app
 treats that as setup, not an error: a banner above the composer offers
 **添加供应商** (the native provider manager) and **备份 / 设置** (export or import
 a backup), the model picker shows the same button when its list is empty, and
-sending without a model gives a hint instead of a red pig error. Dismissing the
+sending without a model gives a hint instead of a red pig error. Settings →
+连接 also has a permanent **模型供应商** row, independent of the UI pack's
+`nav.json`, and the relay answers an empty model list even before it has started
+a pig, so the banner appears on a completely fresh backend. Dismissing the
 banner hides it for the process; it comes back if models disappear again.
 Built-in providers are configured in Termux with `pig login` / `pig auth`;
 custom endpoints use the provider manager.
