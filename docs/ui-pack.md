@@ -212,7 +212,9 @@ Optional drawer entries. The relay pushes it with the rest of the pack.
 - `window` is the id of a cached `windows/<id>.json`; tapping the entry restores
   it even if the user closed it earlier. `native:providers` (and the legacy
   `providers`) opens the app's built-in model-provider manager instead - the
-  pack supplies the entry point, the app owns that screen.
+  pack supplies the entry point, the app owns that screen. A `native:` id is
+  valid here (colons are allowed); an invalid window drops the whole entry and
+  adds a pack warning.
 - `command` is a slash command (leading `/` optional); it runs after the window
   is restored so the extension can refresh it. A native window skips it.
 - `icon` accepts `build`, `refresh` or `add` (unknown values fall back to build).

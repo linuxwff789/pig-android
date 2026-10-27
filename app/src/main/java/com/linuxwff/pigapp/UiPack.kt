@@ -364,7 +364,9 @@ object UiPackParser {
         for (index in 0 until items.length()) {
             val item = items.optJSONObject(index) ?: continue
             val window = item.optString("window").take(40)
-            if (!Regex("^[a-z0-9._-]{1,40}$").matches(window)) {
+            // `native:<id>` marks a window the app itself renders (the provider
+            // manager); the colon is part of the id, not an invalid character.
+            if (!Regex("^[a-z0-9._:-]{1,40}$").matches(window)) {
                 warnings.add("nav.json 第 ${index + 1} 项 window 无效")
                 continue
             }

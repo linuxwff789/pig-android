@@ -6,7 +6,7 @@
       "id": "providers",
       "label": "模型供应商",
       "placement": "settings",
-      "window": "providers"
+      "window": "native:providers"
     }
   ]
 }
