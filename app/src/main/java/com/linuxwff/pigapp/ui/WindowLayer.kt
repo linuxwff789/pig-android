@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -385,17 +386,26 @@ internal fun UiNodeView(
                 cornerRadius = vm.ui.uiPack.theme.cornerRadius,
             )
         } else {
-            Text(
-                boundText ?: node.text,
-                modifier = pad,
-                style = textStyle(node.style),
-                color = textColor(node.style),
-                textAlign = when (node.align) {
-                    "center" -> TextAlign.Center
-                    "end" -> TextAlign.End
-                    else -> TextAlign.Start
-                },
-            )
+            val body: @Composable () -> Unit = {
+                Text(
+                    boundText ?: node.text,
+                    modifier = pad,
+                    style = textStyle(node.style),
+                    color = textColor(node.style),
+                    textAlign = when (node.align) {
+                        "center" -> TextAlign.Center
+                        "end" -> TextAlign.End
+                        else -> TextAlign.Start
+                    },
+                )
+            }
+            // `danger` is what provider-ui and friends use for failures; those
+            // strings are the ones a user wants to copy into a bug report.
+            if (node.style == "danger") {
+                SelectionContainer { body() }
+            } else {
+                body()
+            }
         }
 
         "icon" -> {

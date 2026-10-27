@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.text.format.DateUtils
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -329,8 +330,34 @@ fun PigApp(vm: AppViewModel) {
                 snackbarHost = {
                     SnackbarHost(snackbar) { data ->
                         val chrome = LocalUiPack.current.layout.chrome
+                        val context = LocalContext.current
+                        val copied = packText("toast.copied", "已复制")
                         Snackbar(
                             snackbarData = data,
+                            // Toasts carry relay/pig failures; make them
+                            // copyable instead of a sentence that disappears.
+                            modifier = Modifier
+                                .padding(horizontal = chrome.toastInsetH.dp)
+                                .pointerInput(data.visuals.message) {
+                                    detectTapGestures(
+                                        onLongPress = {
+                                            val clipboard = context.getSystemService(
+                                                Context.CLIPBOARD_SERVICE,
+                                            ) as ClipboardManager
+                                            clipboard.setPrimaryClip(
+                                                ClipData.newPlainText(
+                                                    "Pig",
+                                                    data.visuals.message,
+                                                ),
+                                            )
+                                            Toast.makeText(
+                                                context,
+                                                copied,
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        },
+                                    )
+                                },
                             containerColor = if (chrome.toastContainer.isBlank()) {
                                 SnackbarDefaults.color
                             } else {
@@ -351,7 +378,6 @@ fun PigApp(vm: AppViewModel) {
                             } else {
                                 SnackbarDefaults.shape
                             },
-                            modifier = Modifier.padding(horizontal = chrome.toastInsetH.dp),
                         )
                     }
                 },
@@ -977,11 +1003,13 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
                     color = scheme.onSurfaceVariant,
                 )
                 ui.setupHint?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = scheme.error,
-                    )
+                    SelectionContainer {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.error,
+                        )
+                    }
                 }
             }
         },
@@ -4305,20 +4333,24 @@ private fun MessageRow(
         }
 
         Role.NOTICE -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Text(
-                message.text,
-                modifier = Modifier
-                    .widthIn(max = 340.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = if (message.isError) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
+            // Notices are the app's own error channel: long-press to select
+            // and copy instead of retyping what is on screen.
+            SelectionContainer {
+                Text(
+                    message.text,
+                    modifier = Modifier
+                        .widthIn(max = 340.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (message.isError) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
         }
     }
 }
@@ -5482,6 +5514,8 @@ private fun StatusBar(status: String, extensionStatuses: Map<String, String>) {
 @Composable
 private fun ErrorBanner(message: String, onDismiss: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    val copied = packText("toast.copied", "已复制")
     Surface(
         color = scheme.errorContainer,
         shape = RoundedCornerShape(14.dp),
@@ -5509,6 +5543,22 @@ private fun ErrorBanner(message: String, onDismiss: () -> Unit) {
                 color = scheme.onErrorContainer,
                 modifier = Modifier.weight(1f),
             )
+            IconButton(
+                onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                        as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Pig error", message))
+                    Toast.makeText(context, copied, Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    packIcon("copy", "copy"),
+                    contentDescription = packText("a11y.copy", "复制"),
+                    modifier = Modifier.size(15.dp),
+                    tint = scheme.onErrorContainer,
+                )
+            }
             IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                 Icon(
                     packIcon("close", "close"),
