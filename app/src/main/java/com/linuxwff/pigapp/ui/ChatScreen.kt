@@ -2078,6 +2078,7 @@ private fun SettingsDialog(
 @Composable
 private fun LogDialog(onDismiss: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
+    val context = LocalContext.current
     val emptyText = packText("settings.logsEmpty", "还没有日志")
     var text by remember { mutableStateOf(AppLog.tail(400)) }
     LaunchedEffect(Unit) {
@@ -2115,7 +2116,7 @@ private fun LogDialog(onDismiss: () -> Unit) {
         dismissButton = {
             TextButton(
                 onClick = {
-                    val clipboard = LocalContext.current
+                    val clipboard = context
                         .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     clipboard.setPrimaryClip(ClipData.newPlainText("Pig log", AppLog.snapshot()))
                 },
