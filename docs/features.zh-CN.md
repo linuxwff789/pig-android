@@ -157,7 +157,9 @@ App 原生页面，不再是 pack 生成的窗口：
   一致（`Authorization: Bearer`、Anthropic 用 `x-api-key`、Google 用 `?key=`、
   自定义 `headers`/`modelsHeaders`），随后弹出 **原生选择窗**：可搜索、可勾选、
   支持全选/清空，显示 id 与上下文大小。勾选的子集会写成显式 `models` 数组，完整
-  列表仍留在 `custom-endpoints.cache.json`，再次打开选择窗不需要联网。
+  列表仍留在 `custom-endpoints.cache.json`，再次打开选择窗不需要联网。如果草稿刷新失败
+  （超时、5xx，或点刷新后才填 key），auto 模式保存时会再抓一次并写缓存，会话重启后
+  模型立即就绪；保存时的抓取失败也会保存，并提示 pig 启动时会重试。
 - **自动获取全部模型** 保持 `models: "auto"`：下次会话启动时注册全部模型；端点
   挂掉时使用缓存列表。
 - 保存/删除后会重启 pig（同一会话文件），让扩展重新读文件；随后 App 刷新

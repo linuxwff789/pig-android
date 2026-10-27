@@ -191,7 +191,10 @@ native screen, not a pack-generated window:
   a **native selection window**: searchable, checkable, 全选/清空, showing id and
   context size. The picked subset is written as an explicit `models` array and
   the full fetched list stays in `custom-endpoints.cache.json`, so reopening the
-  picker needs no network call.
+  picker needs no network call. If a draft refresh fails (timeout, 5xx, or a key
+  typed after the click), saving in auto mode fetches once more and caches the
+  list, so the models are ready as soon as the session restarts; a failed save
+  fetch still saves and warns that pig will retry at startup.
 - **自动获取全部模型** keeps `models: "auto"`: every fetched model is registered at
   the next session start, with the cached list used when the endpoint is down.
 - Save/delete restart pig (same session file) so the extension re-reads the file;

@@ -3936,9 +3936,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val message = event.optString("message").ifBlank {
                     str("provider.failed", "供应商操作失败")
                 }
+                // A refresh can fail transiently; saving retries the fetch and
+                // the extension fetches again when pig restarts, so point the
+                // user at the next step instead of dead-ending.
+                val hint = if (event.optString("op") == "refresh") {
+                    str(
+                        "provider.refreshHint",
+                        "可以先保存：保存时会再抓一次，pig 启动后也会重试",
+                    )
+                } else {
+                    ""
+                }
                 ui = ui.copy(
                     providerBusy = false,
-                    providerMessage = message,
+                    providerMessage = if (hint.isBlank()) message else "$message\n$hint",
                     providerMessageError = true,
                     toast = message,
                 )

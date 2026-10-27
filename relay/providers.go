@@ -249,6 +249,30 @@ func (s *session) saveProvider(id any, entry map[string]any) {
 	}
 
 	cache, _ := readJSONObjectFile(cachePath)
+	warning := ""
+	// The app refreshes a draft before saving. That fetch can fail (slow
+	// endpoint, a key typed after the click, a transient 5xx) while the
+	// extension's fetch after the restart succeeds - which is why models
+	// "appear later". If auto mode has no list to cache yet, fetch here so the
+	// save itself is the retry; on failure still save and say what will happen.
+	if auto && len(full) == 0 && len(selected) == 0 {
+		existing := []any{}
+		if cached, ok := cache[pid].(map[string]any); ok {
+			existing, _ = cached["models"].([]any)
+		}
+		if len(existing) == 0 {
+			switch {
+			case providerOffline():
+				warning = "已保存；离线模式，联网后会自动获取模型列表"
+			default:
+				if fetched, err := fetchProviderModels(def); err != nil {
+					warning = "已保存；模型列表获取失败（" + err.Error() + "），pig 启动时会再试"
+				} else {
+					full = sanitizeModels(fetched)
+				}
+			}
+		}
+	}
 	// Keep the full fetched list even when the user enabled a subset: the
 	// picker needs it the next time this provider is edited, and switching
 	// back to "all models" must not need another network round trip.
@@ -274,13 +298,17 @@ func (s *session) saveProvider(id any, entry map[string]any) {
 			return
 		}
 	}
-	_ = s.send(frame{
+	done := frame{
 		"type":     "relay_provider_saved",
 		"id":       id,
 		"op":       "save",
 		"provider": providerView(pid, def, cache),
 		"path":     configPath,
-	})
+	}
+	if warning != "" {
+		done["warning"] = warning
+	}
+	_ = s.send(done)
 }
 
 func (s *session) deleteProvider(id any, entry map[string]any) {
