@@ -41,7 +41,6 @@ func androidUIDir() string {
 func endpointsPath() string { return filepath.Join(agentDir(), "custom-endpoints.json") }
 func modelsPath() string    { return filepath.Join(agentDir(), "models.json") }
 func cachePath() string     { return filepath.Join(agentDir(), "custom-endpoints.cache.json") }
-func windowPath() string    { return filepath.Join(androidUIDir(), "windows", "providers.json") }
 func navPath() string       { return filepath.Join(androidUIDir(), "nav.json") }
 
 // readObject reads a JSON object, returning an empty object when the file is

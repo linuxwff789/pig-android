@@ -317,6 +317,244 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         client.connect()
     }
 
+    // ---- Backup, restore and uninstall ----------------------------------
+
+    /**
+     * Streams a backup into Download/Pig. Returns false on Android < 10, where
+     * the caller has to ask through the system file picker instead.
+     */
+    fun exportBackupToDownload(includeSessions: Boolean, includeUi: Boolean): Boolean {
+        val target = BackupExporter.create(
+            getApplication(),
+            BackupExporter.suggestedName(),
+        ) ?: return false
+        runBackupExport(target.uri, includeSessions, includeUi, target)
+        return true
+    }
+
+    /** Export to a URI picked by the user (older Android, or a chosen folder). */
+    fun exportBackupToUri(uri: Uri, includeSessions: Boolean, includeUi: Boolean) =
+        runBackupExport(uri, includeSessions, includeUi, null)
+
+    private fun runBackupExport(
+        uri: Uri,
+        includeSessions: Boolean,
+        includeUi: Boolean,
+        target: BackupExporter.Target?,
+    ) {
+        if (ui.maintenanceBusy) {
+            ui = ui.copy(toast = str("backup.busy", "已有备份任务在进行"))
+            target?.finish(false)
+            return
+        }
+        if (!client.connected.value || !ui.backupRemote) {
+            ui = ui.copy(
+                toast = str(
+                    "backup.needRelay",
+                    "需要新版 relay 才能导出备份：重装 Termux 组件后重启 relay",
+                ),
+            )
+            target?.finish(false)
+            return
+        }
+        AppLog.event("backup", "export start sessions=$includeSessions ui=$includeUi")
+        ui = ui.copy(
+            maintenanceBusy = true,
+            maintenanceLabel = str("backup.exporting", "正在导出备份…"),
+            maintenanceSent = 0,
+            maintenanceTotal = 0,
+        )
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            var lastUi = 0L
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    ctx.contentResolver.openOutputStream(uri)?.use { out ->
+                        client.exportBackup(out, includeSessions, includeUi) { sent ->
+                            // One state write per chunk would redraw the sheet
+                            // hundreds of times; four per second is plenty.
+                            val now = System.currentTimeMillis()
+                            if (now - lastUi > 400) {
+                                lastUi = now
+                                ui = ui.copy(maintenanceSent = sent)
+                            }
+                        }
+                    } ?: error("打不开输出流")
+                }
+            }
+            target?.finish(result.isSuccess)
+            AppLog.event(
+                "backup",
+                "export ${if (result.isSuccess) "ok" else "failed: " +
+                    (result.exceptionOrNull()?.message ?: "?")}",
+            )
+            ui = result.fold(
+                onSuccess = { done ->
+                    ui.copy(
+                        maintenanceBusy = false,
+                        maintenanceSent = 0,
+                        maintenanceTotal = 0,
+                        toast = str(
+                            "backup.exported",
+                            "备份完成：{entries} 个文件、{size} → {path}（含密钥与模型配置）",
+                        )
+                            .replace("{entries}", done.optInt("entries").toString())
+                            .replace("{size}", formatSize(done.optLong("bytes")))
+                            .replace(
+                                "{path}",
+                                target?.location ?: uri.lastPathSegment ?: uri.toString(),
+                            ),
+                    )
+                },
+                onFailure = { error ->
+                    ui.copy(
+                        maintenanceBusy = false,
+                        maintenanceSent = 0,
+                        maintenanceTotal = 0,
+                        toast = str("backup.exportFailed", "导出失败：{error}")
+                            .replace("{error}", error.message ?: error.toString()),
+                    )
+                },
+            )
+        }
+    }
+
+    /**
+     * Restores an archive the user picked. Destructive by nature: the settings
+     * dialog confirms first, and the relay makes its own automatic backup of
+     * `~/.pig` before extracting anything.
+     */
+    fun importBackup(uri: Uri, name: String) {
+        if (ui.maintenanceBusy) {
+            ui = ui.copy(toast = str("backup.busy", "已有备份任务在进行"))
+            return
+        }
+        if (!client.connected.value || !ui.backupRemote) {
+            ui = ui.copy(
+                toast = str(
+                    "backup.needRelay",
+                    "需要新版 relay 才能导出备份：重装 Termux 组件后重启 relay",
+                ),
+            )
+            return
+        }
+        AppLog.event("backup", "restore start $name")
+        ui = ui.copy(
+            maintenanceBusy = true,
+            maintenanceLabel = str("backup.importing", "正在恢复备份…"),
+            maintenanceSent = 0,
+            maintenanceTotal = 0,
+        )
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            var lastUi = 0L
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val size = runCatching {
+                        ctx.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }
+                    }.getOrNull() ?: -1L
+                    val input = ctx.contentResolver.openInputStream(uri)
+                        ?: error("打不开备份文件")
+                    input.use { stream ->
+                        client.restoreBackup(stream, name, size) { sent, total ->
+                            val now = System.currentTimeMillis()
+                            if (now - lastUi > 400) {
+                                lastUi = now
+                                ui = ui.copy(
+                                    maintenanceSent = sent,
+                                    maintenanceTotal = total,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            AppLog.event(
+                "backup",
+                "restore ${if (result.isSuccess) "ok" else "failed: " +
+                    (result.exceptionOrNull()?.message ?: "?")}",
+            )
+            result.fold(
+                onSuccess = { done ->
+                    ui = ui.copy(
+                        maintenanceBusy = false,
+                        maintenanceSent = 0,
+                        maintenanceTotal = 0,
+                        toast = str(
+                            "backup.imported",
+                            "已恢复 {entries} 个文件；原数据备份在 {backup}",
+                        )
+                            .replace("{entries}", done.optInt("entries").toString())
+                            .replace(
+                                "{backup}",
+                                done.optString("backup").ifBlank { "~/.pig/backups" },
+                            ),
+                    )
+                    // The relay stopped its pig processes; a fresh connection
+                    // loads the restored settings, models and UI pack.
+                    client.close()
+                    client.connect()
+                },
+                onFailure = { error ->
+                    ui = ui.copy(
+                        maintenanceBusy = false,
+                        maintenanceSent = 0,
+                        maintenanceTotal = 0,
+                        toast = str("backup.importFailed", "恢复失败：{error}")
+                            .replace("{error}", error.message ?: error.toString()),
+                    )
+                },
+            )
+        }
+    }
+
+    /**
+     * Stops pig and the relay and deletes their binaries; [purgeData] also
+     * removes `~/.pig`. The Termux result arrives through RunCommandFeedback.
+     */
+    fun uninstallPig(purgeData: Boolean) {
+        if (ui.maintenanceBusy) {
+            ui = ui.copy(toast = str("backup.busy", "已有备份任务在进行"))
+            return
+        }
+        if (ui.busy || ui.status == "compacting") {
+            ui = ui.copy(toast = str("backup.uninstallBusy", "本轮结束后再卸载"))
+            return
+        }
+        val error = RelayLauncher.uninstall(getApplication(), purgeData, cwd)
+        if (error != null) {
+            ui = ui.copy(
+                toast = str("backup.uninstallFailed", "卸载失败：{error}")
+                    .replace("{error}", error),
+            )
+            return
+        }
+        uninstallPurge = purgeData
+        AppLog.event("vm", "uninstall requested purge=$purgeData")
+        ui = ui.copy(
+            maintenanceBusy = true,
+            maintenanceLabel = str("backup.uninstalling", "正在卸载…"),
+            maintenanceSent = 0,
+            maintenanceTotal = 0,
+        )
+        // The relay is about to die with its binary: stop reconnecting, or a
+        // retry would race the deletion and relaunch a half-removed install.
+        autoReconnectJob?.cancel()
+        autoReconnectJob = null
+        client.close()
+    }
+
+    private var uninstallPurge = false
+
+    private fun formatSize(bytes: Long): String = when {
+        bytes >= 1L shl 30 ->
+            "%.1f".format(bytes / (1L shl 30).toFloat()).removeSuffix(".0") + " GB"
+        bytes >= 1L shl 20 ->
+            "%.1f".format(bytes / (1L shl 20).toFloat()).removeSuffix(".0") + " MB"
+        bytes >= 1024 -> "${bytes / 1024} KB"
+        else -> "$bytes B"
+    }
+
     /** Called from Activity.onResume: resume the relay/session after a lock or process freeze. */
     fun onForeground() {
         foreground = true
@@ -676,6 +914,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 // Any other failure here is expected while the install is still
                 // running; the dialog already explains what to do.
+            }
+            RunCommandReceiver.KIND_UNINSTALL -> {
+                ui = ui.copy(
+                    maintenanceBusy = false,
+                    maintenanceSent = 0,
+                    maintenanceTotal = 0,
+                )
+                if (outcome.failed) {
+                    ui = ui.copy(
+                        toast = str("backup.uninstallFailed", "卸载失败：{error}")
+                            .replace(
+                                "{error}",
+                                outcome.summary().ifBlank { "unknown error" },
+                            ),
+                    )
+                    // The binaries are still there: let the normal reconnect
+                    // path bring the relay back.
+                    reconnect()
+                } else {
+                    AppLog.event("termux", "uninstall done purge=$uninstallPurge")
+                    ui = ui.copy(
+                        connected = false,
+                        setup = true,
+                        setupHint = str(
+                            "setup.uninstalled",
+                            "已从 Termux 卸载 pig 与 pig-relay{data}。" +
+                                "要重新安装：点「复制命令」或「一键安装」。",
+                        ).replace(
+                            "{data}",
+                            if (uninstallPurge) "，并删除了 ~/.pig 数据" else "",
+                        ),
+                        toast = str("toast.uninstalled", "已卸载 pig 与 pig-relay"),
+                    )
+                }
             }
         }
     }
@@ -1488,6 +1760,214 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun closeModelPicker() {
         showModelPicker = false
     }
+
+    // ---- Native provider manager ----------------------------------------
+
+    /** Opened by the UI pack's nav entry (`window: native:providers`). */
+    fun openProviderManager() {
+        ui = ui.copy(
+            providerManagerOpen = true,
+            providerMessage = "",
+            providerMessageError = false,
+        )
+        requestProviders()
+    }
+
+    fun closeProviderManager() {
+        ui = ui.copy(
+            providerManagerOpen = false,
+            providerBusy = false,
+            providerMessage = "",
+        )
+    }
+
+    fun requestProviders() {
+        if (!client.connected.value) {
+            ui = ui.copy(
+                providersLoading = false,
+                providerMessage = str("provider.offline", "未连接 relay，无法读取供应商"),
+                providerMessageError = true,
+            )
+            return
+        }
+        ui = ui.copy(providersLoading = true)
+        client.send(
+            JSONObject().put("id", "providers-${nextId++}").put("type", "relay_providers"),
+        )
+    }
+
+    /**
+     * Fetches `{baseUrl}/models` without saving. The relay expands `$ENV` /
+     * `!command` keys and sends the same headers the session would.
+     */
+    fun refreshProviderModels(draft: ProviderInfo, apiKey: String) {
+        if (ui.providerBusy) return
+        if (draft.baseUrl.isBlank()) {
+            ui = ui.copy(
+                providerMessage = str("provider.baseUrlRequired", "先填 Base URL"),
+                providerMessageError = true,
+            )
+            return
+        }
+        val pid = draft.id.trim().lowercase()
+        ui = ui.copy(
+            providerBusy = true,
+            providerModels = emptyList(),
+            providerModelsFor = pid,
+            providerModelsAt = 0,
+            providerMessage = str("provider.fetching", "正在从 {url} 获取模型列表…")
+                .replace("{url}", draft.baseUrl),
+            providerMessageError = false,
+        )
+        client.send(
+            JSONObject()
+                .put("id", "provmodels-${nextId++}")
+                .put("type", "relay_provider_models")
+                .put(
+                    "entry",
+                    providerEntry(
+                        draft = draft.copy(id = pid),
+                        apiKey = apiKey,
+                        clearKey = false,
+                        all = draft.models,
+                        selected = draft.models,
+                        includeCache = false,
+                    ),
+                ),
+        )
+    }
+
+    /**
+     * Writes the provider and (for auto mode) caches [allModels]. [selected] is
+     * the subset the user ticked; an empty selection is rejected for manual
+     * mode before we touch the file.
+     */
+    fun saveProvider(
+        draft: ProviderInfo,
+        apiKey: String,
+        clearKey: Boolean,
+        allModels: List<ProviderModel>,
+        selected: List<ProviderModel>,
+    ) {
+        if (ui.providerBusy) return
+        val id = draft.id.trim().lowercase()
+        if (id.isBlank() || draft.baseUrl.isBlank()) {
+            ui = ui.copy(
+                providerMessage = str("provider.idRequired", "ID 与 Base URL 必填"),
+                providerMessageError = true,
+            )
+            return
+        }
+        if (!draft.auto && selected.isEmpty()) {
+            ui = ui.copy(
+                providerMessage = str("provider.selectRequired", "手动模式下至少选择一个模型"),
+                providerMessageError = true,
+            )
+            return
+        }
+        ui = ui.copy(
+            providerBusy = true,
+            providerMessage = str("provider.saving", "正在保存…"),
+            providerMessageError = false,
+        )
+        client.send(
+            JSONObject()
+                .put("id", "provsave-${nextId++}")
+                .put("type", "relay_provider_save")
+                .put(
+                    "entry",
+                    providerEntry(
+                        draft = draft.copy(id = id),
+                        apiKey = apiKey,
+                        clearKey = clearKey,
+                        all = allModels,
+                        selected = selected,
+                        includeCache = true,
+                    ),
+                ),
+        )
+    }
+
+    fun deleteProvider(id: String) {
+        if (ui.providerBusy || id.isBlank()) return
+        ui = ui.copy(
+            providerBusy = true,
+            providerMessage = str("provider.deleting", "正在删除 {id}…").replace("{id}", id),
+            providerMessageError = false,
+        )
+        client.send(
+            JSONObject()
+                .put("id", "provdel-${nextId++}")
+                .put("type", "relay_provider_delete")
+                .put("entry", JSONObject().put("id", id)),
+        )
+    }
+
+    private fun providerEntry(
+        draft: ProviderInfo,
+        apiKey: String,
+        clearKey: Boolean,
+        all: List<ProviderModel>,
+        selected: List<ProviderModel>,
+        includeCache: Boolean,
+    ): JSONObject {
+        val entry = JSONObject()
+            .put("id", draft.id.trim().lowercase())
+            .put("name", draft.name.trim())
+            .put("baseUrl", draft.baseUrl.trim())
+            .put("api", draft.api.ifBlank { "openai-completions" })
+            .put("modelsUrl", draft.modelsUrl.trim())
+            .put("auto", draft.auto)
+            .put("models", providerModelsJson(if (draft.auto) all else selected))
+        if (apiKey.isNotBlank()) entry.put("apiKey", apiKey)
+        if (clearKey) entry.put("clearKey", true)
+        if (includeCache) entry.put("cacheModels", providerModelsJson(all))
+        return entry
+    }
+
+    private fun providerModelsJson(models: List<ProviderModel>): JSONArray {
+        val array = JSONArray()
+        models.forEach { model ->
+            array.put(
+                JSONObject()
+                    .put("id", model.id)
+                    .put("name", model.name.ifBlank { model.id })
+                    .put("contextWindow", model.contextWindow)
+                    .put("maxTokens", model.maxTokens),
+            )
+        }
+        return array
+    }
+
+    private fun parseProviderModels(array: JSONArray?): List<ProviderModel> {
+        if (array == null) return emptyList()
+        val out = mutableListOf<ProviderModel>()
+        for (i in 0 until array.length()) {
+            val item = array.optJSONObject(i) ?: continue
+            val id = item.optString("id").ifBlank { item.optString("name") }
+            if (id.isBlank()) continue
+            out += ProviderModel(
+                id = id,
+                name = item.optString("name").ifBlank { id },
+                contextWindow = item.optInt("contextWindow"),
+                maxTokens = item.optInt("maxTokens"),
+            )
+        }
+        return out
+    }
+
+    private fun parseProvider(json: JSONObject): ProviderInfo = ProviderInfo(
+        id = json.optString("id"),
+        name = json.optString("name").ifBlank { json.optString("id") },
+        baseUrl = json.optString("baseUrl"),
+        api = json.optString("api").ifBlank { "openai-completions" },
+        hasKey = json.optBoolean("hasKey"),
+        auto = json.optBoolean("auto", true),
+        modelsUrl = json.optString("modelsUrl"),
+        models = parseProviderModels(json.optJSONArray("models")),
+        cachedModels = parseProviderModels(json.optJSONArray("cachedModels")),
+        fetchedAt = json.optLong("fetchedAt"),
+    )
 
     fun requestModels() {
         modelsLoading = true
@@ -2569,7 +3049,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(windows = ui.windows + cached)
     }
 
-    fun openNavItem(item: NavItem) {        if (item.action.startsWith("pack:")) {
+    fun openNavItem(item: NavItem) {
+        // `native:providers` is rendered by the app; the pack owns the entry
+        // (label, icon, placement), not the UI. `providers` is the value older
+        // provider-ui releases wrote, kept for installs that have not synced
+        // their nav.json yet.
+        if (item.window == "native:providers" || item.window == "providers") {
+            openProviderManager()
+            return
+        }
+        if (item.action.startsWith("pack:")) {
             runPackAction(item.action.removePrefix("pack:"), null)
             refreshDataSources("window_open")
             return
@@ -2761,6 +3250,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** True between `relay_restart` and its `relay_restarted` reply. */
     private var restartInFlight = false
+    /** The next relay_restarted toast should talk about providers, not ctx pins. */
+    private var providerRestartPending = false
 
     /** Notices retired in this process; a history render must not bring them back. */
     private val resolvedNotices = mutableSetOf<String>()
@@ -2897,20 +3388,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun handle(event: JSONObject) {
         when (val type = event.optString("type")) {
             "relay_hello" -> {
+                // A relay from before 1.1.34 has no backup frames; hide the
+                // buttons instead of letting them fail with "unknown frame".
+                var backupRemote = false
+                var providerRemote = false
+                event.optJSONArray("features")?.let { features ->
+                    for (i in 0 until features.length()) {
+                        when (features.optString(i)) {
+                            "backup" -> backupRemote = true
+                            "providers" -> providerRemote = true
+                        }
+                    }
+                }
                 ui = ui.copy(
                     error = null,
                     setup = false,
                     setupHint = null,
                     installRunning = false,
                     termuxBlocked = false,
+                    backupRemote = backupRemote,
+                    providerRemote = providerRemote,
                 )
                 warnedMissingExtensions = ""
                 warnedIncompleteRelayPack = false
                 AppLog.event(
                     "vm",
                     "relay hello: protocol=${event.optString("protocol")} " +
+                        "version=${event.optString("version")} " +
                         "cwd=${event.optString("cwd")} ui=${event.optString("uiDir")} " +
-                        "pigPid=${event.optInt("pigPid")}",
+                        "pigPid=${event.optInt("pigPid")} " +
+                        "backup=$backupRemote",
                 )
                 lastPongAt = System.currentTimeMillis()
                 restoreChecked = false
@@ -2987,6 +3494,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     // Older relay: the pin stays display-only; say so once, in
                     // the transcript.
                     appendNotice(str("toast.contextWindowLocalOnly", "relay 版本过旧，上下文长度仅在本机生效"))
+                } else if (message.contains("relay_provider")) {
+                    // Older relay: the native manager cannot read or write the
+                    // provider file; keep the hint visible in the manager.
+                    ui = ui.copy(
+                        providerRemote = false,
+                        providerBusy = false,
+                        providerMessage = str(
+                            "provider.needRelay",
+                            "需要新版 relay 才能管理供应商：重装 Termux 组件后重启 relay",
+                        ),
+                        providerMessageError = true,
+                    )
                 } else if (message.contains("bad token")) {
                     recoverFromBadToken()
                 } else {
@@ -3092,20 +3611,110 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     pendingAgentRestart = false,
                     // The replaced process took its status lines with it.
                     extensionStatuses = emptyMap(),
-                    toast = if (pid > 0) {
-                        str("toast.agentRestarted", "已重启 pig，新的上下文长度生效")
-                    } else {
-                        str("toast.restartIdle", "没有正在运行的 pig，下次启动时按新长度执行")
+                    toast = when {
+                        providerRestartPending ->
+                            str("provider.restarted", "已重启 pig，供应商配置已生效")
+                        pid > 0 -> str("toast.agentRestarted", "已重启 pig，新的上下文长度生效")
+                        else -> str("toast.restartIdle", "没有正在运行的 pig，下次启动时按新长度执行")
                     },
                 )
                 requestState()
                 requestStats()
                 refreshCommands()
+                // A provider save or a models.json edit also only becomes live
+                // with this restart: refresh the list the picker shows.
+                requestModels()
+                providerRestartPending = false
             }
             "relay_model_override_error" -> {
                 val message = event.optString("message").takeIf { it.isNotBlank() }
                     ?: str("toast.contextWindowLocalOnly", "relay 版本过旧，上下文长度仅在本机生效")
                 appendNotice(message)
+            }
+            "relay_providers" -> {
+                val list = mutableListOf<ProviderInfo>()
+                event.optJSONArray("providers")?.let { array ->
+                    for (index in 0 until array.length()) {
+                        array.optJSONObject(index)?.let { list += parseProvider(it) }
+                    }
+                }
+                val fileIds = mutableListOf<String>()
+                event.optJSONArray("modelsProviders")?.let { array ->
+                    for (index in 0 until array.length()) {
+                        fileIds += array.optString(index)
+                    }
+                }
+                ui = ui.copy(
+                    providers = list,
+                    providersModelsFile = fileIds,
+                    providersPath = event.optString("path"),
+                    providersLoading = false,
+                    providersOffline = event.optBoolean("offline"),
+                )
+            }
+            "relay_provider_models" -> {
+                val models = parseProviderModels(event.optJSONArray("models"))
+                ui = ui.copy(
+                    providerBusy = false,
+                    providerModels = models,
+                    providerModelsFor = event.optString("provider"),
+                    providerModelsAt = event.optLong("fetchedAt"),
+                    providerMessage = str("provider.fetched", "已获取 {n} 个模型")
+                        .replace("{n}", models.size.toString()),
+                    providerMessageError = false,
+                )
+            }
+            "relay_provider_saved" -> {
+                val provider = event.optJSONObject("provider")?.let { parseProvider(it) }
+                val warning = event.optString("warning")
+                val next = ui.providers.filterNot { it.id == provider?.id } +
+                    listOfNotNull(provider)
+                ui = ui.copy(
+                    providers = next.sortedBy { it.id },
+                    providerEpoch = ui.providerEpoch + 1,
+                    providerBusy = false,
+                    providerMessage = warning.ifBlank {
+                        str("provider.saved", "已保存 {id}，重启 pig 后生效")
+                            .replace("{id}", provider?.id ?: "")
+                    },
+                    providerMessageError = warning.isNotBlank(),
+                    toast = warning.ifBlank {
+                        str("provider.savedToast", "供应商已保存，正在重启 pig…")
+                    },
+                )
+                AppLog.event("provider", "saved ${provider?.id} auto=${provider?.auto}")
+                providerRestartPending = true
+                restartAgentNow()
+                requestProviders()
+            }
+            "relay_provider_deleted" -> {
+                val id = event.optString("provider")
+                ui = ui.copy(
+                    providers = ui.providers.filterNot { it.id == id },
+                    providerEpoch = ui.providerEpoch + 1,
+                    providerBusy = false,
+                    providerMessage = str("provider.deleted", "已删除 {id}，重启 pig 后生效")
+                        .replace("{id}", id),
+                    providerMessageError = false,
+                    toast = str("provider.deletedToast", "已删除供应商 {id}")
+                        .replace("{id}", id),
+                )
+                AppLog.event("provider", "deleted $id")
+                providerRestartPending = true
+                restartAgentNow()
+                requestProviders()
+            }
+            "relay_provider_error" -> {
+                val message = event.optString("message").ifBlank {
+                    str("provider.failed", "供应商操作失败")
+                }
+                ui = ui.copy(
+                    providerBusy = false,
+                    providerMessage = message,
+                    providerMessageError = true,
+                    toast = message,
+                )
+                AppLog.event("provider", "error: ${event.optString("op")} $message")
             }
             "relay_sessions" -> handleSessions(event)
             "relay_session_renamed" -> {

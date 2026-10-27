@@ -162,6 +162,35 @@ object RelayLauncher {
         )
     }
 
+    /**
+     * Removes the Termux-side install: stops pig and the relay, then deletes
+     * both binaries and the installer receipt. With [purgeData] it also removes
+     * `~/.pig` (config, sessions, keys, UI packs) - the app asks first and
+     * defaults that switch off.
+     *
+     * The bracket patterns keep `pkill -f` from matching the shell that runs
+     * this very command (its cmdline contains the same text without brackets).
+     */
+    fun uninstall(context: Context, purgeData: Boolean, cwd: String): String? {
+        val command = buildString {
+            append("pkill -f 'pig-rela[y] --port' >/dev/null 2>&1; ")
+            append("pkill -f 'pig --mode rp[c]' >/dev/null 2>&1; ")
+            append("pkill -x pig >/dev/null 2>&1; sleep 0.5; ")
+            append("rm -f \"\$PREFIX\"/bin/pig \"\$PREFIX\"/bin/pig-relay \"\$PREFIX\"/bin/pig-relay.* ; ")
+            append("rm -f \"\$HOME\"/.pig/install-receipt; ")
+            if (purgeData) append("rm -rf \"\$HOME\"/.pig; ")
+            append("echo pig-uninstalled")
+        }
+        return runCommand(
+            context = context,
+            cwd = cwd,
+            command = command,
+            kind = RunCommandReceiver.KIND_UNINSTALL,
+            requestCode = RunCommandReceiver.REQUEST_UNINSTALL,
+            label = "Pig uninstall",
+        )
+    }
+
     private fun relayCommand(port: Int, token: String, cwd: String): String =
         "exec \"$RELAY_BIN\" --port $port --token $token --cwd ${shellQuote(cwd)}"
 

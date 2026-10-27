@@ -357,6 +357,30 @@ data class ModelInfo(
     val images: Boolean,
 )
 
+/** One model a custom provider exposes; `contextWindow`/`maxTokens` may be 0. */
+data class ProviderModel(
+    val id: String,
+    val name: String,
+    val contextWindow: Int = 0,
+    val maxTokens: Int = 0,
+)
+
+/** One entry of `~/.pig/agent/custom-endpoints.json`. The API key never leaves Termux. */
+data class ProviderInfo(
+    val id: String,
+    val name: String,
+    val baseUrl: String,
+    val api: String,
+    val hasKey: Boolean,
+    val auto: Boolean,
+    val modelsUrl: String = "",
+    /** Effective list: the cache for auto providers, the configured array otherwise. */
+    val models: List<ProviderModel> = emptyList(),
+    /** Every model ever fetched, even when only some are enabled. */
+    val cachedModels: List<ProviderModel> = emptyList(),
+    val fetchedAt: Long = 0,
+)
+
 data class UiRequest(
     val id: String,
     val method: String,
@@ -447,6 +471,38 @@ data class AppUiState(
     val followUpMode: String = "one-at-a-time",
     /** True once the relay answered `relay_settings`; older relays do not. */
     val settingsRemote: Boolean = false,
+
+    /** Connected relay announces `backup` (older releases would answer `unknown relay frame`). */
+    val backupRemote: Boolean = false,
+    /** Connected relay announces `providers` (native provider manager). */
+    val providerRemote: Boolean = false,
+    /** The native provider manager is open (opened by a UI pack nav entry). */
+    val providerManagerOpen: Boolean = false,
+    val providers: List<ProviderInfo> = emptyList(),
+    /** Provider ids owned by models.json; read-only in this manager. */
+    val providersModelsFile: List<String> = emptyList(),
+    val providersPath: String = "",
+    val providersLoading: Boolean = false,
+    val providersOffline: Boolean = false,
+    /** A provider save/delete/refresh round trip is running. */
+    val providerBusy: Boolean = false,
+    /** Last provider result, shown inside the manager (may be an error). */
+    val providerMessage: String = "",
+    val providerMessageError: Boolean = false,
+    /** Model list returned by the relay, for the native model picker. */
+    val providerModels: List<ProviderModel> = emptyList(),
+    val providerModelsFor: String = "",
+    val providerModelsAt: Long = 0,
+    /** Bumped when a provider save/delete succeeds, so the editor can close. */
+    val providerEpoch: Int = 0,
+    /** A backup export, restore or uninstall is running. */
+    val maintenanceBusy: Boolean = false,
+    /** What the running maintenance job is doing, shown in the settings dialog. */
+    val maintenanceLabel: String = "",
+    /** Bytes transferred so far (export) or read so far (restore). */
+    val maintenanceSent: Long = 0,
+    /** Expected total: uncompressed archive size for export, file size for restore. */
+    val maintenanceTotal: Long = 0,
 
     /** `hideThinkingBlock` from settings.json: hide reasoning in the transcript. */
     val hideThinkingBlock: Boolean = false,

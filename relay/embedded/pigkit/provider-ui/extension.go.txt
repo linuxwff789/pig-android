@@ -38,12 +38,7 @@ func Extension() *sdk.Extension {
 		if err := ensureNav(); err != nil {
 			return fail(ctx, "写入导航配置失败: "+err.Error())
 		}
-		if err := writeWindow(); err != nil {
-			return fail(ctx, "写入窗口失败: "+err.Error())
-		}
-		if ctx.HasUI() {
-			ctx.Notify("已在 App 中打开模型供应商窗口", "info")
-		}
+		ctx.Notify("模型供应商已改为 App 内置页面：设置 → 模型供应商", "info")
 		return nil
 	}
 	e.Command("provider-ui", "打开模型供应商管理窗口（Pig App）", open)
@@ -191,7 +186,6 @@ func save(ctx sdk.Context, form map[string]any) error {
 		if err := register(id, def, models); err != nil {
 			message += "；但注册到当前会话失败: " + err.Error()
 			setStatus(message, true)
-			_ = writeWindow()
 			ctx.Notify(message, "error")
 			return nil
 		}
@@ -311,19 +305,17 @@ func cachedModels(id string) []any {
 	return list
 }
 
+// succeed/fail keep the last status for the /provider-ui command; the app
+// window is native now and reads the files directly, so there is no window JSON
+// to rewrite.
 func succeed(ctx sdk.Context, message string) error {
 	setStatus("✓ "+message, false)
-	if err := writeWindow(); err != nil {
-		ctx.Notify(message+"（窗口刷新失败: "+err.Error()+"）", "warning")
-		return nil
-	}
 	ctx.Notify(message, "info")
 	return nil
 }
 
 func fail(ctx sdk.Context, message string) error {
 	setStatus("✗ "+message, true)
-	_ = writeWindow()
 	ctx.Notify(message, "error")
 	return nil
 }

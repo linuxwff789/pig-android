@@ -50,6 +50,8 @@ off.
 | 📋 **Plan checklist** | Any extension that emits a `setWidget` plan becomes a native card with progress bar and `☑ / ☐` steps — no registry, no allow-list. The bundled plan extension ships with `pig-relay`. |
 | 🗂 **Sessions** | Drawer with search, rename and delete; per-session drafts; a session that is still being created keeps what you type. |
 | 🎛 **Models** | Searchable picker with context size, thinking and image support; pin a default; override a provider's wrong `contextWindow` on the `ctx` line. |
+| ➕ **Providers** | Native provider manager: add/edit `custom-endpoints.json`, fetch `/models`, then pick which models to enable in a searchable selection window — no extension-generated form. |
+| 🗄 **Backup, restore, uninstall** | One tap packs `~/.pig` (keys, models, settings, extensions, sessions, UI pack) into `Download/Pig`; importing merges it back after an automatic safety backup. Uninstall stops pig and pig-relay and removes their binaries, with an optional `~/.pig` wipe. |
 | 🖼 **Images both ways** | Tool and assistant images, a system photo picker, Markdown images, and a full-screen viewer that saves to `Pictures/Pig`. |
 | 🎨 **UI packs** | Theme, typography, layout, strings, icons, nav entries and windows hot-reload from `~/.pig/android-ui` — restyle the whole app without a rebuild. |
 | 🔔 **Notifications** | Turn finished, needs your input, error, context compacted — separate channels, per-channel sound, per-state toggles. |

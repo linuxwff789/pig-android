@@ -200,7 +200,7 @@ Optional drawer entries. The relay pushes it with the rest of the pack.
     {
       "id": "providers",
       "label": "模型供应商",
-      "window": "providers",
+      "window": "native:providers",
       "command": "provider-ui",
       "icon": "build",
       "placement": "settings"
@@ -210,9 +210,11 @@ Optional drawer entries. The relay pushes it with the rest of the pack.
 ```
 
 - `window` is the id of a cached `windows/<id>.json`; tapping the entry restores
-  it even if the user closed it earlier.
+  it even if the user closed it earlier. `native:providers` (and the legacy
+  `providers`) opens the app's built-in model-provider manager instead - the
+  pack supplies the entry point, the app owns that screen.
 - `command` is a slash command (leading `/` optional); it runs after the window
-  is restored so the extension can refresh it.
+  is restored so the extension can refresh it. A native window skips it.
 - `icon` accepts `build`, `refresh` or `add` (unknown values fall back to build).
 - `placement` is `drawer` (default, listed under 面板) or `settings` (rendered in
   the app's settings dialog, e.g. 模型供应商). This is data-only: moving an entry

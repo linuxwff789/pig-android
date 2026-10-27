@@ -79,6 +79,37 @@ The app is designed to survive screen locks, Doze and process death:
   50–80%) and an About section with the app version plus a GitHub release update
   check.
 
+## Backup, restore and uninstall
+
+Settings → **备份与维护** moves the whole Termux-side install around and removes
+it again. The app never reads `~/.pig` itself: the relay streams the data over
+the same loopback socket (protocol: `docs/protocol.md`).
+
+- **导出备份** writes a gzipped tar to `Download/Pig/pig-backup-<time>.tar.gz`
+  on Android 10+ (MediaStore, no permission); older releases use the system save
+  dialog. Two switches choose what goes in: **会话记录** (the bulk - tens of MB)
+  and **UI pack**; API keys, `models.json`, `settings.json`,
+  `custom-endpoints.json`, extensions and `~/.pig/state` are always included.
+  The file therefore contains **plaintext secrets** - the dialog says so before
+  the first export. Caches, crash output, logs and symlinks are skipped.
+- **导入备份** picks a `.tar.gz` and asks once. The relay verifies the checksum,
+  writes an automatic full backup to `~/.pig/backups/` first, then merges the
+  archive over `~/.pig` (restored files overwrite same-named ones; sessions not
+  in the archive are kept). Only `.pig/` entries are accepted, and traversal,
+  symlinks and devices are ignored. Afterwards the relay stops every pig process
+  so the restored settings, models and keys are actually loaded, and the app
+  reconnects and reloads the pack and session list.
+- **卸载 pig 与 pig-relay** stops both processes and deletes
+  `$PREFIX/bin/pig`, `pig-relay` and the older `pig-relay.*` copies, plus the
+  install receipt. An optional switch **同时删除 ~/.pig 数据** (off by default)
+  also removes config, keys, models, sessions and UI packs. Without it, running
+  the install command later brings everything back as it was.
+
+Both backup and restore need relay **1.1.34+**: the handshake advertises
+`features: ["backup","restore"]` and the buttons stay disabled with a hint when
+an older relay is connected. Progress (bytes, and percent while exporting) is
+shown in the same section; dismissing the dialog does not cancel the transfer.
+
 ## UI pack
 
 `~/.pig/android-ui/` drives colors, typography, layout switches, component
@@ -112,6 +143,35 @@ report a wrong or missing `contextWindow`; the override accepts plain tokens or
 `128K` / `1M`, is stored per `provider/model`, and immediately recomputes the
 header percentage (`used / override`). `恢复自动` removes it and falls back to
 the value reported by the provider.
+
+## Provider manager
+
+Settings → **模型供应商** (the UI pack's `nav.json` entry; `window: native:providers`) opens a
+native screen, not a pack-generated window:
+
+- Lists every provider in `~/.pig/agent/custom-endpoints.json` with its base URL,
+  API type, model count, whether a key is stored, and whether models are fetched
+  automatically. Providers defined in `models.json` are shown read-only.
+- **新建 / 编辑** writes the same file the `custom-endpoints` extension reads,
+  preserving keys the form does not edit (`headers`, `oauth`, `defaults`, refresh
+  options). The API key is write-only: the app only learns `hasKey`, so leaving
+  the field empty keeps the stored key; a checkbox clears it.
+- **刷新模型列表** asks the relay to fetch `{baseUrl}/models` (or `modelsUrl`) with
+  the same auth rules as the session (`Authorization: Bearer`, `x-api-key` for
+  Anthropic, `?key=` for Google, custom `headers`/`modelsHeaders`) and then opens
+  a **native selection window**: searchable, checkable, 全选/清空, showing id and
+  context size. The picked subset is written as an explicit `models` array and
+  the full fetched list stays in `custom-endpoints.cache.json`, so reopening the
+  picker needs no network call.
+- **自动获取全部模型** keeps `models: "auto"`: every fetched model is registered at
+  the next session start, with the cached list used when the endpoint is down.
+- Save/delete restart pig (same session file) so the extension re-reads the file;
+  the app then refreshes `get_available_models`. `$ENV` and `!command` keys are
+  expanded in Termux, and `PIG_OFFLINE=1` disables fetching.
+
+The `provider-ui` extension still exists for CLI users (`/provider-ui`,
+`/providerui.save`, `/providerui.refresh`, `/providerui.remove`), but it no
+longer writes `windows/providers.json`.
 
 ## Images
 

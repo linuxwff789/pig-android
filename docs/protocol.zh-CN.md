@@ -15,8 +15,11 @@
 成功后 relay 启动 `pig --mode rpc` 并发送：
 
 ```json
-{"type":"relay_hello","protocol":"relay/1","cwd":"/data/data/com.termux/files/home","uiDir":"/data/data/com.termux/files/home/.pig/android-ui","pigPid":12345}
+{"type":"relay_hello","protocol":"relay/1","version":"1.1.34","features":["backup","restore","providers"],"cwd":"/data/data/com.termux/files/home","uiDir":"/data/data/com.termux/files/home/.pig/android-ui","pigPid":12345}
 ```
+
+`features` 列出 relay 支持的可选控制帧。客户端应先看它，而不是靠
+`unknown relay frame` 才发现帧不存在；1.1.34 之前的 relay 不带这两个字段。
 
 失败时它发送 `relay_error` 并关闭连接。token 使用常量时间比较。
 
@@ -38,6 +41,11 @@
 | `relay_model_override` | `id`、`provider`、`model`、`contextWindow` | `relay_model_override`（`provider`、`model`、`contextWindow`） |
 | `relay_model_override` | `contextWindow` 超出 0…10 000 000 或 provider 未知 | `relay_model_override_error`（`message`） |
 | `relay_restart` | | 杀死并按同一 session 文件重新启动 pig（`relay_restarted`）；用于固定上下文窗口后 |
+| `relay_backup` | `id`，可选 `sessions`/`ui` 布尔值（默认 true） | `relay_backup_start`，然后若干 `relay_backup_chunk`，最后 `relay_backup_done` 或 `relay_backup_error` |
+| `relay_backup_cancel` | `id` | 正在运行的导出以 `relay_backup_error`（`cancelled: true`）结束 |
+| `relay_restore_begin` | `id`、`name`、`size` | `relay_restore_ready`（`max` 为归档大小上限）或 `relay_restore_error` |
+| `relay_restore_chunk` | `id`、`data`（base64） | 无；出错时以 `relay_restore_error` 中止 |
+| `relay_restore_end` | `id`、已上传字节的 `sha256` | `relay_restore_done`（`entries`、`bytes`、`backup`）或 `relay_restore_error` |
 | `relay_stop` | | 关闭连接 |
 
 ## 历史记录分页
@@ -97,6 +105,86 @@ App 将 relay 级故障作为提示保留在对话记录中：它们会追加到
 PiG 在启动时读取 `models.json`，并且不会在 `set_model` 时重新读取，因此新窗口只对之后启动的 agent 生效——运行中的 agent 保留其旧值。这就是 App 在覆盖成功后接着发送 `relay_restart`（见上文）的原因：relay 停止 agent 并重新打开同一 session 文件，因此对话记录得以保留，固定值也随之生效。`get_session_stats` 会报告 `contextUsage.contextWindow`，App 正是拿它与固定的窗口比较（也是它驱动 `context` 绑定上的 `⏳` 标记）。
 
 这些值由 pig 在进程启动时读取，因此改动只对之后新启动的会话生效；运行中的 pig 保留其已加载的值。
+
+## 供应商管理
+
+App 原生的 模型供应商 页面通过这些帧读写
+`~/.pig/agent/custom-endpoints.json`。API Key 只写不读：`relay_providers` 只报告
+`hasKey`，从不返回 Key；保存时不带 `apiKey` 就保留已存的 Key。
+
+| 帧 | 字段 | 响应 |
+| --- | --- | --- |
+| `relay_providers` | `id` | `relay_providers`（`providers`、`modelsProviders`、`path`、`offline`） |
+| `relay_provider_save` | `id`、`entry` | `relay_provider_saved`（`provider`、`path`，可选 `warning`） |
+| `relay_provider_delete` | `id`、`entry.id` | `relay_provider_deleted`（`provider` 为 id） |
+| `relay_provider_models` | `id`、`entry`（草稿：`id`、`baseUrl`、`api`，可选 `apiKey`/`modelsUrl`） | `relay_provider_models`（`provider`、`models`、`fetchedAt`） |
+
+任何失败都返回 `relay_provider_error`，带 `op`（`list` / `save` / `delete` /
+`refresh`）和 `message`。
+
+保存时的 `entry`：
+
+```json
+{"id": "gproxy", "name": "g", "baseUrl": "https://…/v1",
+ "api": "openai-completions", "apiKey": "sk-…", "clearKey": false,
+ "auto": true, "modelsUrl": "",
+ "models": [{"id": "m1", "name": "m1", "contextWindow": 128000, "maxTokens": 8192}],
+ "cacheModels": [ … ]}
+```
+
+- `auto: true` 写入 `models: "auto"`；`cacheModels` 成为该供应商在
+  `custom-endpoints.cache.json` 里的缓存，会话无需联网即可注册模型。
+  `auto: false` 写入显式的 `models` 数组（空数组会被拒绝），同时把
+  `cacheModels` 留在缓存里供下次选择窗使用。
+- 表单不编辑的键（`headers`、`oauth`、`defaults`、刷新选项）会保留。写入是原子的，
+  并保留 `custom-endpoints.json.bak-<时间>-pre-app`。
+- `relay_provider_models` 只获取模型，不碰文件。relay 使用与会话一致的请求头规则
+  （`Authorization: Bearer`；Anthropic 用 `x-api-key` + `anthropic-version`；
+  Google 用 `?key=`；显式 `headers`/`modelsHeaders`），在 Termux 里展开
+  `$ENV`/`${ENV}`/`!command`，并在设置 `PIG_OFFLINE`/`PI_OFFLINE` 时拒绝。
+- relay 不负责把供应商注册进运行中的会话：App 在保存/删除成功后发送
+  `relay_restart`，新的 pig 启动时由 `custom-endpoints` 扩展读取文件。
+
+## 备份与恢复
+
+`~/.pig` 在 Termux 的私有数据目录里，App 无法直接读写，所以由 relay 充当文件
+服务器。备份是一个 **gzip tar**，条目名相对于 Termux home
+（`$HOME/.pig/agent/...`、`.pig/state/...`、`.pig/android-ui/...`），按 base64
+分块在同一条连接上流式发送：
+
+```
+→ {"type":"relay_backup","id":"b1","sessions":true,"ui":true}
+← {"type":"relay_backup_start","id":"b1","name":"pig-backup-20261027-120000.tar.gz","entries":312,"bytes":68123456}
+← {"type":"relay_backup_chunk","id":"b1","seq":0,"data":"H4sI…"}
+← {"type":"relay_backup_chunk","id":"b1","seq":1,"data":"…"}
+← {"type":"relay_backup_done","id":"b1","name":"…","entries":312,"bytes":9123456,"sha256":"…"}
+```
+
+- `start` 里的 `bytes` 是未压缩大小（用于进度条）；`done` 里的 `bytes` 和
+  `sha256` 对应实际发送的压缩流。
+- `sessions: false` 不打包 `agent/sessions`（归档的大头）；`ui: false` 不打包
+  `android-ui`。密钥（`agent/auth.json`、`agent/models.json`、
+  `agent/custom-endpoints.json`）始终包含，所以备份是敏感文件。
+- 缓存与噪音不打包：`crash-output/`、`backups/`、`.log` 文件、
+  `node_modules/`、`__pycache__/`、`.git/` 和符号链接。
+- 每个 chunk 最多 48 KiB 原始字节；归档上限 1 GiB，同一时间只允许一个传输。
+
+恢复就是同样的字节反着走。relay 先写入暂存文件，校验声明的 `size` 和
+SHA-256，通过后才动现有数据：
+
+```
+→ {"type":"relay_restore_begin","id":"r1","name":"pig-backup.tar.gz","size":9123456}
+← {"type":"relay_restore_ready","id":"r1","max":1073741824}
+→ {"type":"relay_restore_chunk","id":"r1","data":"H4sI…"}        （重复）
+→ {"type":"relay_restore_end","id":"r1","sha256":"…"}
+← {"type":"relay_restore_done","id":"r1","entries":312,"bytes":9123456,"backup":"/…/.pig/backups/pig-auto-before-restore-20261027-120500.tar.gz"}
+```
+
+解压前，relay 会先把当前数据完整备份到 `~/.pig/backups/`。解压只接受 `.pig/`
+下的条目，拒绝绝对路径和 `..`，从不创建符号链接、硬链接或设备文件；现有但
+归档里没有的文件会保留（合并，而不是清空）。恢复成功后所有 pig 进程都会停止
+——它们在启动时缓存设置、模型和密钥 —— 下一次 RPC 会用恢复后的文件重新启动。
+还在跑的会话会被结束，不会写回。
 
 ## UI pack
 

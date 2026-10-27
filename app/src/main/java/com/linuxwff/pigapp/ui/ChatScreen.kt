@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.text.format.DateUtils
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -159,6 +160,7 @@ import androidx.compose.ui.platform.LocalDensity
 import com.linuxwff.pigapp.AppLog
 import com.linuxwff.pigapp.AppUiState
 import com.linuxwff.pigapp.AppViewModel
+import com.linuxwff.pigapp.BackupExporter
 import com.linuxwff.pigapp.ChatMsg
 import com.linuxwff.pigapp.LocalPackInfo
 import com.linuxwff.pigapp.LogExporter
@@ -536,6 +538,9 @@ fun PigApp(vm: AppViewModel) {
                     showStats = true
                 },
             ) { showSettings = false }
+        }
+        if (ui.providerManagerOpen) {
+            ProviderManagerDialog(vm, ui) { vm.closeProviderManager() }
         }
         if (showStats) {
             StatsDialog(ui, onRefresh = vm::refreshStats) { showStats = false }
@@ -1224,6 +1229,25 @@ private fun SettingsDialog(
             },
         )
     }
+    // ---- Backup / restore / uninstall -----------------------------------
+    var exportDialog by remember { mutableStateOf(false) }
+    var uninstallDialog by remember { mutableStateOf(false) }
+    // Android < 10 cannot write Download/Pig without a permission: remember the
+    // choices while the system save picker is open.
+    var pendingExport by remember { mutableStateOf<Pair<Boolean, Boolean>?>(null) }
+    var pendingImport by remember { mutableStateOf<Pair<Uri, String>?>(null) }
+    val backupSaver = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(BackupExporter.MIME),
+    ) { uri ->
+        val spec = pendingExport
+        pendingExport = null
+        if (uri != null && spec != null) vm.exportBackupToUri(uri, spec.first, spec.second)
+    }
+    val backupPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) pendingImport = uri to displayName(context, uri)
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -1747,6 +1771,126 @@ private fun SettingsDialog(
                     }
                 }
 
+                HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
+                Text(
+                    packText("settings.maintenance", "备份与维护"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            packText("settings.backupExport", "导出备份"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            packText(
+                                "settings.backupExportHint",
+                                "打包 ~/.pig：密钥、模型、设置、扩展、会话与 UI pack；文件含明文密钥，请妥善保管",
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(
+                        enabled = ui.backupRemote && !ui.maintenanceBusy,
+                        onClick = { exportDialog = true },
+                    ) {
+                        Text(packText("settings.backupExportAction", "导出"))
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            packText("settings.backupImport", "导入备份"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            packText(
+                                "settings.backupImportHint",
+                                "从 .tar.gz 恢复覆盖 ~/.pig；恢复前自动备份现有数据，之后重启 pig",
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(
+                        enabled = ui.backupRemote && !ui.maintenanceBusy,
+                        onClick = { runCatching { backupPicker.launch(arrayOf("*/*")) } },
+                    ) {
+                        Text(packText("settings.backupImportAction", "导入"))
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            packText("settings.uninstall", "卸载 pig 与 pig-relay"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            packText(
+                                "settings.uninstallHint",
+                                "停止进程并删除 Termux 里的二进制；~/.pig 数据默认保留",
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(
+                        enabled = !ui.maintenanceBusy,
+                        onClick = { uninstallDialog = true },
+                    ) {
+                        Text(
+                            packText("settings.uninstallAction", "卸载"),
+                            color = scheme.error,
+                        )
+                    }
+                }
+                if (!ui.backupRemote && ui.connected) {
+                    Text(
+                        packText(
+                            "settings.backupNeedsRelay",
+                            "备份需要新版 relay：在 Termux 重跑安装命令，再点上面的「重启 relay」。",
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.error,
+                    )
+                }
+                if (ui.maintenanceBusy) {
+                    val total = ui.maintenanceTotal
+                    val sent = ui.maintenanceSent
+                    Column {
+                        Text(
+                            buildString {
+                                append(ui.maintenanceLabel)
+                                if (sent > 0) {
+                                    append(" · ")
+                                    append(formatBytes(sent))
+                                    if (total > 0) {
+                                        append(" / ")
+                                        append(formatBytes(total))
+                                    }
+                                }
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        LinearProgressIndicator(
+                            progress = {
+                                if (total > 0) {
+                                    (sent.toFloat() / total).coerceIn(0f, 1f)
+                                } else {
+                                    0f
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = scheme.primary,
+                            trackColor = scheme.surfaceVariant,
+                        )
+                    }
+                }
+
                 if (ui.uiPack.layout.showSkinSwitcher &&
                     ui.uiPack.layout.skinSwitcherPlacement in setOf("settings", "both") &&
                     ui.uiPack.skins.isNotEmpty()
@@ -2096,6 +2240,217 @@ private fun SettingsDialog(
             onDismiss = { updateInfo = null },
         )
     }
+    if (exportDialog) {
+        BackupExportDialog(
+            onStart = { sessions, uiPack ->
+                exportDialog = false
+                if (!vm.exportBackupToDownload(sessions, uiPack)) {
+                    // Android < 10: ask for a target through the system picker.
+                    pendingExport = sessions to uiPack
+                    runCatching { backupSaver.launch(BackupExporter.suggestedName()) }
+                        .onFailure { pendingExport = null }
+                }
+            },
+            onDismiss = { exportDialog = false },
+        )
+    }
+    pendingImport?.let { (uri, name) ->
+        BackupImportDialog(
+            fileName = name,
+            onConfirm = {
+                pendingImport = null
+                vm.importBackup(uri, name)
+            },
+            onDismiss = { pendingImport = null },
+        )
+    }
+    if (uninstallDialog) {
+        UninstallDialog(
+            onConfirm = { purge ->
+                uninstallDialog = false
+                vm.uninstallPig(purge)
+            },
+            onDismiss = { uninstallDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun BackupExportDialog(
+    onStart: (sessions: Boolean, uiPack: Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    var sessions by remember { mutableStateOf(true) }
+    var uiPack by remember { mutableStateOf(true) }
+    PackAlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(packText("backup.exportTitle", "导出备份")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    packText(
+                        "backup.exportBody",
+                        "备份包含 ~/.pig 下的配置、扩展、密钥、模型列表、UI pack 与会话。",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    packText(
+                        "backup.exportSecrets",
+                        "⚠ 备份里有明文 API key 与令牌。只保存到你信任的位置，不要随手分享。",
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.error,
+                )
+                SettingToggle(
+                    title = packText("backup.includeSessions", "包含会话记录"),
+                    subtitle = packText(
+                        "backup.includeSessionsHint",
+                        "占备份的大部分体积；关掉只备份配置与密钥",
+                    ),
+                    checked = sessions,
+                    onCheckedChange = { sessions = it },
+                )
+                SettingToggle(
+                    title = packText("backup.includeUi", "包含 UI pack"),
+                    subtitle = packText("backup.includeUiHint", "主题、布局、皮肤与图标"),
+                    checked = uiPack,
+                    onCheckedChange = { uiPack = it },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onStart(sessions, uiPack) }) {
+                Text(packText("backup.exportAction", "导出"))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(packText("dialog.cancel", "取消"))
+            }
+        },
+    )
+}
+
+@Composable
+private fun BackupImportDialog(
+    fileName: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    PackAlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(packText("backup.importTitle", "导入备份")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    fileName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    packText(
+                        "backup.importBody",
+                        "备份中的文件会覆盖 ~/.pig 下的同名文件；备份里没有的现有会话会保留。",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    packText(
+                        "backup.importAuto",
+                        "恢复前 relay 会先把当前 ~/.pig 打包到 ~/.pig/backups/；恢复后 pig 用新配置重新启动。",
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(packText("backup.importAction", "恢复"), color = scheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(packText("dialog.cancel", "取消"))
+            }
+        },
+    )
+}
+
+@Composable
+private fun UninstallDialog(
+    onConfirm: (purgeData: Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    var purge by remember { mutableStateOf(false) }
+    PackAlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(packText("backup.uninstallTitle", "卸载 pig 与 pig-relay")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    packText(
+                        "backup.uninstallBody",
+                        "会停止正在运行的 pig 和 relay，并删除 Termux 里的 pig、pig-relay 二进制。",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                SettingToggle(
+                    title = packText("backup.uninstallPurge", "同时删除 ~/.pig 数据"),
+                    subtitle = packText(
+                        "backup.uninstallPurgeHint",
+                        "配置、密钥、模型、会话和 UI pack 全部删除，无法撤销",
+                    ),
+                    checked = purge,
+                    onCheckedChange = { purge = it },
+                )
+                Text(
+                    packText(
+                        "backup.uninstallKeep",
+                        "不勾选时数据保留，之后重新安装即可继续使用。",
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (purge) scheme.error else scheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(purge) }) {
+                Text(packText("backup.uninstallAction", "卸载"), color = scheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(packText("dialog.cancel", "取消"))
+            }
+        },
+    )
+}
+
+/** Display name of a picked document, for the import confirmation. */
+private fun displayName(context: Context, uri: Uri): String {
+    val queried = runCatching {
+        context.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+    }.getOrNull()
+    return queried ?: uri.lastPathSegment ?: "pig-backup.tar.gz"
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1L shl 30 -> "%.1f".format(bytes / (1L shl 30).toFloat()).removeSuffix(".0") + " GB"
+    bytes >= 1L shl 20 -> "%.1f".format(bytes / (1L shl 20).toFloat()).removeSuffix(".0") + " MB"
+    bytes >= 1024 -> "${bytes / 1024} KB"
+    else -> "$bytes B"
 }
 
 /**

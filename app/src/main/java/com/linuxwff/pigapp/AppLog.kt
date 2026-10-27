@@ -67,6 +67,9 @@ object AppLog {
         when {
             // One line per streamed chunk and one per keepalive would drown
             // everything else; the final `message_end` carries the result.
+            // Backup chunks are base64 megabytes; the start/done frames carry
+            // the name, size and checksum, which is all the log needs.
+            type == "relay_backup_chunk" || type == "relay_restore_chunk" -> Unit
             type == "relay_pong" || type == "message_update" -> Unit
             type == "relay_ui_pack" -> {
                 val names = frame.optJSONObject("files")?.keys()

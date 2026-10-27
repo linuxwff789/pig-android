@@ -88,6 +88,9 @@ type session struct {
 	logMu   sync.Mutex
 	logRing []logLine
 
+	// One backup/restore at a time; see backup.go.
+	transfer transferState
+
 	stopOnce sync.Once
 	stopped  chan struct{}
 	// extReady closes once the extensions the relay carries are written and
@@ -713,6 +716,8 @@ func (s *session) attach(conn net.Conn) (*connWriter, uint64, error) {
 	_ = out.send(frame{
 		"type":     "relay_hello",
 		"protocol": protocol,
+		"version":  buildVersion,
+		"features": relayFeatures,
 		"cwd":      s.cwd,
 		"uiDir":    s.uiDir,
 		"pigPid":   pid,
@@ -758,6 +763,9 @@ func (s *session) detach(conn net.Conn, gen uint64) {
 	}
 	s.mu.Unlock()
 	_ = conn.Close()
+	// A backup/restore is a request from this client; without it the transfer
+	// has nowhere to go and must not hold ~/.pig hostage.
+	s.abandonTransfer()
 	// No client: keep streaming turns, drop an idle active process so a later
 	// switch to history does not need one.
 	go func() {
@@ -1203,6 +1211,12 @@ func (s *session) handleClientLine(line []byte) {
 		Model       string         `json:"model"`
 		Window      *int           `json:"contextWindow"`
 		Limit       *int           `json:"limit"`
+		Entry       map[string]any `json:"entry"`
+		Sessions    *bool          `json:"sessions"`
+		UI          *bool          `json:"ui"`
+		Size        int64          `json:"size"`
+		Sha256      string         `json:"sha256"`
+		Data        string         `json:"data"`
 	}
 	if err := json.Unmarshal(line, &head); err != nil {
 		_ = s.send(frame{"type": "relay_error", "message": "invalid json: " + err.Error()})
@@ -1311,6 +1325,29 @@ func (s *session) handleClientLine(line []byte) {
 		}
 	case "relay_settings":
 		handleSettings(s, head.ID, head.Set)
+	case "relay_backup":
+		// Both default to on: a complete backup is the safe default, and the
+		// app sends explicit switches when the user unticks something.
+		includeSessions := head.Sessions == nil || *head.Sessions
+		includeUI := head.UI == nil || *head.UI
+		s.startBackup(head.ID, includeSessions, includeUI)
+	case "relay_backup_cancel":
+		s.transfer.cancel.Store(true)
+	case "relay_restore_begin":
+		s.beginRestore(head.ID, head.Name, head.Size)
+	case "relay_restore_chunk":
+		s.restoreChunk(head.ID, head.Data)
+	case "relay_restore_end":
+		s.endRestore(head.ID, head.Sha256)
+	case "relay_providers":
+		s.sendProviders(head.ID)
+	case "relay_provider_save":
+		s.saveProvider(head.ID, head.Entry)
+	case "relay_provider_delete":
+		s.deleteProvider(head.ID, head.Entry)
+	case "relay_provider_models":
+		// A fetch can take seconds; do not block pings or the transcript.
+		go s.sendProviderModels(head.ID, head.Entry)
 	case "relay_model_override":
 		handleModelOverride(s, head.ID, head.Provider, head.Model, head.Window)
 	case "relay_ui":

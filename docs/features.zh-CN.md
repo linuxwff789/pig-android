@@ -63,6 +63,33 @@ app 的设计目标是能在锁屏、Doze 和进程被杀后存活：
   固定尺寸。它还有一个自定义自动压缩阈值（预设 50–80%），以及显示 App 版本并
   检查 GitHub 发布更新的「关于」区。
 
+## 备份、恢复与卸载
+
+设置 → **备份与维护** 可以把整个 Termux 端安装搬走，也可以把它删掉。App 从不
+直接读写 `~/.pig`：relay 用同一条回环连接把数据流式传出来（协议见
+`docs/protocol.md`）。
+
+- **导出备份** 在 Android 10+ 把 gzip tar 写到
+  `Download/Pig/pig-backup-<时间>.tar.gz`（MediaStore，不需要权限）；更老的系统
+  走系统保存对话框。两个开关决定内容：**会话记录**（体积大头，几十 MB）和
+  **UI pack**；API key、`models.json`、`settings.json`、
+  `custom-endpoints.json`、扩展和 `~/.pig/state` 始终包含。因此文件里有
+  **明文密钥** —— 第一次导出前对话框会明确提示。缓存、崩溃输出、日志和符号
+  链接不打包。
+- **导入备份** 选择一个 `.tar.gz` 并确认一次。relay 先校验 checksum，把当前
+  数据完整备份到 `~/.pig/backups/`，再把归档合并进 `~/.pig`（同名文件被覆盖，
+  归档里没有的会话保留）。只接受 `.pig/` 下的条目，路径穿越、符号链接和设备
+  文件会被忽略。完成后 relay 会停掉所有 pig 进程，确保恢复的设置、模型和密钥
+  真正生效；App 自动重连并重新加载 UI pack 与会话列表。
+- **卸载 pig 与 pig-relay** 会停止两个进程，并删除 `$PREFIX/bin/pig`、
+  `pig-relay` 和旧的 `pig-relay.*` 副本以及安装回执。可选的
+  **同时删除 ~/.pig 数据**（默认关闭）会连配置、密钥、模型、会话和 UI pack
+  一起删掉。不勾选时，之后重跑安装命令即可原样恢复。
+
+备份和恢复都需要 relay **1.1.34+**：握手会声明
+`features: ["backup","restore"]`，连接旧 relay 时按钮保持禁用并给出提示。
+进度（已传字节，导出时还有百分比）显示在同一区域；关掉对话框不会中断传输。
+
 ## UI pack
 
 `~/.pig/android-ui/` 驱动颜色、字体排版、布局开关、组件
@@ -96,6 +123,30 @@ app 的私有存储，并在它们与 relay pack 之间切换
 `128K` / `1M`，按 `provider/model` 存储，并立即
 重算头部百分比（`used / override`）。`恢复自动` 会移除它并回退到
 供应商报告的值。
+
+## 供应商管理
+
+设置 → **模型供应商**（UI pack 的 `nav.json` 条目，`window: native:providers`）打开的是
+App 原生页面，不再是 pack 生成的窗口：
+
+- 列出 `~/.pig/agent/custom-endpoints.json` 里的每个供应商：Base URL、API 类型、
+  模型数量、是否保存了 Key、是否自动获取。`models.json` 里定义的供应商只读展示。
+- **新建 / 编辑** 写的就是 `custom-endpoints` 扩展读取的那个文件，并保留表单不编辑
+  的键（`headers`、`oauth`、`defaults`、刷新选项）。API Key 只写不读：App 只知道
+  `hasKey`，所以留空表示保持原 Key，勾选可以清除。
+- **刷新模型列表** 让 relay 请求 `{baseUrl}/models`（或 `modelsUrl`），鉴权规则与会话
+  一致（`Authorization: Bearer`、Anthropic 用 `x-api-key`、Google 用 `?key=`、
+  自定义 `headers`/`modelsHeaders`），随后弹出 **原生选择窗**：可搜索、可勾选、
+  支持全选/清空，显示 id 与上下文大小。勾选的子集会写成显式 `models` 数组，完整
+  列表仍留在 `custom-endpoints.cache.json`，再次打开选择窗不需要联网。
+- **自动获取全部模型** 保持 `models: "auto"`：下次会话启动时注册全部模型；端点
+  挂掉时使用缓存列表。
+- 保存/删除后会重启 pig（同一会话文件），让扩展重新读文件；随后 App 刷新
+  `get_available_models`。`$ENV` 与 `!命令` 会在 Termux 里展开，`PIG_OFFLINE=1`
+  时禁止获取。
+
+`provider-ui` 扩展仍保留给 CLI 用户（`/provider-ui`、`/providerui.save`、
+`/providerui.refresh`、`/providerui.remove`），但不再写 `windows/providers.json`。
 
 ## 图片
 

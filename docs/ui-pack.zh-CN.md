@@ -194,7 +194,7 @@ App 重启后优先级相同：pack 提供默认值，已保存的偏好（如�
     {
       "id": "providers",
       "label": "模型供应商",
-      "window": "providers",
+      "window": "native:providers",
       "command": "provider-ui",
       "icon": "build",
       "placement": "settings"
@@ -204,9 +204,10 @@ App 重启后优先级相同：pack 提供默认值，已保存的偏好（如�
 ```
 
 - `window` 是缓存的 `windows/<id>.json` 的 id；点击该条目会恢复它，即使用户此前
-  已关闭过。
+  已关闭过。`native:providers`（以及旧的 `providers`）会打开 App 内置的模型
+  供应商管理页——pack 只提供入口，界面由 App 自己实现。
 - `command` 是一个斜杠命令（开头的 `/` 可选）；它在窗口恢复后执行，以便扩展刷新
-  该窗口。
+  该窗口。原生窗口不会执行它。
 - `icon` 接受 `build`、`refresh` 或 `add`（未知值回退到 build）。
 - `placement` 是 `drawer`（默认值，列在 面板 下）或 `settings`（渲染在 App 的
   设置对话框中，例如 模型供应商）。这只是数据：把条目在抽屉和设置之间移动不需要

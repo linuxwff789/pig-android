@@ -51,6 +51,7 @@ class RunCommandReceiver : BroadcastReceiver() {
         const val KIND_BOOTSTRAP = "bootstrap"
         const val KIND_RELAY = "relay"
         const val KIND_RESTART = "restart"
+        const val KIND_UNINSTALL = "uninstall"
 
         // TermuxConstants.TERMUX_APP.RUN_COMMAND_SERVICE / TERMUX_SERVICE extras.
         private const val EXTRA_RESULT_BUNDLE = "result"
@@ -62,6 +63,7 @@ class RunCommandReceiver : BroadcastReceiver() {
         const val REQUEST_BOOTSTRAP = 1
         const val REQUEST_RELAY = 2
         const val REQUEST_RESTART = 3
+        const val REQUEST_UNINSTALL = 4
     }
 }
 
