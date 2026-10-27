@@ -46,6 +46,17 @@ curl -fsSL https://github.com/linuxwff789/pig-android/releases/download/v1.1.27/
 最后它用 RPC 模式启动一次 `pig` 并请求扩展列表：工具链装不上、扩展编译不出来时会当场报出来，而不是过一阵变成「App 里只有内置命令」。失败时会自动跑一次
 `pig update --extensions` 再探一次（缓存的失败构建只有强制重建才会好）。
 
+探测之前脚本会运行 `pig-relay --prepare`：解出内置 pigkit 源码和 plan 扩展并注册，
+所以干净的 Termux 不会出现「扩展加载成功」但其实 `/plan`、`/provider-ui` 还不存在的情况。
+探测本身也会按名字检查这些路径，不只看 `success:true`。
+
+安装脚本分为 **9 个编号阶段**（环境、curl、Termux 开关、pig、Go、relay、UI 目录、
+扩展、校验），每一阶段都写入 `~/.pig/install-status.json`（`state` 为
+`running` / `done` / `error`）。relay 1.1.36+ 会监视这个文件：安装进行中
+**不启动 pig**，并把阶段以 `relay_install` 帧转给 App，所以设置对话框显示
+`步骤 N/9 · …` 和真实进度条，而不是按时间猜。任何阶段失败（包括扩展加载不了）
+都会写 `state: error` 并以非 0 退出——App 会明确报错，不会连上一个半成品后端。
+
 所有下载都带重试，并在 TLS/HTTP2 断连（curl 退出码 35/53/56 等）时自动退回
 HTTP/1.1；下载先写 `.part`、校验非空（relay 还校验 ELF magic）后才替换，所以失败
 不会留下半截脚本或半个二进制。

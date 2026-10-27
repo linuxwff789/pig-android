@@ -24,6 +24,41 @@ RELAY_URL="" # resolved below, once the release to install is known
 
 say() { printf '==> %s\n' "$*"; }
 
+# The app cannot see this script's stdout until Termux returns, so progress is
+# also published as a small file. relay 1.1.36+ watches it, holds agent RPCs
+# while state=running and forwards the stages to the app (relay_install).
+TOTAL_STEPS=9
+STATUS_FILE="$HOME/.pig/install-status.json"
+STATUS_WRITTEN=0
+
+status() { # step state message
+    _st_step=$1
+    _st_state=$2
+    _st_message=$3
+    mkdir -p "$HOME/.pig" 2>/dev/null || true
+    _st_tmp="$STATUS_FILE.tmp.$$"
+    if printf '{"state":"%s","step":%s,"total":%s,"message":"%s","updated":%s}\n' \
+        "$_st_state" "$_st_step" "$TOTAL_STEPS" "$_st_message" "$(date +%s)" >"$_st_tmp" 2>/dev/null; then
+        mv -f "$_st_tmp" "$STATUS_FILE" 2>/dev/null || rm -f "$_st_tmp"
+    fi
+}
+
+step() { # step message
+    status "$1" running "$2"
+    say "[$1/$TOTAL_STEPS] $2"
+}
+
+fail_install() {
+    status 9 error "$1"
+    STATUS_WRITTEN=1
+    printf '\n!! %s\n' "$1" >&2
+    exit 1
+}
+
+# A crash in a `set -e` command must not leave state=running behind: the relay
+# would keep agent requests on hold until the status goes stale.
+trap 'code=$?; if [ "$code" -ne 0 ] && [ "$STATUS_WRITTEN" = 0 ]; then status 9 error "安装脚本异常退出（exit $code）"; fi; exit $code' EXIT
+
 # Downloads are the fragile part on a phone: TLS resets, captive portals and
 # HTTP/2 stacks behind proxies all surface as odd curl exit codes (53 is
 # CURLE_SSL_ENGINE_NOTFOUND, and a bare `curl: (35) TLS connect error:
@@ -103,6 +138,7 @@ fetch_relay_api() {
 # point chosen_mirrors at a mainland mirror (what `termux-change-repo` writes)
 # and leave a choice the user already made alone. Older termux-tools has no
 # chosen_mirrors, hence the sources.list branch below.
+step 1 "准备 Termux 环境（镜像与 apt）"
 SOURCES="$PREFIX/etc/apt/sources.list"
 MIRROR_DIR="$PREFIX/etc/termux/mirrors"
 CHOSEN="$PREFIX/etc/termux/chosen_mirrors"
@@ -139,12 +175,14 @@ elif [ "$NEED_PKG" = 1 ] && [ ! -f "$SOURCES" ] && [ "${PIG_NO_MIRROR:-0}" != "1
     apt-get update -y >/dev/null 2>&1 || true
 fi
 
+step 2 "检查 curl"
 if ! command -v curl >/dev/null 2>&1; then
     say "installing curl"
     pkg install -y curl
 fi
 
 # The app's RUN_COMMAND path is blocked until this is enabled. Keep a backup.
+step 3 "开启 allow-external-apps"
 PROPS="$HOME/.termux/termux.properties"
 mkdir -p "$HOME/.termux"
 if [ -f "$PROPS" ] && grep -qE '^[[:space:]]*allow-external-apps[[:space:]]*=[[:space:]]*true' "$PROPS"; then
@@ -163,6 +201,7 @@ else
 fi
 command -v termux-reload-settings >/dev/null 2>&1 && termux-reload-settings || true
 
+step 4 "安装 pig"
 if ! command -v pig >/dev/null 2>&1; then
     say "installing pig (official install.sh)"
     if fetch https://pi-in-go.dev/install.sh "$PREFIX/tmp/pig-official-install.sh"; then
@@ -176,9 +215,14 @@ else
     say "pig already installed: $(command -v pig)"
 fi
 
+if ! command -v pig >/dev/null 2>&1; then
+    fail_install "pig 没有安装成功；请在 Termux 里查看上面的输出"
+fi
+
 # pig-relay carries the plan extension as Go sources and builds them with the
 # system Go toolchain. Without Go the app works, only /plan stays missing, and
 # the relay retries on every start.
+step 5 "安装 Go"
 if ! command -v go >/dev/null 2>&1; then
     say "installing Go (needed to build the bundled plan extension)"
     if ! pkg install -y golang; then
@@ -199,6 +243,7 @@ fi
 # Install the relay of the requested release, or replace one of another
 # version. `--version` prints "<protocol> <version>", so an older relay (which
 # printed only the protocol) counts as a mismatch.
+step 6 "安装 pig-relay"
 RELAY="$PREFIX/bin/pig-relay"
 relay_version() {
     [ -x "$RELAY" ] || return 0
@@ -287,6 +332,15 @@ else
     fi
 fi
 
+if [ ! -x "$RELAY" ]; then
+    fail_install "pig-relay 没有安装成功；下载可能失败了"
+fi
+have=$(relay_version)
+if [ -n "$version" ] && [ "$have" != "$version" ] && ! version_gt "$have" "$version"; then
+    fail_install "pig-relay 版本不对（当前 ${have:-unknown}，需要 $version）"
+fi
+
+step 7 "准备 UI 目录"
 mkdir -p "$HOME/.pig/android-ui/theme" "$HOME/.pig/android-ui/layout" "$HOME/.pig/android-ui/windows"
 
 # pig compiles the pigkit extensions from Go sources on its first start, and
@@ -305,32 +359,53 @@ probe_extensions() {
     fi
 }
 
-if command -v pig >/dev/null 2>&1; then
-    say "checking that pig loads its extensions"
-    probe=$(probe_extensions)
-    case "$probe" in
-        *'"success":true'*) say "extensions load" ;;
-        *)
-            printf '!! pig could not start with its extensions. Until this is\n'
-            printf '!! fixed the app has no /provider-ui, /endpoints or /plan.\n'
-            printf '%s\n' "$probe" | tail -6
-            say "rebuilding them: pig update --extensions"
-            if pig update --extensions --no-approve >/dev/null 2>&1; then
-                probe=$(probe_extensions)
-                case "$probe" in
-                    *'"success":true'*) say "extensions load after pig update --extensions" ;;
-                    *)
-                        say "still failing. Check that Go is installed:"
-                        say "  pkg install golang && pig update --extensions"
-                        printf '%s\n' "$probe" | tail -6
-                        ;;
-                esac
-            else
-                say "pig update --extensions failed; run it yourself to see why"
-            fi
-            ;;
-    esac
+step 8 "编译并检查扩展"
+say "preparing the embedded extensions"
+if command -v timeout >/dev/null 2>&1; then
+    timeout 300 "$RELAY" --prepare || fail_install "relay 准备内置扩展失败"
+else
+    "$RELAY" --prepare || fail_install "relay 准备内置扩展失败"
 fi
+
+# `success:true` alone is not enough: a fresh pig replies with the built-ins
+# even when /plan and the pigkit commands are missing. Check the paths that
+# matter, then probe again after a repair attempt.
+probe_ok() {
+    case "$probe" in *'"success":true'*) ;; *) return 1 ;; esac
+    case "$probe" in *'/plan"'*) ;; *) return 1 ;; esac
+    case "$probe" in *'provider-ui"'*) ;; *) return 1 ;; esac
+    case "$probe" in *'custom-endpoints"'*) ;; *) return 1 ;; esac
+    return 0
+}
+
+say "checking that pig loads its extensions"
+probe=$(probe_extensions)
+if probe_ok; then
+    say "extensions load"
+else
+    printf '!! pig is missing the bundled extensions. Until this is\n'
+    printf '!! fixed the app has no /provider-ui, /endpoints or /plan.\n'
+    printf '%s\n' "$probe" | tail -6
+    say "rebuilding them: pig update --extensions"
+    pig update --extensions --no-approve >/dev/null 2>&1 ||
+        say "pig update --extensions failed; probing once more anyway"
+    probe=$(probe_extensions)
+    if probe_ok; then
+        say "extensions load after pig update --extensions"
+    else
+        printf '%s\n' "$probe" | tail -8
+        fail_install "扩展没有编译成功，App 会缺少 /plan、/provider-ui 等功能"
+    fi
+fi
+
+step 9 "校验安装结果"
+pig_status=$(pig status 2>&1 | head -1)
+case "$pig_status" in
+    *healthy*) say "$pig_status" ;;
+    *) say "warning: $pig_status" ;;
+esac
+status 9 done "安装完成"
+STATUS_WRITTEN=1
 
 printf '\npig:   %s\nrelay: %s (%s)\n' \
     "$(command -v pig || echo "$PREFIX/bin/pig")" "$RELAY" "$(relay_version)"

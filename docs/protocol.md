@@ -17,7 +17,7 @@ The client must send this within 5 seconds:
 On success the relay spawns `pig --mode rpc` and sends:
 
 ```json
-{"type":"relay_hello","protocol":"relay/1","version":"1.1.34","features":["backup","restore","providers"],"cwd":"/data/data/com.termux/files/home","uiDir":"/data/data/com.termux/files/home/.pig/android-ui","pigPid":12345}
+{"type":"relay_hello","protocol":"relay/1","version":"1.1.34","features":["backup","restore","providers","install"],"cwd":"/data/data/com.termux/files/home","uiDir":"/data/data/com.termux/files/home/.pig/android-ui","pigPid":12345}
 ```
 
 `features` lists optional control frames the relay implements. Clients must gate
@@ -53,6 +53,30 @@ Control frames:
 | `relay_restore_chunk` | `id`, `data` (base64) | none; an error aborts with `relay_restore_error` |
 | `relay_restore_end` | `id`, `sha256` of the uploaded bytes | `relay_restore_done` (`entries`, `bytes`, `backup`) or `relay_restore_error` |
 | `relay_stop` | | closes the connection |
+
+## Install progress
+
+While the Termux installer runs it writes `~/.pig/install-status.json`:
+
+```json
+{"state":"running","step":6,"total":9,"message":"安装 pig-relay","updated":1793086502}
+```
+
+`state` is `running`, `done` or `error`, and `updated` is unix seconds. A relay
+with the `install` feature watches the file and **does not start pig** while
+`state` is `running` (agent frames are dropped, pings/UI/relay frames still
+work); it forwards every change to the app, and sends the current stage right
+after `relay_hello`:
+
+```json
+{"type":"relay_install","state":"running","step":6,"total":9,"message":"安装 pig-relay","updated":1793086502}
+```
+
+On `done` (or `error`) the gate opens and the app should re-send `get_state` /
+`get_messages` / `get_available_models`, because requests made during the
+install were dropped. A status older than 45 minutes is ignored so a crashed
+installer cannot lock the agent forever; a missing file means "no install in
+progress".
 
 ## History paging
 

@@ -3403,22 +3403,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // buttons instead of letting them fail with "unknown frame".
                 var backupRemote = false
                 var providerRemote = false
+                var installStatusRemote = false
                 event.optJSONArray("features")?.let { features ->
                     for (i in 0 until features.length()) {
                         when (features.optString(i)) {
                             "backup" -> backupRemote = true
                             "providers" -> providerRemote = true
+                            "install" -> installStatusRemote = true
                         }
                     }
                 }
+                // A new relay sends `relay_install` before this hello. While
+                // the installer is running the setup dialog has to stay open;
+                // an old relay cannot report stages, so its hello closes it.
+                val stillInstalling = installStatusRemote &&
+                    event.optBoolean("installing", ui.installRunning)
                 ui = ui.copy(
                     error = null,
-                    setup = false,
-                    setupHint = null,
-                    installRunning = false,
+                    setup = stillInstalling,
+                    setupHint = if (stillInstalling) ui.setupHint else null,
+                    installRunning = stillInstalling,
                     termuxBlocked = false,
                     backupRemote = backupRemote,
                     providerRemote = providerRemote,
+                    installStatusRemote = installStatusRemote,
                 )
                 warnedMissingExtensions = ""
                 warnedIncompleteRelayPack = false
@@ -3428,7 +3436,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         "version=${event.optString("version")} " +
                         "cwd=${event.optString("cwd")} ui=${event.optString("uiDir")} " +
                         "pigPid=${event.optInt("pigPid")} " +
-                        "backup=$backupRemote",
+                        "backup=$backupRemote install=$installStatusRemote",
                 )
                 lastPongAt = System.currentTimeMillis()
                 restoreChecked = false
@@ -3581,6 +3589,56 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // One toast for the newest failure, not one per replayed line.
                 lastError?.let {
                     toastRelayError(it.optString("source", "relay"), it.optString("message"))
+                }
+            }
+            "relay_install" -> {
+                val state = event.optString("state")
+                val step = event.optInt("step")
+                val total = event.optInt("total")
+                val message = event.optString("message")
+                when (state) {
+                    "running" -> ui = ui.copy(
+                        installRunning = true,
+                        setup = true,
+                        installStep = step,
+                        installTotal = total,
+                        installMessage = message,
+                        setupHint = null,
+                    )
+                    "done" -> {
+                        ui = ui.copy(
+                            installRunning = false,
+                            setup = false,
+                            setupHint = null,
+                            installStep = if (total > 0) total else step,
+                            installTotal = total,
+                            installMessage = message,
+                        )
+                        // Agent RPCs sent during the install were dropped by
+                        // the gate; ask again now that pig may start.
+                        requestState()
+                        requestStats()
+                        requestSessions()
+                        requestModels()
+                        refreshCommands(true)
+                        AppLog.event("install", "relay reports done ($step/$total)")
+                    }
+                    "error" -> {
+                        val text = message.ifBlank {
+                            str("setup.installFailed", "安装命令失败，请到 Termux 里看输出")
+                        }
+                        ui = ui.copy(
+                            installRunning = false,
+                            installStep = step,
+                            installTotal = total,
+                            installMessage = message,
+                            setup = true,
+                            setupHint = text,
+                            error = text,
+                            toast = text,
+                        )
+                        AppLog.event("install", "relay reports error: $text")
+                    }
                 }
             }
             "relay_ui_pack" -> handleUiPack(event)

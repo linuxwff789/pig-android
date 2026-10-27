@@ -64,6 +64,22 @@ of showing up later as "the app only has built-in commands". When that probe
 fails it runs `pig update --extensions` once and probes again — a cached,
 failed build cell is only replaced by an explicit rebuild.
 
+Before probing, the script runs `pig-relay --prepare`: that extracts the
+embedded pigkit sources and the plan extension and registers them, so a fresh
+Termux cannot report "extensions load" while `/plan` and `/provider-ui` are
+still missing. The probe then also checks those paths by name, not just
+`success:true`.
+
+The script is split into **9 numbered stages** (environment, curl, Termux
+switch, pig, Go, relay, UI dirs, extensions, verification) and writes each one
+to `~/.pig/install-status.json` together with `state` (`running` / `done` /
+`error`). relay 1.1.36+ watches that file, **refuses to start pig while the
+install is running** and forwards the stage to the app as a `relay_install`
+frame, so the setup dialog shows `步骤 N/9 · …` with a real progress bar instead
+of a guessed timer. A failed stage (including extensions that will not load)
+writes `state: error` and exits non-zero: the app reports the failure instead of
+connecting to a half-installed backend.
+
 Every download retries and falls back to HTTP/1.1 when the connection breaks
 (curl exit 35/53/56 and friends). Files are written as `.part` and checked
 (non-empty, and ELF magic for the relay) before replacing anything, so a failed

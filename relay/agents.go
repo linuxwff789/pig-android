@@ -90,6 +90,9 @@ type session struct {
 
 	// One backup/restore at a time; see backup.go.
 	transfer transferState
+	// The first install gates agent RPCs until the installer is done; see
+	// install.go.
+	install *installGate
 
 	stopOnce sync.Once
 	stopped  chan struct{}
@@ -111,6 +114,7 @@ func newSession(token, cwd, uiDir, sessionsDir, pigBin string) *session {
 		historyLimits: map[string]int{},
 		stopped:       make(chan struct{}),
 		extReady:      make(chan struct{}),
+		install:       newInstallGate(),
 	}
 	// Every logf() now also reaches the app (see logs.go). One session per
 	// process, so a package-level sink is enough.
@@ -378,6 +382,11 @@ func (s *session) mapAgentPath(a *agentProc, path string) {
 // startAgent launches pig with --session (when path is set) so no switch is
 // needed for history sessions.
 func (s *session) startAgent(path string, load bool) (*agentProc, error) {
+	// Refuse to spawn pig while the Termux installer is still running: the
+	// components it is about to write would be missing from this process.
+	if !s.install.isReady() {
+		return nil, errors.New("install in progress")
+	}
 	// The embedded extensions are extracted and registered in the background;
 	// the first pig has to see them, or the session starts without /plan.
 	<-s.extReady
@@ -714,18 +723,24 @@ func (s *session) attach(conn net.Conn) (*connWriter, uint64, error) {
 		pid = a.pig.cmd.Process.Pid
 	}
 	_ = out.send(frame{
-		"type":     "relay_hello",
-		"protocol": protocol,
-		"version":  buildVersion,
-		"features": relayFeatures,
-		"cwd":      s.cwd,
-		"uiDir":    s.uiDir,
-		"pigPid":   pid,
+		"type":       "relay_hello",
+		"protocol":   protocol,
+		"version":    buildVersion,
+		"features":   relayFeatures,
+		"installing": !s.install.isReady(),
+		"cwd":        s.cwd,
+		"uiDir":      s.uiDir,
+		"pigPid":     pid,
 	})
 	// What the relay said before this client existed: a failed extension
 	// build, a pig crash, a refused payload. Without this the app only saw
 	// such lines after the *next* reconnect.
 	_ = s.send(frame{"type": "relay_logs", "lines": s.logHistory()})
+	// A client that arrives mid-install gets the current stage right away; the
+	// watcher pushes every later change.
+	if status, ok := s.install.frame(); ok && status["state"] != "done" {
+		_ = out.send(status)
+	}
 
 	files, assets, assetHashes, hash, err := scanUI(s.uiDir)
 	if err == nil {
@@ -1094,6 +1109,11 @@ func (s *session) cachedMessages(path string) []json.RawMessage {
 }
 
 func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath string) {
+	// Keep pings and control frames alive, but do not start a half-installed
+	// agent from a get_state/switch_session/prompt that arrived too early.
+	if !s.install.isReady() {
+		return
+	}
 	switch typ {
 	case "switch_session":
 		a := s.switchTo(sessionPath)

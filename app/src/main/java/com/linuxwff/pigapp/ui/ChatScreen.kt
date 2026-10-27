@@ -863,11 +863,32 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (ui.installRunning) {
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = scheme.primary,
-                        trackColor = scheme.surfaceVariant,
-                    )
+                    if (ui.installTotal > 0) {
+                        // The relay forwards the installer's own stage file, so
+                        // this is real progress instead of a guessed timeline.
+                        LinearProgressIndicator(
+                            progress = {
+                                (ui.installStep.toFloat() / ui.installTotal)
+                                    .coerceIn(0f, 1f)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = scheme.primary,
+                            trackColor = scheme.surfaceVariant,
+                        )
+                        Text(
+                            packText("setup.installStage", "步骤 {step}/{total} · {message}")
+                                .replace("{step}", ui.installStep.toString())
+                                .replace("{total}", ui.installTotal.toString())
+                                .replace("{message}", ui.installMessage),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    } else {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = scheme.primary,
+                            trackColor = scheme.surfaceVariant,
+                        )
+                    }
                     Text(
                         packText("setup.installElapsed", "安装中 · 已 {seconds}s").replace(
                             "{seconds}",
@@ -875,11 +896,15 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    Text(
-                        stage,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = scheme.onSurfaceVariant,
-                    )
+                    // Before the relay exists (mirror/pig/Go) only the
+                    // time-based hint is honest; later the real stage is shown.
+                    if (ui.installTotal == 0) {
+                        Text(
+                            stage,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
                     Text(
                         packText(
                             "setup.installAutoConnect",

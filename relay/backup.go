@@ -43,7 +43,7 @@ const (
 
 // relayFeatures lets the app hide a button instead of discovering a missing
 // frame with "unknown relay frame".
-var relayFeatures = []string{"backup", "restore", "providers"}
+var relayFeatures = []string{"backup", "restore", "providers", "install"}
 
 var errTransferCancelled = errors.New("transfer cancelled")
 

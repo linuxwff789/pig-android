@@ -15,7 +15,7 @@
 成功后 relay 启动 `pig --mode rpc` 并发送：
 
 ```json
-{"type":"relay_hello","protocol":"relay/1","version":"1.1.34","features":["backup","restore","providers"],"cwd":"/data/data/com.termux/files/home","uiDir":"/data/data/com.termux/files/home/.pig/android-ui","pigPid":12345}
+{"type":"relay_hello","protocol":"relay/1","version":"1.1.34","features":["backup","restore","providers","install"],"cwd":"/data/data/com.termux/files/home","uiDir":"/data/data/com.termux/files/home/.pig/android-ui","pigPid":12345}
 ```
 
 `features` 列出 relay 支持的可选控制帧。客户端应先看它，而不是靠
@@ -47,6 +47,27 @@
 | `relay_restore_chunk` | `id`、`data`（base64） | 无；出错时以 `relay_restore_error` 中止 |
 | `relay_restore_end` | `id`、已上传字节的 `sha256` | `relay_restore_done`（`entries`、`bytes`、`backup`）或 `relay_restore_error` |
 | `relay_stop` | | 关闭连接 |
+
+## 安装进度
+
+Termux 安装脚本运行时会把进度写到 `~/.pig/install-status.json`：
+
+```json
+{"state":"running","step":6,"total":9,"message":"安装 pig-relay","updated":1793086502}
+```
+
+`state` 是 `running`、`done` 或 `error`，`updated` 是 unix 秒。带 `install` feature
+的 relay 会监视该文件：`state=running` 时**不启动 pig**（agent 帧被丢弃，ping、UI
+和 relay 控制帧仍然工作），每次变化都转给 App，并在 `relay_hello` 之后立即发送
+当前阶段：
+
+```json
+{"type":"relay_install","state":"running","step":6,"total":9,"message":"安装 pig-relay","updated":1793086502}
+```
+
+`done`（或 `error`）后闸门打开，App 应重新发送 `get_state` / `get_messages` /
+`get_available_models`，因为安装期间发出的请求已被丢弃。超过 45 分钟的状态会被
+忽略，避免脚本崩溃后永远锁住 agent；文件不存在表示没有安装在进行。
 
 ## 历史记录分页
 

@@ -476,6 +476,12 @@ data class AppUiState(
     val backupRemote: Boolean = false,
     /** Connected relay announces `providers` (native provider manager). */
     val providerRemote: Boolean = false,
+    /** Connected relay gates its agent while the Termux installer runs. */
+    val installStatusRemote: Boolean = false,
+    /** Installer stage from `relay_install`; 0/0 means unknown (use elapsed time). */
+    val installStep: Int = 0,
+    val installTotal: Int = 0,
+    val installMessage: String = "",
     /** The native provider manager is open (opened by a UI pack nav entry). */
     val providerManagerOpen: Boolean = false,
     val providers: List<ProviderInfo> = emptyList(),

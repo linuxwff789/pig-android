@@ -513,11 +513,39 @@ func main() {
 		uiDir    = flag.String("ui-dir", "", "UI pack directory (default: ~/.pig/android-ui)")
 		pigBin   = flag.String("pig", "pig", "pig binary")
 		readOnly = flag.Bool("version", false, "print version and exit")
+		prepare  = flag.Bool("prepare", false, "write the embedded extensions and exit")
 	)
 	flag.Parse()
 
 	if *readOnly {
 		fmt.Println(protocol, buildVersion)
+		return
+	}
+	if *prepare {
+		// The install script runs this before probing extensions: on a fresh
+		// Termux nobody has started the relay yet, so without it the probe
+		// would only see built-ins and report success while /plan and the
+		// pigkit commands are still missing. No listener/token needed.
+		prepareHome := *cwd
+		if prepareHome == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				log.Fatalf("resolve home: %v", err)
+			}
+			prepareHome = home
+		}
+		prepareUI := *uiDir
+		if prepareUI == "" {
+			prepareUI = filepath.Join(prepareHome, ".pig", "android-ui")
+		}
+		prepareAgent := os.Getenv("PIG_CODING_AGENT_DIR")
+		if prepareAgent == "" {
+			prepareAgent = filepath.Join(prepareHome, ".pig", "agent")
+		}
+		s := newSession("", prepareHome, prepareUI, filepath.Join(prepareAgent, "sessions"), *pigBin)
+		s.seedEmbeddedUI()
+		s.installEmbeddedExtensions()
+		fmt.Println(protocol, "prepared")
 		return
 	}
 	if *token == "" && *tokenF != "" {
@@ -558,6 +586,9 @@ func main() {
 	log.Printf("pig-relay %s %s on %s (cwd=%s ui=%s pig=%s)", protocol, buildVersion, listener.Addr(), *cwd, *uiDir, *pigBin)
 
 	agent := newSession(*token, *cwd, *uiDir, sessionsDir, *pigBin)
+	// Read the installer's status before accepting clients: when it says
+	// "running", agent requests are held until the installer is done.
+	agent.initInstallGate()
 	// Fill a fresh ui dir before the watcher takes its first snapshot, so the
 	// app's first push is a pack it can parse.
 	agent.seedEmbeddedUI()
