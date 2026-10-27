@@ -2779,6 +2779,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * A failure is part of the transcript, not a toast: append it as a notice
      * and keep it on disk so a restart or a session switch still shows it.
      */
+    /** Extension errors repeat per event; show each distinct one once. */
+    private val recentExtensionErrors = ArrayDeque<String>()
+
+    private fun showExtensionError(text: String) {
+        if (recentExtensionErrors.contains(text)) return
+        recentExtensionErrors.addLast(text)
+        while (recentExtensionErrors.size > 50) recentExtensionErrors.removeFirst()
+        AppLog.event("extension", text)
+        appendNotice(text)
+        ui = ui.copy(toast = text.take(300))
+    }
+
     private var lastRelayToastAt = 0L
     private var lastRelayToastText = ""
 
@@ -3174,6 +3186,51 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         if (ui.pendingAgentRestart) restartAgent()
                     }
                 }
+            }
+            "extension_error" -> {
+                // An extension threw. pig reports it on this channel instead of
+                // failing the turn, and nothing else in the app would show it.
+                val message = listOf("message", "error", "text", "reason")
+                    .map { event.optString(it) }
+                    .firstOrNull { it.isNotBlank() }
+                    ?: event.toString().take(400)
+                val source = listOf("extension", "extensionName", "name", "source")
+                    .map { event.optString(it) }
+                    .firstOrNull { it.isNotBlank() }
+                val text = if (source == null) {
+                    str("error.extension", "扩展出错：{message}").replace("{message}", message)
+                } else {
+                    str("error.extensionNamed", "扩展 {name} 出错：{message}")
+                        .replace("{name}", source)
+                        .replace("{message}", message)
+                }
+                showExtensionError(text)
+            }
+            "session_info_changed" -> {
+                // An extension renamed the session (or cleared the name).
+                val name = event.optString("name")
+                AppLog.event("vm", "session name changed: ${name.ifBlank { "(cleared)" }}")
+                val current = ui.sessionFile.ifBlank { ui.sessionId }
+                if (current.isNotBlank()) {
+                    ui = ui.copy(
+                        sessions = ui.sessions.map {
+                            if (it.path == current || it.id == ui.sessionId) {
+                                it.copy(name = name)
+                            } else {
+                                it
+                            }
+                        },
+                    )
+                }
+                requestSessions()
+            }
+            "summarization_retry_scheduled", "summarization_retry_attempt_start" -> {
+                AppLog.event("vm", "summarization retry ($type)")
+                ui = ui.copy(status = "summarizing")
+            }
+            "summarization_retry_finished" -> {
+                AppLog.event("vm", "summarization retry finished")
+                ui = ui.copy(status = "")
             }
             "error" -> {
                 val message = event.optString("message", event.optString("error", "unknown error"))
