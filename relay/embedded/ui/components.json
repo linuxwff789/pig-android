@@ -15,11 +15,11 @@
   "showSteerHint": true,
   "showStatusBar": true,
   "assistantAvatar": true,
-  "messageAvatarSize": 20,
-  "bubbleMaxWidthDp": 520,
-  "toolSummaryLines": 3,
-  "toolExpandedLines": 120,
-  "codeFenceMaxLines": 200,
-  "tableMaxLines": 4,
-  "composerButtonSize": 38
+  "messageAvatarSize": 24,
+  "bubbleMaxWidthDp": 560,
+  "toolSummaryLines": 5,
+  "toolExpandedLines": 200,
+  "codeFenceMaxLines": 400,
+  "tableMaxLines": 6,
+  "composerButtonSize": 44
 }

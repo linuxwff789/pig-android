@@ -5,45 +5,63 @@
       "sessions",
       "projects"
     ],
-    "widthDp": 340
+    "widthDp": 330
   },
   "chat": {
     "showUsage": true,
-    "toolCards": "collapsed",
-    "assistantLabel": "PIGGY",
+    "toolCards": "collapsible",
+    "assistantLabel": "PIG",
     "toolGroups": true,
-    "paddingH": 11,
-    "paddingV": 8,
-    "bottomPadding": 12,
-    "messageSpacing": 10,
-    "emptyAvatarSize": 40,
-    "codeBlockRadius": 6,
+    "paddingH": 16,
+    "paddingV": 12,
+    "bottomPadding": 20,
+    "messageSpacing": 16,
+    "emptyAvatarSize": 64,
+    "codeBlockRadius": 12,
+    "codeBlockBorderAlpha": 0.4,
     "bubble": {
-      "paddingH": 11,
-      "paddingV": 8,
+      "paddingH": 14,
+      "paddingV": 10,
       "borderWidth": 1,
       "textColor": "onSurface",
-      "assistantBubble": false
+      "assistantBubble": true,
+      "assistantBackgroundAlpha": 0.5,
+      "assistantBorderAlpha": 0.35,
+      "assistantBorderColor": "outline",
+      "assistantTextColor": "onSurface",
+      "userBackground": "brand",
+      "textAlign": "start",
+      "radiusTL": 18,
+      "radiusTR": 18,
+      "radiusBR": 6,
+      "radiusBL": 18
     },
     "toolCard": {
-      "background": "surfaceVariant",
-      "backgroundAlpha": 0.55,
-      "radius": 7,
+      "background": "surface",
+      "backgroundAlpha": 0.85,
+      "radius": 12,
       "borderWidth": 1,
-      "borderAlpha": 0.35,
-      "padding": 9,
-      "collapsedPaddingH": 9,
-      "collapsedPaddingV": 6,
-      "iconBoxSize": 21,
-      "iconSize": 12,
-      "iconRadius": 4,
-      "iconAlpha": 0.12,
-      "titleSize": 11,
+      "borderAlpha": 0.3,
+      "borderColor": "outline",
+      "padding": 11,
+      "collapsedPaddingH": 11,
+      "collapsedPaddingV": 7,
+      "iconBoxSize": 24,
+      "iconSize": 13,
+      "iconRadius": 6,
+      "iconAlpha": 0.14,
+      "iconTint": "secondary",
+      "iconBackground": "secondary",
+      "titleSize": 12,
+      "titleColor": "onSurface",
       "metricsColor": "onSurfaceVariant",
-      "chipRadius": 4,
-      "chipAlpha": 0.12,
-      "groupRadius": 7,
-      "groupPadding": 8
+      "chipRadius": 6,
+      "chipAlpha": 0.14,
+      "groupRadius": 12,
+      "groupPadding": 9,
+      "diffAddColor": "success",
+      "diffRemoveColor": "error",
+      "diffContextColor": "onSurfaceVariant"
     },
     "thinking": {
       "show": true,
@@ -51,28 +69,101 @@
       "expandWhileStreaming": true,
       "showCount": true,
       "background": "surfaceVariant",
-      "backgroundAlpha": 0.38,
+      "backgroundAlpha": 0.4,
       "titleColor": "secondary",
       "textColor": "onSurfaceVariant",
       "fontSize": 12,
-      "radius": 8,
-      "paddingH": 8,
-      "paddingV": 5,
-      "maxHeight": 200,
-      "italic": false
+      "radius": 10,
+      "paddingH": 10,
+      "paddingV": 6,
+      "maxHeight": 220,
+      "italic": true
+    },
+    "markdown": {
+      "linkColor": "secondary",
+      "inlineCodeBackground": "surfaceVariant",
+      "inlineCodeColor": "onSurface",
+      "codeBlockBackground": "background",
+      "codeBlockAlpha": 0.55,
+      "codeBlockBorderColor": "outline",
+      "quoteTextColor": "onSurfaceVariant",
+      "tableHeaderBackground": "surfaceVariant",
+      "tableBorderColor": "outline",
+      "tableBorderAlpha": 0.35,
+      "tableZebraAlpha": 0.04,
+      "hrColor": "outlineVariant"
+    },
+    "chrome": {
+      "statusColor": "onSurfaceVariant",
+      "statusBackground": "surfaceVariant",
+      "statusBackgroundAlpha": 0.6,
+      "statusSpinnerColor": "secondary",
+      "statusPaddingH": 12,
+      "statusPaddingV": 6,
+      "toastContainer": "surface",
+      "toastText": "onSurface",
+      "toastAction": "primary",
+      "toastShape": 14,
+      "toastInsetH": 12,
+      "dialogSurface": "surface",
+      "dialogRadius": 20,
+      "dialogTitleColor": "onSurface",
+      "dialogTextColor": "onSurfaceVariant",
+      "chipBackground": "primary",
+      "chipBackgroundAlpha": 0.16,
+      "chipLabelColor": "primary",
+      "chipShape": "rounded",
+      "chipRadius": 8,
+      "emptyTitleColor": "primary"
     }
   },
   "composer": {
-    "placeholder": "给 Pig 发消息…",
-    "maxLines": 6,
+    "placeholder": "想做什么？",
+    "maxLines": 7,
     "sendOnEnter": true,
-    "fontSize": 13,
-    "minHeight": 36,
-    "paddingH": 10,
-    "paddingV": 7,
-    "radius": 14,
-    "inputRadius": 10,
-    "buttonIconSize": 18
+    "fontSize": 15,
+    "minHeight": 40,
+    "paddingH": 12,
+    "paddingV": 8,
+    "radius": 26,
+    "inputRadius": 18,
+    "inputSurface": "surfaceVariant",
+    "inputAlpha": 0.5,
+    "borderAlpha": 0.4,
+    "elevation": 10,
+    "surfaceAlpha": 0.96,
+    "attachTint": "secondary",
+    "attachGap": 8,
+    "attachBackground": "surfaceVariant",
+    "attachBackgroundAlpha": 0.7,
+    "attachShape": "rounded",
+    "attachRadius": 12,
+    "cursorColor": "primary",
+    "placeholderAlpha": 0.7,
+    "selectionColor": "primary",
+    "selectionAlpha": 0.35,
+    "sendStyle": "solid",
+    "sendBackground": "primary",
+    "sendTint": "onPrimary",
+    "sendGlow": 10,
+    "sendShape": "rounded",
+    "sendRadius": 13,
+    "sendSize": 44,
+    "stopBackground": "error",
+    "stopBackgroundAlpha": 0.18,
+    "stopTint": "error",
+    "stopShape": "rounded",
+    "stopRadius": 13,
+    "stopSize": 44,
+    "stopBorderWidth": 1,
+    "stopBorderColor": "error",
+    "thumbSize": 60,
+    "thumbRadius": 12,
+    "thumbGap": 8,
+    "marginH": 10,
+    "marginV": 6,
+    "maxWidth": 900,
+    "maxHeight": 260
   },
   "settings": {
     "defaultSize": "standard",
@@ -80,7 +171,7 @@
       {
         "id": "compact",
         "label": "紧凑",
-        "width": 0.8,
+        "width": 0.82,
         "height": 0.64
       },
       {
@@ -99,44 +190,58 @@
   },
   "skinSwitcher": {
     "show": true,
-    "placement": "drawer",
-    "style": "chips"
+    "placement": "both",
+    "style": "list"
   },
   "packManager": {
     "show": true,
     "placement": "both"
   },
   "drawer": {
-    "cornerRadius": 10,
-    "spacing": 6,
-    "buttonHeight": 34,
-    "buttonRadius": 6,
-    "sectionLabelSize": 9,
-    "sessionRowRadius": 6,
-    "searchRadius": 8,
-    "brandAvatarSize": 28,
-    "buttonIconSize": 13
+    "background": "gradient",
+    "gradientAlpha": 0.24,
+    "cornerRadius": 26,
+    "paddingH": 18,
+    "paddingV": 20,
+    "spacing": 10,
+    "brandAvatarSize": 46,
+    "brandTagline": true,
+    "brandCardAlpha": 0.4,
+    "brandPills": true,
+    "buttonHeight": 42,
+    "buttonRadius": 14,
+    "buttonIconSize": 17,
+    "sectionLabelSize": 11,
+    "sectionLabelUppercase": true,
+    "sessionRowRadius": 12,
+    "sessionSelectedAlpha": 0.16,
+    "showSessionId": false,
+    "showSessionTime": true,
+    "searchRadius": 14,
+    "modules": [
+      "brand",
+      "newSession",
+      "skinSwitcher",
+      "packManager",
+      "panels"
+    ]
   },
   "header": {
     "show": true,
     "height": 0,
-    "paddingH": 10,
-    "paddingV": 3,
+    "paddingH": 14,
+    "paddingV": 4,
     "background": "gradient",
-    "gradientAlpha": 0.1,
+    "gradientAlpha": 0.22,
     "divider": true,
     "rows": [
       {
-        "spacing": 6,
+        "spacing": 8,
         "align": "start",
         "elements": [
           {
-            "type": "icon",
-            "icon": "menu",
-            "size": 22,
-            "action": "header:menu",
-            "color": "onSurface",
-            "padding": 2
+            "type": "menu",
+            "size": 22
           },
           {
             "type": "text",
@@ -148,52 +253,39 @@
             "lines": 1
           },
           {
-            "type": "icon",
-            "icon": "refresh",
-            "size": 18,
-            "action": "header:reconnect",
+            "type": "stop",
+            "when": "busy"
+          },
+          {
+            "type": "reconnect",
             "when": "offline"
           }
         ]
       },
       {
-        "spacing": 5,
+        "spacing": 8,
         "align": "start",
         "elements": [
           {
-            "type": "text",
-            "bind": "state.model",
-            "format": "{id}",
-            "text": "点击选择模型",
-            "action": "header:model",
-            "style": "mono",
-            "color": "onSurfaceVariant",
-            "weight": 1.0
+            "type": "model"
           },
           {
-            "type": "icon",
-            "icon": "chevronDown",
-            "size": 12,
-            "action": "header:model"
+            "type": "spacer"
           },
           {
             "type": "usage"
           },
           {
-            "type": "text",
-            "bind": "stats",
-            "format": "· {cacheHitRate}%",
-            "text": "· —",
-            "style": "mono"
+            "type": "icon",
+            "icon": "settings",
+            "size": 18,
+            "action": "header:settings"
           },
           {
-            "type": "text",
-            "bind": "state",
-            "format": "· {thinkingLevel}",
-            "text": "· —",
-            "style": "mono",
-            "color": "secondary",
-            "action": "header:model"
+            "type": "icon",
+            "icon": "add",
+            "size": 18,
+            "action": "header:new_session"
           }
         ]
       }

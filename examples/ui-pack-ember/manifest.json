@@ -1,0 +1,8 @@
+{
+  "name": "Ember 余烬",
+  "version": 1,
+  "minAppVersion": 1,
+  "theme": "theme/colors.json",
+  "layout": "layout/chat.json",
+  "typography": "theme/typography.json"
+}

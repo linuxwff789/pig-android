@@ -1,0 +1,24 @@
+{
+  "header": {
+    "title": "Ember",
+    "model": "点击选择模型"
+  },
+  "brand": {
+    "emoji": "🔥"
+  },
+  "empty": {
+    "title": "说点什么",
+    "hint": "从一句话开始，或者试试：",
+    "suggestions": "看看这个仓库|总结今天的会话|有哪些模型可用|帮我写个小脚本"
+  },
+  "composer": {
+    "steerPlaceholder": "插队说一句…",
+    "steerHint": "点发送 = 插队 · 长按 = 排队"
+  },
+  "skin": {
+    "title": "配色"
+  },
+  "toast": {
+    "skinChanged": "配色已切换为 {name}"
+  }
+}

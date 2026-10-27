@@ -1,0 +1,294 @@
+{
+  "version": 1,
+  "sidebar": {
+    "sections": [
+      "sessions",
+      "projects"
+    ],
+    "widthDp": 330
+  },
+  "chat": {
+    "showUsage": true,
+    "toolCards": "collapsible",
+    "assistantLabel": "PIG",
+    "toolGroups": true,
+    "paddingH": 16,
+    "paddingV": 12,
+    "bottomPadding": 20,
+    "messageSpacing": 16,
+    "emptyAvatarSize": 64,
+    "codeBlockRadius": 12,
+    "codeBlockBorderAlpha": 0.4,
+    "bubble": {
+      "paddingH": 14,
+      "paddingV": 10,
+      "borderWidth": 1,
+      "textColor": "onSurface",
+      "assistantBubble": true,
+      "assistantBackgroundAlpha": 0.5,
+      "assistantBorderAlpha": 0.35,
+      "assistantBorderColor": "outline",
+      "assistantTextColor": "onSurface",
+      "userBackground": "brand",
+      "textAlign": "start",
+      "radiusTL": 18,
+      "radiusTR": 18,
+      "radiusBR": 6,
+      "radiusBL": 18
+    },
+    "toolCard": {
+      "background": "surface",
+      "backgroundAlpha": 0.85,
+      "radius": 12,
+      "borderWidth": 1,
+      "borderAlpha": 0.3,
+      "borderColor": "outline",
+      "padding": 11,
+      "collapsedPaddingH": 11,
+      "collapsedPaddingV": 7,
+      "iconBoxSize": 24,
+      "iconSize": 13,
+      "iconRadius": 6,
+      "iconAlpha": 0.14,
+      "iconTint": "secondary",
+      "iconBackground": "secondary",
+      "titleSize": 12,
+      "titleColor": "onSurface",
+      "metricsColor": "onSurfaceVariant",
+      "chipRadius": 6,
+      "chipAlpha": 0.14,
+      "groupRadius": 12,
+      "groupPadding": 9,
+      "diffAddColor": "success",
+      "diffRemoveColor": "error",
+      "diffContextColor": "onSurfaceVariant"
+    },
+    "thinking": {
+      "show": true,
+      "collapsedByDefault": true,
+      "expandWhileStreaming": true,
+      "showCount": true,
+      "background": "surfaceVariant",
+      "backgroundAlpha": 0.4,
+      "titleColor": "secondary",
+      "textColor": "onSurfaceVariant",
+      "fontSize": 12,
+      "radius": 10,
+      "paddingH": 10,
+      "paddingV": 6,
+      "maxHeight": 220,
+      "italic": true
+    },
+    "markdown": {
+      "linkColor": "secondary",
+      "inlineCodeBackground": "surfaceVariant",
+      "inlineCodeColor": "onSurface",
+      "codeBlockBackground": "background",
+      "codeBlockAlpha": 0.55,
+      "codeBlockBorderColor": "outline",
+      "quoteTextColor": "onSurfaceVariant",
+      "tableHeaderBackground": "surfaceVariant",
+      "tableBorderColor": "outline",
+      "tableBorderAlpha": 0.35,
+      "tableZebraAlpha": 0.04,
+      "hrColor": "outlineVariant"
+    },
+    "chrome": {
+      "statusColor": "onSurfaceVariant",
+      "statusBackground": "surfaceVariant",
+      "statusBackgroundAlpha": 0.6,
+      "statusSpinnerColor": "secondary",
+      "statusPaddingH": 12,
+      "statusPaddingV": 6,
+      "toastContainer": "surface",
+      "toastText": "onSurface",
+      "toastAction": "primary",
+      "toastShape": 14,
+      "toastInsetH": 12,
+      "dialogSurface": "surface",
+      "dialogRadius": 20,
+      "dialogTitleColor": "onSurface",
+      "dialogTextColor": "onSurfaceVariant",
+      "chipBackground": "primary",
+      "chipBackgroundAlpha": 0.16,
+      "chipLabelColor": "primary",
+      "chipShape": "rounded",
+      "chipRadius": 8,
+      "emptyTitleColor": "primary"
+    }
+  },
+  "composer": {
+    "placeholder": "想做什么？",
+    "maxLines": 7,
+    "sendOnEnter": true,
+    "fontSize": 15,
+    "minHeight": 40,
+    "paddingH": 12,
+    "paddingV": 8,
+    "radius": 26,
+    "inputRadius": 18,
+    "inputSurface": "surfaceVariant",
+    "inputAlpha": 0.5,
+    "borderAlpha": 0.4,
+    "elevation": 10,
+    "surfaceAlpha": 0.96,
+    "attachTint": "secondary",
+    "attachGap": 8,
+    "attachBackground": "surfaceVariant",
+    "attachBackgroundAlpha": 0.7,
+    "attachShape": "rounded",
+    "attachRadius": 12,
+    "cursorColor": "primary",
+    "placeholderAlpha": 0.7,
+    "selectionColor": "primary",
+    "selectionAlpha": 0.35,
+    "sendStyle": "solid",
+    "sendBackground": "primary",
+    "sendTint": "onPrimary",
+    "sendGlow": 10,
+    "sendShape": "rounded",
+    "sendRadius": 13,
+    "sendSize": 44,
+    "stopBackground": "error",
+    "stopBackgroundAlpha": 0.18,
+    "stopTint": "error",
+    "stopShape": "rounded",
+    "stopRadius": 13,
+    "stopSize": 44,
+    "stopBorderWidth": 1,
+    "stopBorderColor": "error",
+    "thumbSize": 60,
+    "thumbRadius": 12,
+    "thumbGap": 8,
+    "marginH": 10,
+    "marginV": 6,
+    "maxWidth": 900,
+    "maxHeight": 260
+  },
+  "settings": {
+    "defaultSize": "standard",
+    "sizes": [
+      {
+        "id": "compact",
+        "label": "紧凑",
+        "width": 0.82,
+        "height": 0.64
+      },
+      {
+        "id": "standard",
+        "label": "标准",
+        "width": 0.94,
+        "height": 0.86
+      },
+      {
+        "id": "large",
+        "label": "大",
+        "width": 0.99,
+        "height": 0.96
+      }
+    ]
+  },
+  "skinSwitcher": {
+    "show": true,
+    "placement": "both",
+    "style": "list"
+  },
+  "packManager": {
+    "show": true,
+    "placement": "both"
+  },
+  "drawer": {
+    "background": "gradient",
+    "gradientAlpha": 0.24,
+    "cornerRadius": 26,
+    "paddingH": 18,
+    "paddingV": 20,
+    "spacing": 10,
+    "brandAvatarSize": 46,
+    "brandTagline": true,
+    "brandCardAlpha": 0.4,
+    "brandPills": true,
+    "buttonHeight": 42,
+    "buttonRadius": 14,
+    "buttonIconSize": 17,
+    "sectionLabelSize": 11,
+    "sectionLabelUppercase": true,
+    "sessionRowRadius": 12,
+    "sessionSelectedAlpha": 0.16,
+    "showSessionId": false,
+    "showSessionTime": true,
+    "searchRadius": 14,
+    "modules": [
+      "brand",
+      "newSession",
+      "skinSwitcher",
+      "packManager",
+      "panels"
+    ]
+  },
+  "header": {
+    "show": true,
+    "height": 0,
+    "paddingH": 14,
+    "paddingV": 4,
+    "background": "gradient",
+    "gradientAlpha": 0.22,
+    "divider": true,
+    "rows": [
+      {
+        "spacing": 8,
+        "align": "start",
+        "elements": [
+          {
+            "type": "menu",
+            "size": 22
+          },
+          {
+            "type": "text",
+            "bind": "session.title",
+            "text": "新会话",
+            "style": "heading",
+            "color": "onSurface",
+            "weight": 1.0,
+            "lines": 1
+          },
+          {
+            "type": "stop",
+            "when": "busy"
+          },
+          {
+            "type": "reconnect",
+            "when": "offline"
+          }
+        ]
+      },
+      {
+        "spacing": 8,
+        "align": "start",
+        "elements": [
+          {
+            "type": "model"
+          },
+          {
+            "type": "spacer"
+          },
+          {
+            "type": "usage"
+          },
+          {
+            "type": "icon",
+            "icon": "settings",
+            "size": 18,
+            "action": "header:settings"
+          },
+          {
+            "type": "icon",
+            "icon": "add",
+            "size": 18,
+            "action": "header:new_session"
+          }
+        ]
+      }
+    ]
+  }
+}

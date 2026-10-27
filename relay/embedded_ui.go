@@ -14,8 +14,10 @@ import (
 // "UI pack 未应用: manifest.json 缺失" and the app stayed on its bundled theme —
 // the provider window and live nav entries never showed up.
 //
-// The relay therefore carries the app's own default pack and fills only the
-// files that are missing. See scripts/sync-embedded-extensions.sh.
+// The relay therefore carries a default pack (examples/ui-pack-ember) and fills
+// only the files that are missing. It is deliberately a different design from
+// the pack the APK bundles (examples/ui-pack-compact), so the manager's two
+// first rows are two distinct looks. See scripts/sync-embedded-extensions.sh.
 //
 //go:embed embedded/ui
 var embeddedUI embed.FS

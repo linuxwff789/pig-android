@@ -40,13 +40,15 @@ them:
 
 | source | lives in | id | notes |
 | --- | --- | --- | --- |
-| relay (default) | `~/.pig/android-ui/` in Termux, pushed by `pig-relay` | `""` | picked up on every change, no import |
+| relay (default) | `~/.pig/android-ui/` in Termux, pushed by `pig-relay` | `""` | picked up on every change, no import; seeded from `examples/ui-pack-ember/` |
 | bundled | `assets/ui-packs/<name>/` inside the APK | `builtin:<name>` | read-only, listed even offline |
 | imported | `files/ui-packs/<id>/` in the app's private dir | `<id>` | from 导入 ZIP / 导入文件夹, deletable |
 
 Bundled packs ship with the APK; the first one is `builtin:compact`
 (`examples/ui-pack-compact/`, copied to `app/src/main/assets/ui-packs/compact/`
-before the build). They cannot be deleted — only selected — and they are read
+before the build). It is a different design from the relay's default pack
+(`examples/ui-pack-ember/`), so the first two rows of the manager are two
+distinct looks. They cannot be deleted — only selected — and they are read
 straight out of `assets/`, so selecting one does not copy anything to the app's
 files dir. The choice is stored in `activePackId`, so it survives restarts, and
 it wins over relay pushes until the user picks the built-in pack again.
