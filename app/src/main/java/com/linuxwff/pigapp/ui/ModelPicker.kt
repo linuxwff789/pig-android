@@ -203,12 +203,26 @@ fun ModelPickerDialog(vm: AppViewModel) {
                 ) {
                     if (filtered.isEmpty() && !vm.modelsLoading) {
                         item {
-                            Text(
-                                packText("model.empty", "没有匹配的模型"),
-                                modifier = Modifier.padding(vertical = 10.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = scheme.onSurfaceVariant,
-                            )
+                            Column {
+                                Text(
+                                    if (models.isEmpty()) {
+                                        packText("model.none", "还没有可用模型")
+                                    } else {
+                                        packText("model.empty", "没有匹配的模型")
+                                    },
+                                    modifier = Modifier.padding(vertical = 10.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = scheme.onSurfaceVariant,
+                                )
+                                if (models.isEmpty()) {
+                                    TextButton(onClick = {
+                                        vm.closeModelPicker()
+                                        vm.openProviderManager()
+                                    }) {
+                                        Text(packText("setup.addProvider", "添加供应商"))
+                                    }
+                                }
+                            }
                         }
                     }
                     items(filtered, key = { "${it.provider}/${it.id}" }) { model ->

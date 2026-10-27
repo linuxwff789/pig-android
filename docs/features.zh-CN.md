@@ -167,6 +167,14 @@ App 原生页面，不再是 pack 生成的窗口：
 `provider-ui` 扩展仍保留给 CLI 用户（`/provider-ui`、`/providerui.save`、
 `/providerui.refresh`、`/providerui.remove`），但不再写 `windows/providers.json`。
 
+## 首次启动的供应商配置
+
+全新的 `~/.pig` 没有任何 provider，`get_available_models` 返回空列表。App 把它当作
+配置向导而不是错误：输入框上方会出现一张卡片，提供 **添加供应商**（原生供应商页）
+和 **备份 / 设置**（导出/导入备份）；模型选择器空列表时也有同样按钮；没有模型时发送
+消息只会提示，不再打红色 pig 错误。关掉卡片后本次进程不再打扰，模型再次消失时会重新
+出现。内置 provider 在 Termux 里用 `pig login` / `pig auth` 配置；自定义端点用供应商页。
+
 ## 图片
 
 图片以

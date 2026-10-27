@@ -202,6 +202,17 @@ The `provider-ui` extension still exists for CLI users (`/provider-ui`,
 `/providerui.save`, `/providerui.refresh`, `/providerui.remove`), but it no
 longer writes `windows/providers.json`.
 
+## First-run provider setup
+
+A fresh `~/.pig` has no providers, so `get_available_models` is empty. The app
+treats that as setup, not an error: a banner above the composer offers
+**添加供应商** (the native provider manager) and **备份 / 设置** (export or import
+a backup), the model picker shows the same button when its list is empty, and
+sending without a model gives a hint instead of a red pig error. Dismissing the
+banner hides it for the process; it comes back if models disappear again.
+Built-in providers are configured in Termux with `pig login` / `pig auth`;
+custom endpoints use the provider manager.
+
 ## Images
 
 Images travel inline in pig's message content as

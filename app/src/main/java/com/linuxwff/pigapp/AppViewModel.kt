@@ -1800,6 +1800,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             runSlashCommand(text)
             return
         }
+        // A fresh backend has no providers/models. Do not turn that into a red
+        // "pig error": point at the setup banner instead.
+        if (ui.modelsLoaded && ui.availableModelCount == 0 && ui.model.isBlank()) {
+            ui = ui.copy(
+                providerSetupDismissed = false,
+                toast = str(
+                    "setup.noModelsToast",
+                    "还没有可用模型：先添加供应商或导入备份",
+                ),
+            )
+            return
+        }
         // First prompt in a fresh app process with no session yet: honour the
         // pinned default model before the turn starts. A restored transcript
         // keeps the model its session was using.
@@ -1875,6 +1887,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             providerMessageError = false,
         )
         requestProviders()
+    }
+
+    /** Hide the "no models yet" banner until models disappear again. */
+    fun dismissProviderSetup() {
+        ui = ui.copy(providerSetupDismissed = true)
     }
 
     fun closeProviderManager() {
@@ -3535,6 +3552,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     relayVersion = relayVersion,
                     relayOutdated = relayOutdated,
                     relayAhead = relayAhead,
+                    modelsLoaded = false,
                 )
                 when {
                     relayOutdated && lastRelayWarnedVersion != relayVersion -> {
@@ -4579,7 +4597,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     models = list
                     modelsLoading = false
                     AppLog.event("models", "${list.size} available")
-                    ui = ui.copy(availableModelCount = list.size)
+                    ui = ui.copy(
+                        availableModelCount = list.size,
+                        modelsLoaded = true,
+                        // Once models exist the setup banner has done its job;
+                        // if they disappear later it may show again.
+                        providerSetupDismissed = if (list.isEmpty()) {
+                            ui.providerSetupDismissed
+                        } else {
+                            false
+                        },
+                    )
                 }
             }
             "get_available_thinking_levels" -> {

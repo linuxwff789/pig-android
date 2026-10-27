@@ -476,6 +476,10 @@ data class AppUiState(
     val backupRemote: Boolean = false,
     /** Connected relay announces `providers` (native provider manager). */
     val providerRemote: Boolean = false,
+    /** At least one `get_available_models` answer arrived for this connection. */
+    val modelsLoaded: Boolean = false,
+    /** The "no models yet" banner was dismissed for this process. */
+    val providerSetupDismissed: Boolean = false,
     /** Connected relay gates its agent while the Termux installer runs. */
     val installStatusRemote: Boolean = false,
     /** `version` from relay_hello (empty for relays older than 1.1.27). */

@@ -432,6 +432,11 @@ fun PigApp(vm: AppViewModel) {
                     ) {
                         InlineWindows(ui.windows, "aboveComposer", vm)
                         WidgetPane(ui.widgets, "aboveEditor", vm)
+                        if (ui.connected && ui.modelsLoaded && ui.availableModelCount == 0 &&
+                            !ui.providerSetupDismissed && !ui.installRunning
+                        ) {
+                            ProviderSetupBanner(vm) { showSettings = true }
+                        }
                         if (commandQuery != null && commandMatches.isNotEmpty()) {
                             CommandPalette(commandMatches) { command ->
                                 draft = "/${command.name} "
@@ -5282,6 +5287,57 @@ private fun PendingBanner(count: Int) {
             style = MaterialTheme.typography.labelSmall,
             color = scheme.secondary,
         )
+    }
+}
+
+/**
+ * A fresh backend has no providers, so `get_available_models` is empty. That is
+ * not an error: show the two ways to get a model (add an endpoint, or import a
+ * backup) instead of letting the first prompt fail in red.
+ */
+@Composable
+private fun ProviderSetupBanner(vm: AppViewModel, onOpenSettings: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        color = scheme.primaryContainer.copy(alpha = 0.45f),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+    ) {
+        Column(Modifier.padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        packText("setup.noModels", "还没有可用模型"),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        packText(
+                            "setup.noModelsHint",
+                            "添加一个供应商/API key，或导入之前的备份；" +
+                                "内置 provider 可在 Termux 里运行 pig login。",
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = vm::dismissProviderSetup) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = packText("a11y.close", "关闭"),
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = { vm.openProviderManager() }) {
+                    Text(packText("setup.addProvider", "添加供应商"))
+                }
+                TextButton(onClick = onOpenSettings) {
+                    Text(packText("setup.openSettings", "备份 / 设置"))
+                }
+            }
+        }
     }
 }
 

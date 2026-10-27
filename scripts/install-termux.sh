@@ -410,3 +410,4 @@ STATUS_WRITTEN=1
 printf '\npig:   %s\nrelay: %s (%s)\n' \
     "$(command -v pig || echo "$PREFIX/bin/pig")" "$RELAY" "$(relay_version)"
 printf 'Open Termux once so allow-external-apps takes effect, then return to Pig and press retry.\n'
+printf 'Next: open Pig → 设置 → 模型供应商 to add a provider, or import a backup.\n'

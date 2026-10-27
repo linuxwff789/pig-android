@@ -104,6 +104,9 @@ App ── TCP 127.0.0.1:8791 ──▶ pig-relay ── stdio ──▶ pig --m
 
 如果 App 无法连接，其设置对话框会显示一行命令和一个一键安装按钮，通过 Termux 运行同一个脚本。
 
+后端装好后，全新的 `~/.pig` 仍然没有模型 provider。打开 Pig，用首次启动卡片里的
+**添加供应商**（或导入备份），再选择模型；内置 provider 可在 Termux 里用 `pig login` 配置。
+
 只更新了 APK 时，旧 relay 还在跑。设置 → 连接 会显示
 `relay <版本> · App <版本>`；relay 较旧时有 **更新 relay** 按钮，重跑安装脚本
 （按 App 的 tag 安装，结束前会编译扩展）并自动重启 relay。relay 较新时不会动它——
