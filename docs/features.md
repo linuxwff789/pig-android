@@ -120,6 +120,21 @@ Both backup and restore need relay **1.1.34+**: the handshake advertises
 an older relay is connected. Progress (bytes, and percent while exporting) is
 shown in the same section; dismissing the dialog does not cancel the transfer.
 
+## Relay version check
+
+`relay_hello` carries the relay's `version` (1.1.34+). Release builds compare it
+with their own version name and show the result in **Settings → 连接**:
+
+- relay older (or a pre-1.1.27 relay with no version) → red row plus **更新
+  relay**: it reruns the installer (pinned to the app's tag, extensions compiled
+  first) and restarts the relay when Termux returns; without `RUN_COMMAND`
+  permission it copies the command and opens Termux instead. A one-time toast
+  points at the row on connect.
+- relay newer → an info line suggesting an app update; the relay is never
+  downgraded.
+- equal → no warning. Debug/CI builds (`0.1.0`/dev versions) skip the check so
+  development is not nagged.
+
 ## UI pack
 
 `~/.pig/android-ui/` drives colors, typography, layout switches, component

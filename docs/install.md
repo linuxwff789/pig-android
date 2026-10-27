@@ -141,6 +141,12 @@ App ── TCP 127.0.0.1:8791 ──▶ pig-relay ── stdio ──▶ pig --m
 If the app cannot connect, its setup dialog shows the one-liner and a 一键安装
 button that runs the same script through Termux.
 
+When only the APK was updated, the old relay keeps running. Settings → 连接
+shows `relay <version> · App <version>`; an older relay gets an **更新 relay**
+button that runs the installer again (it pins the app's tag and compiles the
+extensions before finishing) and restarts the relay. A newer relay is left
+alone — the installer only upgrades, never downgrades.
+
 ## Troubleshooting
 
 | Symptom | Fix |

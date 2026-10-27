@@ -22,7 +22,12 @@ On success the relay spawns `pig --mode rpc` and sends:
 
 `features` lists optional control frames the relay implements. Clients must gate
 on it instead of discovering a missing frame through `unknown relay frame`;
-relays before 1.1.34 omit both fields.
+relays before 1.1.34 omit both fields. `version` is the release tag without the
+`v` (or `dev-<sha>` for a manually built relay); a release client should compare
+it with its own version and offer to rerun the installer when the relay is
+older. A newer relay is valid — features are additive, and the installer is
+deliberately upgrade-only. `installing` is true while the Termux installer is
+running (see "Install progress").
 
 On failure it sends `relay_error` and closes the connection. Tokens are compared
 in constant time.

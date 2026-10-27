@@ -478,6 +478,12 @@ data class AppUiState(
     val providerRemote: Boolean = false,
     /** Connected relay gates its agent while the Termux installer runs. */
     val installStatusRemote: Boolean = false,
+    /** `version` from relay_hello (empty for relays older than 1.1.27). */
+    val relayVersion: String = "",
+    /** Relay is older than this app (missing features); offer an in-place update. */
+    val relayOutdated: Boolean = false,
+    /** Relay is newer than this app; suggest updating the app, never downgrade. */
+    val relayAhead: Boolean = false,
     /** Installer stage from `relay_install`; 0/0 means unknown (use elapsed time). */
     val installStep: Int = 0,
     val installTotal: Int = 0,

@@ -836,6 +836,9 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
     } else {
         0
     }
+    // The same installer serves the first install and a relay update; keep the
+    // title honest about which one is running.
+    val updatingRelay = ui.installRunning && ui.relayVersion.isNotBlank()
     val stage = when {
         elapsed < 45 -> packText("setup.stageStart", "正在下载安装脚本（会先换国内源）")
         elapsed < 150 -> packText("setup.stagePig", "正在安装 pig")
@@ -857,7 +860,13 @@ private fun SetupDialog(ui: AppUiState, vm: AppViewModel) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 BrandAvatar(30.dp)
                 Spacer(Modifier.width(10.dp))
-                Text(packText("setup.title", "Termux 后端还没准备好"))
+                Text(
+                    if (updatingRelay) {
+                        packText("setup.titleUpdate", "正在更新 relay")
+                    } else {
+                        packText("setup.title", "Termux 后端还没准备好")
+                    },
+                )
             }
         },
         text = {
@@ -1413,6 +1422,68 @@ private fun SettingsDialog(
                     ) {
                         Text(packText("settings.restartRelayAction", "重启"))
                     }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            packText("settings.relayVersion", "relay 版本"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            buildString {
+                                append(
+                                    ui.relayVersion.ifBlank {
+                                        if (ui.connected) {
+                                            packText("settings.relayOld", "旧版（无版本号）")
+                                        } else {
+                                            "—"
+                                        }
+                                    },
+                                )
+                                append(" · App ")
+                                append(appVersion.ifBlank { "?" })
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = when {
+                                ui.relayOutdated -> scheme.error
+                                ui.relayAhead -> scheme.primary
+                                else -> scheme.onSurfaceVariant
+                            },
+                        )
+                    }
+                    if (ui.relayOutdated && ui.connected) {
+                        TextButton(
+                            enabled = !ui.installRunning && !ui.busy &&
+                                ui.status != "compacting",
+                            onClick = {
+                                onDismiss()
+                                vm.updateRelay()
+                            },
+                        ) {
+                            Text(packText("settings.relayUpdate", "更新 relay"))
+                        }
+                    }
+                }
+                if (ui.relayOutdated) {
+                    Text(
+                        packText(
+                            "settings.relayOutdatedHint",
+                            "relay 与 App 版本不一致：备份、供应商、安装进度等功能可能不可用。" +
+                                "更新会重跑安装脚本（先编译扩展），完成后自动重启 relay。",
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.error,
+                    )
+                }
+                if (ui.relayAhead) {
+                    Text(
+                        packText(
+                            "settings.relayAheadHint",
+                            "relay 比 App 新；建议更新 App（关于 → 检查更新）。不会把 relay 降级。",
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.primary,
+                    )
                 }
 
                 HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
@@ -2028,10 +2099,12 @@ private fun SettingsDialog(
                             packText("settings.appVersionHint", "App 版本 · relay {relay} · pig 在 Termux 里运行")
                                 .replace(
                                     "{relay}",
-                                    if (ui.connected) {
-                                        packText("settings.connected", "已连接")
-                                    } else {
-                                        packText("settings.offline", "离线")
+                                    ui.relayVersion.ifBlank {
+                                        if (ui.connected) {
+                                            packText("settings.relayOld", "旧版（无版本号）")
+                                        } else {
+                                            packText("settings.offline", "离线")
+                                        }
                                     },
                                 ),
                             style = MaterialTheme.typography.labelSmall,

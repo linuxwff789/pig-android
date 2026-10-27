@@ -95,6 +95,17 @@ app 的设计目标是能在锁屏、Doze 和进程被杀后存活：
 `features: ["backup","restore"]`，连接旧 relay 时按钮保持禁用并给出提示。
 进度（已传字节，导出时还有百分比）显示在同一区域；关掉对话框不会中断传输。
 
+## relay 版本检查
+
+`relay_hello` 会带 relay 的 `version`（1.1.34+）。正式构建会把它和 App 的 versionName
+比较，并在 **设置 → 连接** 显示结果：
+
+- relay 较旧（或 1.1.27 之前没有版本号）→ 红色一行 + **更新 relay**：重跑安装脚本
+  （按 App 的 tag 安装，先编译扩展），Termux 返回后自动重启 relay；没有
+  `RUN_COMMAND` 权限时改为复制命令并打开 Termux。连接时会弹一次提示指向这一行。
+- relay 较新 → 提示建议更新 App，**不会**降级 relay。
+- 相同 → 不提示。debug/CI 构建（`0.1.0`/dev 版本）跳过比较，开发时不会被烦。
+
 ## UI pack
 
 `~/.pig/android-ui/` 驱动颜色、字体排版、布局开关、组件

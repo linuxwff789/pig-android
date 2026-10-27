@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.ContentValues
 import android.graphics.Bitmap
 import android.os.Build
@@ -40,6 +41,21 @@ import java.util.zip.ZipInputStream
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("pig", Context.MODE_PRIVATE)
     private val notifications by lazy { SessionNotifications(getApplication()) }
+
+    /** Version name of this APK, for the relay version check. */
+    val appVersion: String = runCatching {
+        app.packageManager.getPackageInfo(app.packageName, 0).versionName
+    }.getOrNull().orEmpty()
+    /**
+     * Debug/CI builds carry 0.1.0 or a dev tag; comparing them with a release
+     * relay would warn forever, so only release builds take part.
+     */
+    private val versionChecksEnabled =
+        (app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0 &&
+            Regex("""^\d+(\.\d+)*$""").matches(appVersion)
+    private var lastRelayWarnedVersion: String? = null
+    /** A relay update is running; restart the relay when the installer returns. */
+    private var relayUpdatePending = false
 
     val port: Int = prefs.getInt("port", 8791)
     var token: String = prefs.getString("token", null) ?: newToken().also {
@@ -800,6 +816,57 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         connect()
     }
 
+    /**
+     * Reinstall the relay that belongs to this APK and activate it. The
+     * installer pins the app's own tag, so it upgrades an old relay (and keeps
+     * a newer one thanks to the script's version check).
+     */
+    fun updateRelay() {
+        if (ui.installRunning) {
+            ui = ui.copy(toast = str("relay.updateRunning", "安装或更新已经在进行"))
+            return
+        }
+        if (ui.busy || ui.status == "compacting") {
+            ui = ui.copy(toast = str("relay.updateBusy", "本轮结束后再更新 relay"))
+            return
+        }
+        val ctx = getApplication<Application>()
+        relayUpdatePending = true
+        if (!RelayLauncher.hasPermission(ctx)) {
+            // No RUN_COMMAND: hand over the command. The new relay reports the
+            // installer's status file on its own once it is running.
+            ui = ui.copy(setup = true)
+            copyInstallCommandAndOpen()
+            return
+        }
+        AppLog.event(
+            "vm",
+            "relay update requested (app $appVersion, relay ${ui.relayVersion.ifBlank { "unknown" }})",
+        )
+        bootstrap()
+    }
+
+    /** Dotted numeric compare; null when either side is not a release version. */
+    private fun compareVersions(left: String, right: String): Int? {
+        fun parts(value: String): List<Int>? {
+            val trimmed = value.trim()
+            if (trimmed.isEmpty() ||
+                !Regex("""^\d+(\.\d+)*$""").matches(trimmed)
+            ) {
+                return null
+            }
+            return trimmed.split('.').map { it.toIntOrNull() ?: return null }
+        }
+        val a = parts(left) ?: return null
+        val b = parts(right) ?: return null
+        for (index in 0 until maxOf(a.size, b.size)) {
+            val x = a.getOrElse(index) { 0 }
+            val y = b.getOrElse(index) { 0 }
+            if (x != y) return x.compareTo(y)
+        }
+        return 0
+    }
+
     fun bootstrap() {
         AppLog.event("vm", "install requested (bootstrap)")
         val error = RelayLauncher.bootstrap(getApplication(), cwd)
@@ -893,6 +960,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             RunCommandReceiver.KIND_BOOTSTRAP -> {
                 ui = ui.copy(termuxBlocked = false)
                 if (outcome.failed) {
+                    relayUpdatePending = false
                     ui = ui.copy(
                         installRunning = false,
                         setup = true,
@@ -903,9 +971,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } else {
                     ui = ui.copy(
                         installRunning = false,
+                        installStep = 0,
+                        installTotal = 0,
                         toast = str("toast.installDone", "Termux 安装完成，正在连接…"),
                     )
-                    reconnect()
+                    if (relayUpdatePending) {
+                        // The script already compiled the extensions with
+                        // `--prepare`; replace the old relay process so the app
+                        // talks to the matching version.
+                        relayUpdatePending = false
+                        restartRelay()
+                    } else {
+                        reconnect()
+                    }
                 }
             }
             RunCommandReceiver.KIND_RELAY, RunCommandReceiver.KIND_RESTART -> {
@@ -3418,6 +3496,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // an old relay cannot report stages, so its hello closes it.
                 val stillInstalling = installStatusRemote &&
                     event.optBoolean("installing", ui.installRunning)
+                val relayVersion = event.optString("version").trim()
+                val versionCompare = if (versionChecksEnabled) {
+                    compareVersions(relayVersion, appVersion)
+                } else {
+                    null
+                }
+                // No `version` at all means a relay from before 1.1.27: it is
+                // certainly older than this app. A `dev-...` relay is not
+                // comparable and gets no nag.
+                val relayOutdated = versionChecksEnabled &&
+                    (versionCompare?.let { it < 0 } ?: relayVersion.isBlank())
+                val relayAhead = versionCompare != null && versionCompare > 0
                 ui = ui.copy(
                     error = null,
                     setup = stillInstalling,
@@ -3427,7 +3517,43 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     backupRemote = backupRemote,
                     providerRemote = providerRemote,
                     installStatusRemote = installStatusRemote,
+                    relayVersion = relayVersion,
+                    relayOutdated = relayOutdated,
+                    relayAhead = relayAhead,
                 )
+                when {
+                    relayOutdated && lastRelayWarnedVersion != relayVersion -> {
+                        lastRelayWarnedVersion = relayVersion
+                        ui = ui.copy(
+                            toast = str(
+                                "relay.outdatedToast",
+                                "relay {relay} 比 App {app} 旧：到设置 → 连接点「更新 relay」",
+                            )
+                                .replace(
+                                    "{relay}",
+                                    relayVersion.ifBlank {
+                                        str("relay.oldUnknown", "（旧版）")
+                                    },
+                                )
+                                .replace("{app}", appVersion),
+                        )
+                    }
+                    relayAhead && lastRelayWarnedVersion != relayVersion -> {
+                        lastRelayWarnedVersion = relayVersion
+                        ui = ui.copy(
+                            toast = str(
+                                "relay.aheadToast",
+                                "relay {relay} 比 App {app} 新：建议更新 App（不会降级 relay）",
+                            ).replace("{relay}", relayVersion)
+                                .replace("{app}", appVersion),
+                        )
+                    }
+                    !relayOutdated && !relayAhead -> {
+                        // Matched (or a dev build): the update is settled.
+                        lastRelayWarnedVersion = null
+                        relayUpdatePending = false
+                    }
+                }
                 warnedMissingExtensions = ""
                 warnedIncompleteRelayPack = false
                 AppLog.event(

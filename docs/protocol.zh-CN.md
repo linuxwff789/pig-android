@@ -20,6 +20,10 @@
 
 `features` 列出 relay 支持的可选控制帧。客户端应先看它，而不是靠
 `unknown relay frame` 才发现帧不存在；1.1.34 之前的 relay 不带这两个字段。
+`version` 是去掉 `v` 的 release tag（手工构建为 `dev-<sha>`）；正式客户端应把它和
+自己的版本比较，relay 较旧时提示重跑安装脚本。relay 较新是合法的——feature 是增量的，
+安装脚本也故意只升不降。`installing` 为 true 表示 Termux 安装脚本正在运行
+（见「安装进度」）。
 
 失败时它发送 `relay_error` 并关闭连接。token 使用常量时间比较。
 
