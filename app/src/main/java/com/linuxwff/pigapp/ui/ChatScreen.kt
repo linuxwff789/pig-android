@@ -2502,7 +2502,8 @@ private fun UninstallDialog(
                     title = packText("backup.uninstallPurge", "同时删除 ~/.pig 数据"),
                     subtitle = packText(
                         "backup.uninstallPurgeHint",
-                        "配置、密钥、模型、会话和 UI pack 全部删除，无法撤销",
+                        "配置、密钥、模型、会话和 UI pack 全部删除；删除前会自动备份到 " +
+                            "~/pig-before-uninstall-*.tar.gz（不含 cache/docs），备份失败则不删",
                     ),
                     checked = purge,
                     onCheckedChange = { purge = it },
@@ -2510,7 +2511,7 @@ private fun UninstallDialog(
                 Text(
                     packText(
                         "backup.uninstallKeep",
-                        "不勾选时数据保留，之后重新安装即可继续使用。",
+                        "不勾选时数据保留；勾选时先自动备份，备份成功才会删除。",
                     ),
                     style = MaterialTheme.typography.labelSmall,
                     color = if (purge) scheme.error else scheme.onSurfaceVariant,

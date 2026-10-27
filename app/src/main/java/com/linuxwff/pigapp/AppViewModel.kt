@@ -1022,7 +1022,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     // path bring the relay back.
                     reconnect()
                 } else {
-                    AppLog.event("termux", "uninstall done purge=$uninstallPurge")
+                    val backup = outcome.stdout.lineSequence()
+                        .map { it.trim() }
+                        .firstOrNull { it.startsWith("backup=") }
+                        ?.removePrefix("backup=")
+                        ?.takeIf { it.isNotBlank() }
+                    AppLog.event(
+                        "termux",
+                        "uninstall done purge=$uninstallPurge backup=${backup ?: "none"}",
+                    )
+                    val deleted = when {
+                        !uninstallPurge -> ""
+                        backup != null -> "，~/.pig 已删除（备份：${backup.substringAfterLast('/')}）"
+                        else -> "，并删除了 ~/.pig 数据"
+                    }
                     ui = ui.copy(
                         connected = false,
                         setup = true,
@@ -1030,11 +1043,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             "setup.uninstalled",
                             "已从 Termux 卸载 pig 与 pig-relay{data}。" +
                                 "要重新安装：点「复制命令」或「一键安装」。",
-                        ).replace(
-                            "{data}",
-                            if (uninstallPurge) "，并删除了 ~/.pig 数据" else "",
-                        ),
-                        toast = str("toast.uninstalled", "已卸载 pig 与 pig-relay"),
+                        ).replace("{data}", deleted),
+                        toast = if (backup != null) {
+                            str("toast.uninstalledBackup", "已卸载；数据备份在 {name}")
+                                .replace("{name}", backup.substringAfterLast('/'))
+                        } else {
+                            str("toast.uninstalled", "已卸载 pig 与 pig-relay")
+                        },
                     )
                 }
             }

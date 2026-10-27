@@ -173,9 +173,18 @@ object RelayLauncher {
      */
     fun uninstall(context: Context, purgeData: Boolean, cwd: String): String? {
         val command = buildString {
+            // Stop first, so the optional backup sees a consistent ~/.pig.
             append("pkill -f 'pig-rela[y] --port' >/dev/null 2>&1; ")
             append("pkill -f 'pig --mode rp[c]' >/dev/null 2>&1; ")
             append("pkill -x pig >/dev/null 2>&1; sleep 0.5; ")
+            if (purgeData) {
+                // Purging is irreversible; write a recovery archive outside
+                // ~/.pig first and refuse to delete anything if it fails.
+                append("b=\"\$HOME/pig-before-uninstall-\$(date +%Y%m%d-%H%M%S).tar.gz\"; ")
+                append("if tar -czf \"\$b\" -C \"\$HOME\" --exclude='.pig/cache' --exclude='.pig/docs' .pig; then ")
+                append("echo \"backup=\$b\"; ")
+                append("else echo '备份失败，未删除 ~/.pig'; exit 1; fi; ")
+            }
             append("rm -f \"\$PREFIX\"/bin/pig \"\$PREFIX\"/bin/pig-relay \"\$PREFIX\"/bin/pig-relay.* ; ")
             append("rm -f \"\$HOME\"/.pig/install-receipt; ")
             if (purgeData) append("rm -rf \"\$HOME\"/.pig; ")

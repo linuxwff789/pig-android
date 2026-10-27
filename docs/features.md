@@ -112,8 +112,12 @@ the same loopback socket (protocol: `docs/protocol.md`).
 - **卸载 pig 与 pig-relay** stops both processes and deletes
   `$PREFIX/bin/pig`, `pig-relay` and the older `pig-relay.*` copies, plus the
   install receipt. An optional switch **同时删除 ~/.pig 数据** (off by default)
-  also removes config, keys, models, sessions and UI packs. Without it, running
-  the install command later brings everything back as it was.
+  also removes config, keys, models, sessions and UI packs. When it is on, the
+  app first writes `~/pig-before-uninstall-<time>.tar.gz` (without `cache/` and
+  `docs/`) and only deletes after that succeeds; a failed backup aborts the
+  uninstall and keeps the data. Without the switch, running the install command
+  later brings everything back as it was. Note that the installer itself never
+  deletes `~/.pig` - only this switch does.
 
 Both backup and restore need relay **1.1.34+**: the handshake advertises
 `features: ["backup","restore"]` and the buttons stay disabled with a hint when
