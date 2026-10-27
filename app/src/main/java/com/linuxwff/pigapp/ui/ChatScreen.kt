@@ -1158,6 +1158,7 @@ private fun SettingsDialog(
         "settings.updateCommandCopied",
         "已复制 Termux 更新命令，粘贴到 Termux 执行",
     )
+    var showLogs by remember { mutableStateOf(false) }
     var exportingLog by remember { mutableStateOf(false) }
     var logStatus by remember { mutableStateOf("") }
     var logFailed by remember { mutableStateOf(false) }
@@ -1976,6 +1977,9 @@ private fun SettingsDialog(
                                 color = scheme.onSurfaceVariant,
                             )
                         }
+                        TextButton(onClick = { showLogs = true }) {
+                            Text(packText("settings.logsView", "查看"))
+                        }
                         TextButton(
                             enabled = !exportingLog,
                             onClick = {
@@ -2048,6 +2052,7 @@ private fun SettingsDialog(
             onDismiss = { thresholdEditor = null },
         )
     }
+    if (showLogs) LogDialog(onDismiss = { showLogs = false })
     updateInfo?.let { info ->
         UpdateDialog(
             info = info,
@@ -2063,6 +2068,62 @@ private fun SettingsDialog(
             onDismiss = { updateInfo = null },
         )
     }
+}
+
+/**
+ * Live tail of the relay/pig log. It refreshes every second so a failure that
+ * happens *now* shows up without reconnecting - the app cannot read logcat, and
+ * these lines only exist on the relay's side.
+ */
+@Composable
+private fun LogDialog(onDismiss: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val emptyText = packText("settings.logsEmpty", "还没有日志")
+    var text by remember { mutableStateOf(AppLog.tail(400)) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            text = AppLog.tail(400)
+            delay(1000)
+        }
+    }
+    PackAlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(22.dp),
+        containerColor = scheme.surface,
+        title = { Text(packText("settings.logsTitle", "诊断日志 · 最近 400 行")) },
+        text = {
+            Box(
+                Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                SelectionContainer {
+                    Text(
+                        text.ifBlank { emptyText },
+                        fontFamily = packCodeFont(),
+                        fontSize = 10.sp,
+                        color = scheme.onSurface,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(packText("settings.close", "关闭"))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    val clipboard = LocalContext.current
+                        .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Pig log", AppLog.snapshot()))
+                },
+            ) {
+                Text(packText("settings.logsCopy", "复制全部"))
+            }
+        },
+    )
 }
 
 @Composable

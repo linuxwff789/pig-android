@@ -60,7 +60,11 @@ RELAY_TAG=v1.1.32 tools/fresh-device-sim/sim.sh all
 5. saving a reachable provider fetches its models, writes
    `custom-endpoints.json` and the model cache, and registers it in the session;
 6. saving an unreachable one is reported as a failure and says it is not in the
-   session (it used to claim success while `/model` showed nothing).
+   session (it used to claim success while `/model` showed nothing);
+7. the relay replays its startup log on connect and a relay/pig failure is sent
+   while it happens (`relay_log` with `source`/`level`), instead of only being
+   visible in Termux's scrollback. `sim.sh logs` runs the relay with a missing
+   pig on purpose and asserts the error frame arrives.
 
 ## Things that are artifacts of the simulation, not bugs
 

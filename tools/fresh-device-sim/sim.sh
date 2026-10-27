@@ -227,7 +227,8 @@ start_relay() {
     [ -x "$ROOT$GUEST_PREFIX/bin/pig-relay" ] || die "pig-relay is not installed; run 'install' first"
     echo $$ > "$SIM/relay.pid"
     say "relay on 127.0.0.1:$PORT (token $TOKEN), Ctrl-C to stop"
-    device "$GUEST_PREFIX/bin/pig-relay" --port "$PORT" --token "$TOKEN" --cwd "$GUEST_HOME"
+    device "$GUEST_PREFIX/bin/pig-relay" --port "$PORT" --token "$TOKEN" \
+        --cwd "$GUEST_HOME" --pig "${SIM_PIG:-pig}"
 }
 
 app_sim() {
@@ -270,6 +271,22 @@ case "${1:-all}" in
     relay) start_relay ;;
     stop) stop_relay ;;
     app) app_sim ;;
+    logs)
+        # A relay that cannot start pig must say so on the wire, not only in
+        # Termux's stderr (that was the "errors only appear after a reconnect"
+        # bug).
+        say "checking that relay errors reach the app immediately"
+        stop_relay
+        SIM_PIG=${SIM_PIG:-/nonexistent/pig} PORT=$((PORT + 1)) TOKEN="$TOKEN" \
+            sh "$0" relay >"$SIM/relay-error.log" 2>&1 &
+        relay_pid=$!
+        trap 'kill $relay_pid 2>/dev/null || true; stop_relay' EXIT INT TERM
+        python3 "$here/log-check.py" --port $((PORT + 1)) --token "$TOKEN"
+        status=$?
+        kill $relay_pid 2>/dev/null || true
+        pkill -f "pig-rela[y] --port $((PORT + 1))" 2>/dev/null || true
+        exit $status
+        ;;
     pack) pack_check ;;
     shell) bootstrap; device "$GUEST_PREFIX/bin/bash" ;;
     reset) reset ;;

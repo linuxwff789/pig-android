@@ -174,9 +174,36 @@ def main():
     checks.check(hello.get("protocol") == "relay/1", f"handshake ({hello.get('protocol')})",
                  str(hello))
 
-    # --- the UI pack the app parses before anything else -------------------
-    pack = client.wait(lambda f: f.get("type") == "relay_ui_pack", 30, "relay_ui_pack")
-    files = pack.get("files") or {}
+    # --- buffered relay log, then the UI pack -----------------------------
+    # The relay replays what it logged before this client existed (a failed
+    # extension build, a pig crash at startup) and then pushes the pack; the
+    # order is not guaranteed, so collect both instead of waiting twice.
+    logs = None
+    pack = None
+    deadline = time.time() + 30
+    while time.time() < deadline and (logs is None or pack is None):
+        frame = client.recv(5)
+        if frame is None:
+            continue
+        if frame.get("type") == "relay_logs":
+            logs = frame
+        elif frame.get("type") == "relay_ui_pack":
+            pack = frame
+    if not checks.check(logs is not None, "relay replays its startup log on connect"):
+        logs = {"lines": []}
+    lines = logs.get("lines") or []
+    checks.check(
+        len(lines) > 0,
+        f"startup log has {len(lines)} line(s)",
+        "a relay that says nothing is a relay whose failures stay hidden",
+    )
+    checks.check(
+        any("pigkit" in str(line.get("message", "")) for line in lines),
+        "startup log mentions the embedded extensions",
+        str(lines[:3]),
+    )
+    checks.check(pack is not None, "UI pack pushed")
+    files = (pack or {}).get("files") or {}
     manifest_text = files.get("manifest.json")
     if checks.check(bool(manifest_text), f"UI pack has manifest.json ({len(files)} files)",
                     "an app build before the fix answered 'manifest.json 缺失' here"):

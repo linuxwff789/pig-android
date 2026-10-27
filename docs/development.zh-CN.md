@@ -49,6 +49,14 @@ tools/fresh-device-sim/sim.sh destroy  # 占约 1 GB（bootstrap + Go 工具链�
 需要联网（bootstrap、Termux 软件包、官方 pig 安装脚本），手机上约五分钟；不进 CI。
 分步命令和「哪些是 proot 的假象而不是 bug」见该目录的 README。
 
+### relay 与 pig 的日志
+
+App 读不到 logcat，也读不到 Termux 的滚动缓冲，所以 relay 把能给的都发过来：每条
+`logf` 和 pig 的每一行 stderr 都以 `relay_log` 帧发出（`source` 为
+`relay`/`pig`，`level` 为 `info`/`error`），最近 400 行缓存在内存里，握手后作为
+`relay_logs` 回放；pig 崩溃时 `relay_exit` 会带上 stderr 末尾。App 把失败弹成
+toast、全部写进诊断日志，并在「设置 → 诊断日志 → 查看」里实时滚动显示。
+
 ## 发布构建
 
 ```bash

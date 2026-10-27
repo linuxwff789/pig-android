@@ -60,6 +60,16 @@ It needs network (bootstrap, Termux packages, the official pig installer) and
 about five minutes on a phone; it is not part of CI. See the README there for
 per-step commands and for what is a proot artifact rather than a bug.
 
+### Relay and pig logs
+
+The app cannot read logcat or Termux's scrollback, so the relay streams what it
+has: every `logf` line and every pig stderr line goes over the socket as a
+`relay_log` frame (`source`: `relay`/`pig`, `level`: `info`/`error`), the last
+400 are buffered and replayed as `relay_logs` right after the handshake, and a
+crash carries the pig stderr tail in `relay_exit`. The app shows failures as a
+toast, keeps everything in the diagnostic log, and Settings → 诊断日志 → 查看
+tails it live.
+
 ## Release build
 
 ```bash

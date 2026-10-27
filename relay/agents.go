@@ -36,6 +36,8 @@ type agentProc struct {
 	statuses map[string]json.RawMessage
 	title    json.RawMessage
 	busy     bool
+	// Last stderr lines, so a crash report says *why* instead of only a code.
+	stderr []string
 }
 
 type toolProgress struct {
@@ -80,6 +82,12 @@ type session struct {
 	historyMu     sync.Mutex
 	historyLimits map[string]int
 
+	// Recent relay/pig log lines. The app cannot read Termux's stderr, and the
+	// interesting ones (a failed extension build, a pig crash) happen before
+	// anyone connects, so they are buffered and replayed on connect.
+	logMu   sync.Mutex
+	logRing []logLine
+
 	stopOnce sync.Once
 	stopped  chan struct{}
 	// extReady closes once the extensions the relay carries are written and
@@ -88,7 +96,7 @@ type session struct {
 }
 
 func newSession(token, cwd, uiDir, sessionsDir, pigBin string) *session {
-	return &session{
+	s := &session{
 		token:         token,
 		cwd:           cwd,
 		uiDir:         uiDir,
@@ -101,6 +109,12 @@ func newSession(token, cwd, uiDir, sessionsDir, pigBin string) *session {
 		stopped:       make(chan struct{}),
 		extReady:      make(chan struct{}),
 	}
+	// Every logf() now also reaches the app (see logs.go). One session per
+	// process, so a package-level sink is enough.
+	relayLogSink = func(source, level, message string) {
+		s.emitLog(source, level, message)
+	}
+	return s
 }
 
 func (s *session) stop() {
@@ -430,11 +444,13 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 			if line == "" {
 				continue
 			}
-			if s.isActive(a) {
-				_ = s.send(frame{"type": "relay_log", "message": line})
-			} else {
-				logf("pig stderr: %s", line)
-			}
+			a.rememberStderr(line)
+			// Always forwarded: the app is the only place this text is visible.
+			// (Previously only the *active* agent's stderr reached the client,
+			// so a failure during startup - or in a session the user was not
+			// looking at - was invisible until something reconnected.)
+			s.emitLog("pig", logLevel(line), line)
+			log.Printf("pig stderr: %s", line)
 		}
 	}()
 
@@ -463,7 +479,12 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 		}
 		s.agentMu.Unlock()
 		if wasActive {
-			_ = s.send(frame{"type": "relay_exit", "code": code})
+			_ = s.send(frame{
+				"type":   "relay_exit",
+				"code":   code,
+				"stderr": a.stderrTail(),
+				"reason": a.lastStderr(),
+			})
 		}
 		logf("pig exited: code=%d err=%v path=%q", code, err, a.path)
 	}()
@@ -696,6 +717,10 @@ func (s *session) attach(conn net.Conn) (*connWriter, uint64, error) {
 		"uiDir":    s.uiDir,
 		"pigPid":   pid,
 	})
+	// What the relay said before this client existed: a failed extension
+	// build, a pig crash, a refused payload. Without this the app only saw
+	// such lines after the *next* reconnect.
+	_ = s.send(frame{"type": "relay_logs", "lines": s.logHistory()})
 
 	files, assets, assetHashes, hash, err := scanUI(s.uiDir)
 	if err == nil {

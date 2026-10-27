@@ -2779,6 +2779,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * A failure is part of the transcript, not a toast: append it as a notice
      * and keep it on disk so a restart or a session switch still shows it.
      */
+    private var lastRelayToastAt = 0L
+    private var lastRelayToastText = ""
+
+    /** A relay/pig line: always into the log, failures also onto the screen. */
+    private fun handleRelayLog(source: String, level: String, message: String, replay: Boolean) {
+        if (message.isBlank()) return
+        AppLog.event(if (source == "pig") "pig" else "relay", message)
+        if (replay || level != "error") return
+        toastRelayError(source, message)
+    }
+
+    private fun toastRelayError(source: String, message: String) {
+        if (message.isBlank()) return
+        val now = System.currentTimeMillis()
+        if (message == lastRelayToastText || now - lastRelayToastAt < 3_000) return
+        lastRelayToastAt = now
+        lastRelayToastText = message
+        val prefix = if (source == "pig") "pig" else "relay"
+        ui = ui.copy(toast = "$prefix: ${message.take(300)}")
+    }
+
     private fun appendNotice(text: String) {
         if (text.isBlank()) return
         AppLog.event("notice", text)
@@ -2967,11 +2988,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             "relay_exit" -> {
+                val reason = event.optString("reason").ifBlank {
+                    val tail = event.optJSONArray("stderr")
+                    if (tail != null && tail.length() > 0) {
+                        tail.optString(tail.length() - 1)
+                    } else {
+                        ""
+                    }
+                }
+                val exitText = str("error.relayExited", "pig 已退出（code {code}），正在重连…")
+                    .replace("{code}", event.optInt("code").toString()) +
+                    if (reason.isBlank()) "" else "\n$reason"
+                AppLog.event("relay", "pig exit code=${event.optInt("code")} reason=$reason")
                 ui = ui.copy(
                     busy = false,
                     status = "",
-                    error = str("error.relayExited", "pig 已退出（code {code}），正在重连…")
-                        .replace("{code}", event.optInt("code").toString()),
+                    error = exitText,
                     streamingId = null,
                     pendingMessages = 0,
                     historyLoading = false,
@@ -2982,6 +3014,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 pendingToolPartials.clear()
                 client.close()
                 if (foreground) startAutoReconnect()
+            }
+            "relay_log" -> handleRelayLog(
+                event.optString("source", "relay"),
+                event.optString("level", "info"),
+                event.optString("message"),
+                replay = false,
+            )
+            "relay_logs" -> {
+                // Buffered lines the relay produced before this client connected
+                // (a failed extension build, a pig crash at startup).
+                val lines = event.optJSONArray("lines") ?: JSONArray()
+                var lastError: JSONObject? = null
+                for (index in 0 until lines.length()) {
+                    val line = lines.optJSONObject(index) ?: continue
+                    if (line.optString("level") == "error") lastError = line
+                    handleRelayLog(
+                        line.optString("source", "relay"),
+                        line.optString("level", "info"),
+                        line.optString("message"),
+                        replay = true,
+                    )
+                }
+                // One toast for the newest failure, not one per replayed line.
+                lastError?.let {
+                    toastRelayError(it.optString("source", "relay"), it.optString("message"))
+                }
             }
             "relay_ui_pack" -> handleUiPack(event)
             "relay_settings" -> {

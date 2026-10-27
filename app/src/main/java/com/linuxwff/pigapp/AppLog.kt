@@ -101,6 +101,11 @@ object AppLog {
 
     fun snapshot(): String = synchronized(lock) { entries.joinToString("\n") }
 
+    /** The last [count] lines, for the live view (the full buffer is megabytes). */
+    fun tail(count: Int): String = synchronized(lock) {
+        entries.toList().takeLast(count).joinToString("\n")
+    }
+
     fun suggestedName(): String =
         "pig-log-" + SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date()) + ".txt"
 

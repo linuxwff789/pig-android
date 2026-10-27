@@ -243,6 +243,17 @@ func runPigInstall(pigBin, dir string) error {
 	return nil
 }
 
+// logf writes a relay line to stderr *and* hands it to the connected app. The
+// user only ever sees the app, and "the relay said why" is the difference
+// between an actionable error and a spinner.
 func logf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "pig-relay: "+format+"\n", args...)
+	message := fmt.Sprintf(format, args...)
+	fmt.Fprintf(os.Stderr, "pig-relay: %s\n", message)
+	if sink := relayLogSink; sink != nil {
+		sink("relay", logLevel(message), message)
+	}
 }
+
+// relayLogSink is set once, by the single session created in main. Lines
+// logged before that (or after it is gone) only reach stderr.
+var relayLogSink func(source, level, message string)
