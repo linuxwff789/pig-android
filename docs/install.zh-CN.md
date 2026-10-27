@@ -57,6 +57,10 @@ curl -fsSL https://github.com/linuxwff789/pig-android/releases/download/v1.1.27/
 `步骤 N/9 · …` 和真实进度条，而不是按时间猜。任何阶段失败（包括扩展加载不了）
 都会写 `state: error` 并以非 0 退出——App 会明确报错，不会连上一个半成品后端。
 
+官方 pig 安装器自己的下载没有超时；脚本会给它 **300 秒**超时，失败后改用
+`PIG_MIRRORS`（默认 gh-proxy / ghfast）下载 release tarball，所以 GitHub CDN 卡死
+不会让安装永远停在第 4 步。
+
 所有下载都带重试，并在 TLS/HTTP2 断连（curl 退出码 35/53/56 等）时自动退回
 HTTP/1.1；下载先写 `.part`、校验非空（relay 还校验 ELF magic）后才替换，所以失败
 不会留下半截脚本或半个二进制。

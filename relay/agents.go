@@ -24,6 +24,10 @@ import (
 type agentProc struct {
 	pig  *pigProcess
 	path string
+	// When the process was spawned. A client reconnect must not stop a pig
+	// that is still loading/compiling its extensions (pig exits with
+	// `load_cancelled` and the app only sees a crash loop).
+	startedAt time.Time
 
 	mu          sync.Mutex
 	streamText  string
@@ -418,6 +422,7 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 	a := &agentProc{
 		pig:         pig,
 		path:        path,
+		startedAt:   time.Now(),
 		activeTools: map[string]toolProgress{},
 		pendingUI:   map[string]json.RawMessage{},
 		widgets:     map[string]json.RawMessage{},
@@ -785,7 +790,10 @@ func (s *session) detach(conn net.Conn, gen uint64) {
 	// switch to history does not need one.
 	go func() {
 		a := s.activeAgent()
-		if a != nil && !a.isBusy() {
+		// Give a just-spawned pig time to finish loading extensions. Stopping
+		// it mid-load makes pig exit with `load_cancelled`, which looks like a
+		// broken install to a client that reconnected during startup.
+		if a != nil && !a.isBusy() && time.Since(a.startedAt) > 30*time.Second {
 			s.stopAgent(a)
 		}
 	}()

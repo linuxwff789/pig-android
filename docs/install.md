@@ -80,6 +80,11 @@ of a guessed timer. A failed stage (including extensions that will not load)
 writes `state: error` and exits non-zero: the app reports the failure instead of
 connecting to a half-installed backend.
 
+The official pig installer's own download has no timeout; the script runs it
+under a 300-second timeout and then falls back to the release tarball through
+`PIG_MIRRORS` (default `gh-proxy.com`, `ghfast.top`), so a dead GitHub CDN
+connection cannot leave the install at step 4 forever.
+
 Every download retries and falls back to HTTP/1.1 when the connection breaks
 (curl exit 35/53/56 and friends). Files are written as `.part` and checked
 (non-empty, and ELF magic for the relay) before replacing anything, so a failed

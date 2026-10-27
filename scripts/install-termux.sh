@@ -201,18 +201,85 @@ else
 fi
 command -v termux-reload-settings >/dev/null 2>&1 && termux-reload-settings || true
 
-step 4 "安装 pig"
-if ! command -v pig >/dev/null 2>&1; then
-    say "installing pig (official install.sh)"
-    if fetch https://pi-in-go.dev/install.sh "$PREFIX/tmp/pig-official-install.sh"; then
-        sh "$PREFIX/tmp/pig-official-install.sh" ||
-            say "pig installer failed; rerun: sh $PREFIX/tmp/pig-official-install.sh"
-    else
-        say "could not download https://pi-in-go.dev/install.sh; install pig later with:"
-        say "  curl -fsSL https://pi-in-go.dev/install.sh | sh"
+# The official installer downloads a ~28 MB pig tarball with a plain curl and
+# no timeout. On a flaky route that curl can sit on a dead TLS/HTTP2 connection
+# for half an hour (the app only sees "step 4"), so try it under a timeout and
+# fall back to the release asset through a mirror prefix.
+install_pig_asset() {
+    _pig_api="https://api.github.com/repos/MichaelKinsy/PiG/releases/latest"
+    _pig_json="$PREFIX/tmp/pig-release.json"
+    _pig_version=""
+    _pig_url=""
+    if fetch "$_pig_api" "$_pig_json"; then
+        _pig_version=$(sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' "$_pig_json" | head -1)
+        _pig_url=$(grep -o 'https://[^"]*pig-[0-9][^"]*-android-arm64\.tar\.gz' "$_pig_json" | head -1)
     fi
-else
+    [ -n "$_pig_version" ] || _pig_version="${PIG_VERSION_FALLBACK:-0.5.3}"
+    [ -n "$_pig_url" ] ||
+        _pig_url="https://github.com/MichaelKinsy/PiG/releases/download/v$_pig_version/pig-$_pig_version-android-arm64.tar.gz"
+    status 4 running "安装 pig（镜像下载 $_pig_version）"
+    say "downloading pig $_pig_version via mirror"
+    _pig_tmp="$PREFIX/tmp/pig.tar.gz"
+    _pig_ok=0
+    for _pig_prefix in ${PIG_MIRRORS:-https://gh-proxy.com/ https://ghfast.top/}; do
+        if fetch "${_pig_prefix}${_pig_url}" "$_pig_tmp"; then
+            _pig_ok=1
+            break
+        fi
+    done
+    if [ "$_pig_ok" = 0 ]; then
+        fetch "$_pig_url" "$_pig_tmp" || {
+            say "pig download failed: $_pig_url"
+            return 1
+        }
+    fi
+    _pig_dir="$PREFIX/tmp/pig-extract.$$"
+    mkdir -p "$_pig_dir" || return 1
+    if ! tar -xzf "$_pig_tmp" -C "$_pig_dir"; then
+        say "pig archive is not a gzip tar"
+        return 1
+    fi
+    _pig_bin=$(find "$_pig_dir" -type f -name pig | head -1)
+    if [ -z "$_pig_bin" ]; then
+        say "pig binary missing from the archive"
+        return 1
+    fi
+    install -m 755 "$_pig_bin" "$PREFIX/bin/pig" || return 1
+    cat > "$HOME/.pig/install-receipt" <<RECEIPT
+kind=standalone
+executable=$PREFIX/bin/pig
+pig-version=$_pig_version
+update-source=https://github.com/MichaelKinsy/PiG/releases/latest/download/update.json
+RECEIPT
+    rm -f "$_pig_tmp"
+    rm -r "$_pig_dir" 2>/dev/null || true
+    say "installed pig $_pig_version from a mirror"
+    return 0
+}
+
+step 4 "安装 pig"
+if command -v pig >/dev/null 2>&1; then
     say "pig already installed: $(command -v pig)"
+else
+    status 4 running "安装 pig（官方安装器，最多 5 分钟）"
+    say "installing pig (official install.sh, 300s timeout)"
+    if fetch https://pi-in-go.dev/install.sh "$PREFIX/tmp/pig-official-install.sh"; then
+        if command -v timeout >/dev/null 2>&1; then
+            timeout 300 sh "$PREFIX/tmp/pig-official-install.sh" ||
+                say "official installer failed or timed out; trying a mirror"
+        else
+            sh "$PREFIX/tmp/pig-official-install.sh" ||
+                say "official installer failed; trying a mirror"
+        fi
+    else
+        say "could not download https://pi-in-go.dev/install.sh"
+    fi
+    if ! command -v pig >/dev/null 2>&1; then
+        install_pig_asset || true
+    fi
+fi
+if ! command -v pig >/dev/null 2>&1; then
+    fail_install "pig 下载失败：官方安装器和镜像都没有成功，请检查网络后重试"
 fi
 
 if ! command -v pig >/dev/null 2>&1; then
