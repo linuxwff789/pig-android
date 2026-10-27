@@ -476,19 +476,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
             result.fold(
                 onSuccess = { done ->
+                    val warning = done.optString("warning")
+                    val fixed = done.optJSONArray("settingsFixed")?.length() ?: 0
+                    val base = str(
+                        "backup.imported",
+                        "已恢复 {entries} 个文件；原数据备份在 {backup}",
+                    )
+                        .replace("{entries}", done.optInt("entries").toString())
+                        .replace(
+                            "{backup}",
+                            done.optString("backup").ifBlank { "~/.pig/backups" },
+                        )
+                    val extra = when {
+                        warning.isNotBlank() -> "\n$warning"
+                        fixed > 0 -> str(
+                            "backup.importedFixed",
+                            "；已自动移除 {n} 个冲突的扩展配置（保留 relay 内置副本）",
+                        ).replace("{n}", fixed.toString())
+                        else -> ""
+                    }
                     ui = ui.copy(
                         maintenanceBusy = false,
                         maintenanceSent = 0,
                         maintenanceTotal = 0,
-                        toast = str(
-                            "backup.imported",
-                            "已恢复 {entries} 个文件；原数据备份在 {backup}",
-                        )
-                            .replace("{entries}", done.optInt("entries").toString())
-                            .replace(
-                                "{backup}",
-                                done.optString("backup").ifBlank { "~/.pig/backups" },
-                            ),
+                        toast = base + extra,
                     )
                     // The relay stopped its pig processes; a fresh connection
                     // loads the restored settings, models and UI pack.

@@ -96,7 +96,10 @@ the same loopback socket (protocol: `docs/protocol.md`).
   writes an automatic full backup to `~/.pig/backups/` first, then merges the
   archive over `~/.pig` (restored files overwrite same-named ones; sessions not
   in the archive are kept). Only `.pig/` entries are accepted, and traversal,
-  symlinks and devices are ignored. Afterwards the relay stops every pig process
+  symlinks and devices are ignored. Restored `settings.json` is sanitized:
+  package entries that point at a second copy of an extension the relay ships
+  (e.g. a development checkout of `plan`) are dropped in favour of the embedded
+  copy, so a backup cannot leave pig in an exit/retry loop. Afterwards the relay stops every pig process
   so the restored settings, models and keys are actually loaded, and the app
   reconnects and reloads the pack and session list.
 - **卸载 pig 与 pig-relay** stops both processes and deletes

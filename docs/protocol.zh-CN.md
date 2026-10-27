@@ -180,7 +180,11 @@ SHA-256，通过后才动现有数据：
 ← {"type":"relay_restore_done","id":"r1","entries":312,"bytes":9123456,"backup":"/…/.pig/backups/pig-auto-before-restore-20261027-120500.tar.gz"}
 ```
 
-解压前，relay 会先把当前数据完整备份到 `~/.pig/backups/`。解压只接受 `.pig/`
+解压前，relay 会先把当前数据完整备份到 `~/.pig/backups/`。成功后会清理
+`settings.json`：删掉指向 relay 自己安装的扩展（目前是 `plan`）另一份副本的 package
+条目，并保留 `extensions/plan`。否则来自开发机 checkout 的备份会让 pig 以
+`Flag "--plan" conflicts` 退出，App 只能看到反复重连/报错。被移除的条目放在
+`relay_restore_done` 的 `settingsFixed` 里，非致命的清理问题放在 `warning` 里。解压只接受 `.pig/`
 下的条目，拒绝绝对路径和 `..`，从不创建符号链接、硬链接或设备文件；现有但
 归档里没有的文件会保留（合并，而不是清空）。恢复成功后所有 pig 进程都会停止
 ——它们在启动时缓存设置、模型和密钥 —— 下一次 RPC 会用恢复后的文件重新启动。

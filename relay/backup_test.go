@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -216,5 +217,52 @@ func TestChunkWriterSplitsAndChecksums(t *testing.T) {
 	cancel.Store(true)
 	if _, err := w.Write([]byte("x")); err == nil {
 		t.Fatal("expected cancellation error")
+	}
+}
+
+func TestSanitizeRestoredSettings(t *testing.T) {
+	home := t.TempDir()
+	agent := filepath.Join(home, ".pig", "agent")
+	writeFile(t, filepath.Join(agent, "extensions", "plan", ".embedded-hash"), "relay")
+	settings := filepath.Join(agent, "settings.json")
+	writeFile(t, settings, `{"packages":["pigkit/model-speed",`+
+		`"../../dev/pig-android/extensions/plan",`+
+		`"../../dev/pig-android/extensions/rtk"]}`)
+
+	removed, warning := sanitizeRestoredSettings(home)
+	if warning != "" {
+		t.Fatalf("unexpected warning: %s", warning)
+	}
+	if len(removed) != 1 || removed[0] != "../../dev/pig-android/extensions/plan" {
+		t.Fatalf("removed = %v", removed)
+	}
+	data, err := os.ReadFile(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Packages []string `json:"packages"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(got.Packages, "\n")
+	if strings.Contains(joined, "dev/pig-android/extensions/plan") {
+		t.Fatalf("checkout plan still present: %v", got.Packages)
+	}
+	for _, want := range []string{"pigkit/model-speed", "../../dev/pig-android/extensions/rtk", "extensions/plan"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("%q missing from %v", want, got.Packages)
+		}
+	}
+
+	// Without the relay's embedded copy there is nothing to conflict with.
+	other := t.TempDir()
+	otherAgent := filepath.Join(other, ".pig", "agent")
+	otherSettings := filepath.Join(otherAgent, "settings.json")
+	writeFile(t, otherSettings, `{"packages":["../../dev/pig-android/extensions/plan"]}`)
+	removed, warning = sanitizeRestoredSettings(other)
+	if len(removed) != 0 || warning != "" {
+		t.Fatalf("unexpected change without embedded plan: %v %q", removed, warning)
 	}
 }

@@ -534,17 +534,32 @@ func (s *session) applyRestore(id any, r *restoreSession) {
 		})
 		return
 	}
+	// A backup may carry `packages` entries that point at a development
+	// checkout of an extension the relay already manages (typically /plan).
+	// Loading both makes pig exit with "Flag --plan conflicts"; fix the file
+	// here instead of leaving the app in a reconnect/exit loop.
+	removed, warning := sanitizeRestoredSettings(s.cwd)
+	if len(removed) > 0 {
+		logf("restore: removed conflicting package(s): %s", strings.Join(removed, ", "))
+	}
 	s.msgMu.Lock()
 	s.msgCache = map[string]msgCacheEntry{}
 	s.msgMu.Unlock()
 	s.stopAllAgents()
-	_ = s.send(frame{
+	done := frame{
 		"type":    "relay_restore_done",
 		"id":      id,
 		"entries": entries,
 		"bytes":   r.written,
 		"backup":  autoPath,
-	})
+	}
+	if len(removed) > 0 {
+		done["settingsFixed"] = removed
+	}
+	if warning != "" {
+		done["warning"] = warning
+	}
+	_ = s.send(done)
 }
 
 func (s *session) stopAllAgents() {
@@ -678,4 +693,63 @@ func safeArchivePath(root, name string) (string, bool) {
 		return "", false
 	}
 	return dest, true
+}
+
+// sanitizeRestoredSettings drops package entries that would load a second copy
+// of an extension the relay itself installs. A backup taken on a development
+// machine often has `packages` pointing at a checkout (`.../extensions/plan`);
+// after a restore the embedded copy is registered too, and pig exits with
+// `Flag "--plan" conflicts with ...`. Keeping the embedded copy is the better
+// fix: the relay updates it with the app, while the checkout goes stale.
+func sanitizeRestoredSettings(home string) (removed []string, warning string) {
+	agentDir := filepath.Join(home, ".pig", "agent")
+	embeddedPlan := filepath.Join(agentDir, "extensions", "plan")
+	// Only touch the file when the relay's own plan extension is present;
+	// without it, a single checkout entry is perfectly valid.
+	if _, err := os.Stat(filepath.Join(embeddedPlan, ".embedded-hash")); err != nil {
+		return nil, ""
+	}
+	settingsPath := filepath.Join(agentDir, "settings.json")
+	root, err := readJSONObjectFile(settingsPath)
+	if err != nil || len(root) == 0 {
+		return nil, ""
+	}
+	raw, ok := root["packages"].([]any)
+	if !ok {
+		return nil, ""
+	}
+	kept := make([]any, 0, len(raw))
+	hasEmbedded := false
+	for _, item := range raw {
+		entry, _ := item.(string)
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		resolved := entry
+		if !filepath.IsAbs(resolved) {
+			resolved = filepath.Join(agentDir, resolved)
+		}
+		resolved = filepath.Clean(resolved)
+		if filepath.Base(resolved) == "plan" {
+			if resolved == embeddedPlan {
+				hasEmbedded = true
+			} else {
+				removed = append(removed, entry)
+				continue
+			}
+		}
+		kept = append(kept, item)
+	}
+	if len(removed) == 0 {
+		return nil, ""
+	}
+	if !hasEmbedded {
+		kept = append(kept, "extensions/plan")
+	}
+	root["packages"] = kept
+	if err := writeJSONAtomic(settingsPath, root); err != nil {
+		return removed, "已恢复，但清理冲突的 plan 扩展失败: " + err.Error()
+	}
+	return removed, ""
 }

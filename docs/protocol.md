@@ -227,7 +227,12 @@ enforces the announced `size` and verifies the SHA-256 before touching anything:
 ```
 
 Before extracting, the relay writes an automatic full backup to
-`~/.pig/backups/`. Extraction only accepts entries under `.pig/`, refuses
+`~/.pig/backups/`. On success it also sanitizes `settings.json`: package entries
+that point at another copy of an extension the relay installs itself (today
+`plan`) are removed, and `extensions/plan` is kept. Without that, a backup from a
+development checkout makes pig exit with `Flag "--plan" conflicts`, which the app
+only sees as a reconnect/error loop. `relay_restore_done` reports the removed
+entries as `settingsFixed` and any non-fatal cleanup problem as `warning`. Extraction only accepts entries under `.pig/`, refuses
 absolute paths and `..`, and never creates symlinks, hardlinks or devices;
 files already in `~/.pig` but missing from the archive are left alone (merge,
 not wipe). After a successful restore every pig process is stopped — they cache
