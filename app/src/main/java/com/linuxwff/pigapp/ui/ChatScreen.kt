@@ -2020,6 +2020,23 @@ private fun SettingsDialog(
                         Text(packText("settings.webdavAction", "配置"))
                     }
                 }
+                // Result of "sync now" must be readable right here: the
+                // snackbar sits in the activity window and this dialog covers it.
+                if (ui.webdavBusy || ui.webdavMessage.isNotBlank()) {
+                    Text(
+                        if (ui.webdavBusy) {
+                            packText("webdav.working", "正在打包并上传…")
+                        } else {
+                            ui.webdavMessage
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (ui.webdavMessageError && !ui.webdavBusy) {
+                            scheme.error
+                        } else {
+                            scheme.onSurfaceVariant
+                        },
+                    )
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
