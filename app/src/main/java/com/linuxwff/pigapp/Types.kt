@@ -193,6 +193,11 @@ data class UiChromeAppearance(
     val chipRadius: Int = -1,
     /** Empty string inherits the ambient content colour. */
     val emptyTitleColor: String = "",
+    /** Jump-to-bottom pill: fill token + opacity, icon/label token + opacity. */
+    val fabBackground: String = "primary",
+    val fabBackgroundAlpha: Float = 1f,
+    val fabTint: String = "onPrimary",
+    val fabTintAlpha: Float = 1f,
 )
 
 /** `markdown`: colours for the Markdown body (links, inline code, tables, rules). */

@@ -4094,6 +4094,10 @@ private fun MessageList(
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val chrome = LocalUiPack.current.layout.chrome
+    val packThemeValues = LocalUiPack.current.theme
+    val fabBackground = packColor(chrome.fabBackground).copy(alpha = chrome.fabBackgroundAlpha)
+    val fabTint = packColor(chrome.fabTint).copy(alpha = chrome.fabTintAlpha)
     var autoScroll by remember { mutableStateOf(true) }
     var programmaticScroll by remember { mutableStateOf(false) }
     // Where the reader was before an older page was prepended.
@@ -4302,9 +4306,9 @@ private fun MessageList(
             exit = fadeOut(),
         ) {
             Surface(
-                color = MaterialTheme.colorScheme.primary,
+                color = fabBackground,
                 shape = CircleShape,
-                shadowElevation = 6.dp,
+                shadowElevation = packThemeValues.fabElevation.dp,
                 modifier = Modifier.clickable {
                     scope.launch {
                         programmaticScroll = true
@@ -4327,13 +4331,13 @@ private fun MessageList(
                         packIcon("chevronDown", "down"),
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onPrimary,
+                        tint = fabTint,
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
                         packText("chat.jumpBottom", "回到底部"),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = fabTint,
                     )
                 }
             }
