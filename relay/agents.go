@@ -1151,24 +1151,36 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 				"success": true, "sessionPath": s.activePath, "data": frame{},
 			})
 		}
-	case "get_available_models":
+	case "get_available_models", "get_available_thinking_levels":
 		// A fresh backend has no agent yet; without an answer the app never
 		// learns that the model list is empty and cannot show its setup banner.
-		if a := s.activeAgent(); a != nil {
-			_ = a.pig.write(line)
-		} else {
-			_ = s.send(frame{
-				"type": "response", "id": id, "command": "get_available_models",
-				"success": true, "data": frame{"models": []any{}},
-			})
+		//
+		// With a restored session it is the opposite: the relay stopped the idle
+		// pig when the client went away, the app reconnects and opens the model
+		// picker, and answering "no models" left it empty until the next prompt.
+		// Start the agent for the known session and let pig answer.
+		command := "get_available_models"
+		empty := frame{"models": []any{}}
+		if typ == "get_available_thinking_levels" {
+			command = typ
+			empty = frame{"levels": []any{}}
 		}
-	case "get_available_thinking_levels":
 		if a := s.activeAgent(); a != nil {
 			_ = a.pig.write(line)
+		} else if s.activePath != "" {
+			if a, err := s.ensureAgent(s.activePath, true); err == nil {
+				_ = a.pig.write(line)
+			} else {
+				_ = s.send(frame{
+					"type": "relay_error",
+					"id":   id,
+					"message": fmt.Sprintf("%s: cannot start pig: %v", command, err),
+				})
+			}
 		} else {
 			_ = s.send(frame{
-				"type": "response", "id": id, "command": "get_available_thinking_levels",
-				"success": true, "data": frame{"levels": []any{}},
+				"type": "response", "id": id, "command": command,
+				"success": true, "data": empty,
 			})
 		}
 	case "prompt":
