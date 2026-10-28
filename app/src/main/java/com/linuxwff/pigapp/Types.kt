@@ -273,6 +273,34 @@ data class UiToolCardAppearance(
     val chipAlpha: Float = 0.15f,
     val groupRadius: Int = -1,
     val groupPadding: Int = 10,
+    /** Card width cap in dp; 0 fills the transcript. Rows stay left aligned. */
+    val maxWidth: Int = 0,
+    /**
+     * Per-tool colour overrides, keyed by lowercase tool name (`bash`, `edit`,
+     * `read`, ...). A key ending in `*` is a prefix match (`codegraph*`); an
+     * exact key wins. Blank fields inherit the card defaults above.
+     */
+    val byTool: Map<String, UiToolStyle> = emptyMap(),
+) {
+    /** Overrides for [tool], or an empty style when the pack declares none. */
+    fun styleFor(tool: String?): UiToolStyle {
+        if (byTool.isEmpty()) return UiToolStyle()
+        val name = tool?.trim()?.lowercase().orEmpty()
+        if (name.isEmpty()) return UiToolStyle()
+        byTool[name]?.let { return it }
+        return byTool.entries
+            .firstOrNull { (key, _) -> key.endsWith("*") && name.startsWith(key.dropLast(1)) }
+            ?.value
+            ?: UiToolStyle()
+    }
+}
+
+/** Colours one tool's cards may override; blank means "inherit the card". */
+data class UiToolStyle(
+    val iconTint: String = "",
+    val iconBackground: String = "",
+    val titleColor: String = "",
+    val borderColor: String = "",
 )
 
 data class UiDrawerAppearance(

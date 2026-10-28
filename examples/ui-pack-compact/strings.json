@@ -321,6 +321,7 @@
     "steer": "插队",
     "followUp": "排队",
     "remove": "移出队列",
-    "clearAll": "全部清空"
+    "clearAll": "全部清空",
+    "editHint": "点一条取回输入框修改，右侧图标删除"
   }
 }

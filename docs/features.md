@@ -272,6 +272,10 @@ PiG reports both queues with `queue_update`, so the banner above the composer
 names what is actually waiting (`已插队 1 · 已排队 2`) instead of calling every
 queued message a steer. Tapping the banner opens 待发送消息:
 
+- tapping a row takes that message out of the queue and puts it back in the
+  composer, so a queued (including steered) message can still be edited before
+  it runs; a message pig already consumed is part of the session and cannot be
+  changed;
 - each row shows its kind and text and can be removed with the delete icon;
 - **全部清空** drops both queues (`clear_queue`);
 - pig has no "drop one" RPC, so removing a row clears both queues and re-queues
