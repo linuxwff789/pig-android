@@ -21,7 +21,7 @@ tools/fresh-device-sim/sim.sh bootstrap  # just download/extract the Termux user
 tools/fresh-device-sim/sim.sh install v1.1.32
 tools/fresh-device-sim/sim.sh relay      # run it, Ctrl-C to stop
 tools/fresh-device-sim/sim.sh app        # replay the app against a running relay
-tools/fresh-device-sim/sim.sh pack       # bundled pack: manifest present, no leaked window
+tools/fresh-device-sim/sim.sh pack       # relay pack: manifest present, no leaked window, APK bundles none
 tools/fresh-device-sim/sim.sh shell      # a shell inside the simulated device
 tools/fresh-device-sim/sim.sh reset      # wipe it, keep the downloaded zip
 tools/fresh-device-sim/sim.sh destroy

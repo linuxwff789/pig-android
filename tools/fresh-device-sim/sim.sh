@@ -13,7 +13,7 @@
 #   tools/fresh-device-sim/sim.sh install [tag]
 #   tools/fresh-device-sim/sim.sh relay        # start, then press Ctrl-C
 #   tools/fresh-device-sim/sim.sh app          # replay the app against a running relay
-#   tools/fresh-device-sim/sim.sh pack         # bundled assets: manifest present, no leaked window
+#   tools/fresh-device-sim/sim.sh pack         # relay pack + no bundled pack in the APK
 #   tools/fresh-device-sim/sim.sh reset        # wipe the device, keep the zip
 #   tools/fresh-device-sim/sim.sh stop         # stop the simulated relay
 #   tools/fresh-device-sim/sim.sh shell        # drop into the simulated device
@@ -240,18 +240,23 @@ app_sim() {
 
 pack_check() {
     sh "$repo/scripts/check-ui-packs.sh"
-    python3 - "$repo/app/src/main/assets/ui-packs/compact" <<'PY'
+    python3 - "$repo/relay/embedded/ui" "$repo/app/src/main/assets" <<'PY'
 import json, os, sys
-root = sys.argv[1]
+root, assets = sys.argv[1], sys.argv[2]
 need = ["manifest.json", "theme/colors.json", "layout/chat.json"]
 missing = [p for p in need if not os.path.isfile(os.path.join(root, p))]
 if missing:
-    sys.exit("bundled pack is missing: " + ", ".join(missing))
+    sys.exit("relay pack is missing: " + ", ".join(missing))
 manifest = json.load(open(os.path.join(root, "manifest.json")))
 for key in ("name", "theme", "layout"):
     if not manifest.get(key):
-        sys.exit("bundled manifest has no %s" % key)
-print("pack: %s v%s, %s" % (manifest.get("name"), manifest.get("version"), ", ".join(need)))
+        sys.exit("pack manifest has no %s" % key)
+packed = os.path.join(assets, "ui-packs")
+shipped = os.listdir(packed) if os.path.isdir(packed) else []
+if shipped:
+    sys.exit("APK still bundles ui packs: " + ", ".join(shipped))
+print("pack: %s v%s, %s; no bundled pack in the APK" % (
+    manifest.get("name"), manifest.get("version"), ", ".join(need)))
 PY
 }
 

@@ -39,23 +39,20 @@ App 认识三种来源，顺序与 **设置 → UI pack 管理** 对话框中的
 
 | 来源 | 所在位置 | id | 说明 |
 | --- | --- | --- | --- |
-| relay（默认值） | Termux 中的 `~/.pig/android-ui/`，由 `pig-relay` 推送 | `""` | 每次变更都会自动生效，无需导入；初始内容来自 `examples/ui-pack-graphite/` |
-| 内置 | APK 内的 `assets/ui-packs/<name>/` | `builtin:<name>` | 只读，离线时也会列出 |
+| relay（默认值） | Termux 中的 `~/.pig/android-ui/`，由 `pig-relay` 推送 | `""` | 每次变更都会自动生效，无需导入；初始内容来自 `examples/ui-pack-compact/` |
+| 内置 | APK 内的 `assets/ui-packs/<name>/` | `builtin:<name>` | 只读，离线时也会列出；**正式 APK 里不含任何 pack** |
 | 导入 | App 私有目录中的 `files/ui-packs/<id>/` | `<id>` | 来自 导入 ZIP / 导入文件夹，可删除 |
 
-内置 pack 随 APK 一起发布；第一个是 `builtin:compact`
-（`examples/ui-pack-compact/`，构建前复制到
-`app/src/main/assets/ui-packs/compact/`）。它和 relay 的默认 pack
-（`examples/ui-pack-graphite/`）是两套不同的设计，所以管理器最上面两行是两个
-明显不同的外观。它们不能删除 —— 只能选择 ——
-并且直接从 `assets/` 读取，所以选择内置 pack 不会向 App 的 files 目录复制任何
-内容。选择结果保存在 `activePackId` 中，因此能跨重启保留，并且在用户重新选择
-内置 pack 之前一直优先于 relay 推送。
+项目里只有**一套** pack：`examples/ui-pack-compact/`，由 `pig-relay` 内嵌，并在全新安装
+时种子到 `~/.pig/android-ui/`。APK 自身不再携带 pack（`app/src/main/assets/ui-packs/`
+为空），所以管理器只有一行，不会再出现两套一样的外观。内置机制仍保留给自定义构建：
+把 pack 放到 `assets/ui-packs/<name>/` 就会以 `builtin:<name>` 列出，直接从 `assets/`
+读取（选择它不会复制任何文件）。选中的内置/导入 pack 存在 `activePackId`，可跨重启，
+并在用户改回 relay 那行之前一直优先于 relay 推送。
 
-**首次启动** 会使用 `builtin:compact`，而不是在 Termux 尚未推送任何内容时显示
-朴素界面；但这个默认值 *不是* 用户的选择：一旦 relay pack 到达，它就会接管并
-清空 `activePackId`。在管理器中选中任意 pack（包括点击已选中的内置行）会设置
-`packPinned`，此后 relay 推送会被忽略，直到用户再次选择内置 pack。
+**首次启动** 先用 App 内置默认外观，等 `pig-relay` 推送 pack 后接管；这不是用户的
+选择，因此 `activePackId` 保持为空。在管理器里选中任意 pack 会设置 `packPinned`，
+此后 relay 推送被忽略，直到用户再次选择 relay 那一行。
 
 ## manifest.json
 

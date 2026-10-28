@@ -40,25 +40,24 @@ them:
 
 | source | lives in | id | notes |
 | --- | --- | --- | --- |
-| relay (default) | `~/.pig/android-ui/` in Termux, pushed by `pig-relay` | `""` | picked up on every change, no import; seeded from `examples/ui-pack-graphite/` |
-| bundled | `assets/ui-packs/<name>/` inside the APK | `builtin:<name>` | read-only, listed even offline |
+| relay (default) | `~/.pig/android-ui/` in Termux, pushed by `pig-relay` | `""` | picked up on every change, no import; seeded from `examples/ui-pack-compact/` |
+| bundled | `assets/ui-packs/<name>/` inside the APK | `builtin:<name>` | read-only, listed even offline; **the shipped APK contains none** |
 | imported | `files/ui-packs/<id>/` in the app's private dir | `<id>` | from 导入 ZIP / 导入文件夹, deletable |
 
-Bundled packs ship with the APK; the first one is `builtin:compact`
-(`examples/ui-pack-compact/`, copied to `app/src/main/assets/ui-packs/compact/`
-before the build). It is a different design from the relay's default pack
-(`examples/ui-pack-graphite/`), so the first two rows of the manager are two
-distinct looks. They cannot be deleted — only selected — and they are read
-straight out of `assets/`, so selecting one does not copy anything to the app's
-files dir. The choice is stored in `activePackId`, so it survives restarts, and
-it wins over relay pushes until the user picks the built-in pack again.
+There is exactly **one** pack in the project: `examples/ui-pack-compact/`, which
+`pig-relay` embeds and seeds into `~/.pig/android-ui/` on a fresh install. The
+APK itself ships no pack (`app/src/main/assets/ui-packs/` is empty), so the
+manager shows a single row and two identical packs can no longer appear. The
+bundled mechanism stays in the app for custom builds: drop a pack under
+`assets/ui-packs/<name>/` and it is listed as `builtin:<name>`, read straight
+out of `assets/` (selecting it copies nothing). A chosen bundled or imported
+pack is stored in `activePackId`, survives restarts and wins over relay pushes
+until the user selects the relay pack again.
 
-**First launch** starts on `builtin:compact` instead of looking plain while
-Termux has not pushed anything yet, but that default is *not* a user choice: as
-soon as a relay pack arrives it takes over and clears `activePackId`. Picking
-any pack in the manager (including tapping the already-selected bundled row)
-sets `packPinned`, and from then on relay pushes are ignored until the user
-selects 内置 pack again.
+**First launch** shows the app's built-in defaults until `pig-relay` pushes the
+pack; that is not a user choice, so `activePackId` stays empty and the first
+push takes over. Picking any pack in the manager sets `packPinned`, and from
+then on relay pushes are ignored until the user selects the relay row again.
 
 ## manifest.json
 
