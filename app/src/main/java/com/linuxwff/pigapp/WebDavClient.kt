@@ -66,7 +66,9 @@ data class WebDavConfig(
             password = prefs.getString(PASS_KEY, "").orEmpty(),
             dir = prefs.getString(DIR_KEY, DEFAULT_DIR).orEmpty().ifBlank { DEFAULT_DIR },
             keep = prefs.getInt(KEEP_KEY, 7).coerceIn(1, 60),
-            everyHours = prefs.getInt(EVERY_KEY, 0).coerceIn(0, 24 * 14),
+            // Only "off" and "daily" exist now; a stored 6/12/72/168 h value
+            // from an older version becomes daily at the chosen hour.
+            everyHours = if (prefs.getInt(EVERY_KEY, 0) <= 0) 0 else 24,
             dailyMinutes = prefs.getInt(DAILY_KEY, DEFAULT_DAILY_MINUTES).coerceIn(0, 24 * 60 - 1),
             insecureTls = prefs.getBoolean(INSECURE_KEY, false),
         )
@@ -78,7 +80,7 @@ data class WebDavConfig(
                 .putString(PASS_KEY, config.password)
                 .putString(DIR_KEY, config.dir.trim().trim('/'))
                 .putInt(KEEP_KEY, config.keep.coerceIn(1, 60))
-                .putInt(EVERY_KEY, config.everyHours.coerceIn(0, 24 * 14))
+                .putInt(EVERY_KEY, if (config.everyHours <= 0) 0 else 24)
                 .putInt(DAILY_KEY, config.dailyMinutes.coerceIn(0, 24 * 60 - 1))
                 .putBoolean(INSECURE_KEY, config.insecureTls)
                 .apply()

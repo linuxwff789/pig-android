@@ -1996,7 +1996,7 @@ private fun SettingsDialog(
                         Text(
                             packText(
                                 "settings.webdavHint",
-                                "把同一份备份上传到 WebDAV；可按小时/天定时上传并保留最近几份",
+                                "把同一份备份上传到 WebDAV；可以每天定时上传并保留最近几份",
                             ),
                             style = MaterialTheme.typography.labelSmall,
                             color = scheme.onSurfaceVariant,
@@ -5620,7 +5620,7 @@ private fun QueueDialog(
 }
 
 /** Periodic WebDAV backup choices, in hours; 0 turns the schedule off. */
-private val WEBDAV_INTERVALS = listOf(0, 6, 12, 24, 72, 168)
+private val WEBDAV_INTERVALS = listOf(0, 24)
 
 /**
  * WebDAV settings, manual upload and restore. Scheduling is a WorkManager job
@@ -5731,13 +5731,10 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                                 onClick = { hours = value },
                                 label = {
                                     Text(
-                                        when (value) {
-                                            0 -> packText("webdav.off", "关闭")
-                                            6 -> packText("webdav.every6", "每 6 小时")
-                                            12 -> packText("webdav.every12", "每 12 小时")
-                                            24 -> packText("webdav.daily", "每天")
-                                            72 -> packText("webdav.every3d", "每 3 天")
-                                            else -> packText("webdav.weekly", "每周")
+                                        if (value == 0) {
+                                            packText("webdav.off", "关闭")
+                                        } else {
+                                            packText("webdav.daily", "每天")
                                         },
                                         style = MaterialTheme.typography.labelSmall,
                                     )

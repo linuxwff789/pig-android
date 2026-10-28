@@ -421,12 +421,10 @@ speaks Basic auth — Nextcloud, Alist, Synology, rclone serve.
   `https://dav.example.com/remote.php/dav/files/me`.
 - **保留 N 份**: after each upload the oldest `pig-backup-*.tar.gz` files beyond
   N are deleted from that folder.
-- **定时备份**: off / every 6 h / 12 h / daily / every 3 days / weekly. It is a
-  WorkManager job with a network constraint; it survives reboots and app
-  restarts and the first run happens one interval after it is enabled. **Daily**
-  also picks an hour (default 03:00): the first run waits for that hour and the
-  24 h period keeps following it. Every mode stays periodic, so a failed or
-  never-started run cannot end the schedule. When the
+- **定时备份**: off / daily at a chosen hour (default 03:00). It is a periodic
+  WorkManager job (24 h) with a network constraint: it survives reboots, app
+  restarts and failed or skipped runs, because the next period always comes.
+  The first run waits for the chosen hour. When the
   app process is alive the job uploads over the app's relay connection; a
   second connection would replace the app, which would replace it back and
   make the relay flap. With no app process it opens a one-shot connection
