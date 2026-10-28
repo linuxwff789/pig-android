@@ -580,11 +580,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun syncNowWebDav() {
         val config = WebDavConfig.from(prefs)
+        AppLog.event(
+            "webdav",
+            "sync now tapped: ready=${config.ready} relay=${client.connected.value} " +
+                "backupRemote=${ui.backupRemote} busy=${ui.webdavBusy}",
+        )
         if (!config.ready) {
-            ui = ui.copy(toast = str("webdav.notConfigured", "先在设置里配置 WebDAV 服务器"))
+            val text = str("webdav.notConfigured", "先在设置里配置 WebDAV 服务器")
+            ui = ui.copy(toast = text, webdavMessage = text, webdavMessageError = true)
+            bubble(text)
             return
         }
-        backupNowWebDav(config)
+        backupNowWebDav(config, notify = true)
+    }
+
+    /**
+     * Feedback that also shows above a dialog: the snackbar lives in the
+     * activity window, so a message raised while settings is open is dimmed
+     * behind it and looks like nothing happened.
+     */
+    private fun bubble(text: String) {
+        runCatching {
+            android.widget.Toast.makeText(getApplication(), text, android.widget.Toast.LENGTH_LONG)
+                .show()
+        }
     }
 
     fun testWebDav(config: WebDavConfig) = webDavRun {
@@ -596,22 +615,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * One manual upload. Scheduled runs live in [WebDavBackupWorker]: they open
      * their own relay connection because no UI is there to own one.
      */
-    fun backupNowWebDav(config: WebDavConfig) {
+    fun backupNowWebDav(config: WebDavConfig, notify: Boolean = false) {
         if (!client.connected.value || !ui.backupRemote) {
-            ui = ui.copy(
-                toast = str(
-                    "backup.needRelay",
-                    "需要新版 relay 才能导出备份：重装 Termux 组件后重启 relay",
-                ),
+            val text = str(
+                "backup.needRelay",
+                "需要新版 relay 才能导出备份：重装 Termux 组件后重启 relay",
             )
+            AppLog.event(
+                "webdav",
+                "backup skipped: relay=${client.connected.value} backupRemote=${ui.backupRemote}",
+            )
+            ui = ui.copy(toast = text, webdavMessage = text, webdavMessageError = true)
+            if (notify) bubble(text)
             return
         }
-        if (ui.webdavBusy || ui.maintenanceBusy) return
+        if (ui.webdavBusy || ui.maintenanceBusy) {
+            AppLog.event("webdav", "backup skipped: busy=${ui.webdavBusy} maintenance=${ui.maintenanceBusy}")
+            val text = str("webdav.working", "处理中…")
+            if (notify) bubble(text)
+            return
+        }
+        AppLog.event("webdav", "backup start: ${webDavTarget(config)} dir=${config.dir} keep=${config.keep}")
+        val started = str("webdav.uploading", "正在打包并上传…")
         ui = ui.copy(
             webdavBusy = true,
-            webdavMessage = str("webdav.uploading", "正在打包并上传…"),
+            webdavMessage = started,
             webdavMessageError = false,
         )
+        // Instant confirmation that the tap landed, above the dialog.
+        if (notify) bubble(started)
         viewModelScope.launch {
             val ctx = getApplication<Application>()
             val result = runCatching {
@@ -641,24 +673,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     } else {
                         ""
                     }
+                    val message = str("webdav.uploaded", "已上传 {name}（{size}）{extra}")
+                        .replace("{name}", name)
+                        .replace("{size}", formatSize(bytes))
+                        .replace("{extra}", extra)
+                    AppLog.event("webdav", "backup ok: $name ($bytes bytes), pruned $removed")
+                    if (notify) bubble(message)
                     ui.copy(
                         webdavBusy = false,
-                        webdavMessage = str("webdav.uploaded", "已上传 {name}（{size}）{extra}")
-                            .replace("{name}", name)
-                            .replace("{size}", formatSize(bytes))
-                            .replace("{extra}", extra),
+                        webdavMessage = message,
                         webdavMessageError = false,
                         toast = str("webdav.uploadedToast", "WebDAV 备份完成"),
                     )
                 },
                 onFailure = { error ->
                     val text = error.message ?: error.toString()
+                    AppLog.event(
+                        "webdav",
+                        "backup failed: ${error.javaClass.simpleName}: ${error.message}",
+                    )
+                    // The dialog is often closed when "sync now" runs: the row
+                    // status and the toast (or a real toast above the dialog)
+                    // have to carry the reason.
+                    if (notify) bubble(text)
                     ui.copy(
                         webdavBusy = false,
                         webdavMessage = text,
                         webdavMessageError = true,
-                        // The dialog is often closed when "sync now" runs, so
-                        // the failure also has to reach the toast.
                         toast = text,
                     )
                 },
@@ -748,8 +789,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Scheme + host + port only: no credentials, no path, no query. */
+    private fun webDavTarget(config: WebDavConfig): String = runCatching {
+        val url = java.net.URL(config.url.trim())
+        val port = if (url.port > 0) ":${url.port}" else ""
+        "${url.protocol}://${url.host}$port"
+    }.getOrDefault("<invalid url>")
+
     private fun webDavRun(block: suspend () -> String) {
-        if (ui.webdavBusy) return
+        if (ui.webdavBusy) {
+            AppLog.event("webdav", "run skipped: busy")
+            return
+        }
         ui = ui.copy(
             webdavBusy = true,
             webdavMessage = str("webdav.working", "处理中…"),
@@ -757,6 +808,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
         viewModelScope.launch {
             val result = runCatching { withContext(Dispatchers.IO) { block() } }
+            AppLog.event(
+                "webdav",
+                result.fold(
+                    onSuccess = { "ok: $it" },
+                    onFailure = { "failed: ${it.javaClass.simpleName}: ${it.message}" },
+                ),
+            )
             ui = result.fold(
                 onSuccess = {
                     ui.copy(webdavBusy = false, webdavMessage = it, webdavMessageError = false)
