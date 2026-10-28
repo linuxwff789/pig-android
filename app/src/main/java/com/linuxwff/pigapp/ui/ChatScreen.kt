@@ -165,6 +165,7 @@ import com.linuxwff.pigapp.ChatMsg
 import com.linuxwff.pigapp.LocalPackInfo
 import com.linuxwff.pigapp.LogExporter
 import com.linuxwff.pigapp.PendingImage
+import com.linuxwff.pigapp.QueuedMessage
 import com.linuxwff.pigapp.RelayLauncher
 import com.linuxwff.pigapp.Role
 import com.linuxwff.pigapp.SessionInfo
@@ -196,6 +197,7 @@ fun PigApp(vm: AppViewModel) {
     var showSettings by remember { mutableStateOf(false) }
     var showStats by remember { mutableStateOf(false) }
     var showPackManager by remember { mutableStateOf(false) }
+    var showQueue by remember { mutableStateOf(false) }
     // System photo picker: GetMultipleContents needs no storage permission.
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents(),
@@ -443,7 +445,11 @@ fun PigApp(vm: AppViewModel) {
                             }
                         }
                         if (ui.pendingMessages > 0 && components.showPendingBanner) {
-                            PendingBanner(ui.pendingMessages)
+                            PendingBanner(
+                                count = ui.pendingMessages,
+                                queued = ui.queuedMessages,
+                                onOpen = { showQueue = true },
+                            )
                         }
                         if (ui.pending != null && ui.pendingHidden) {
                             HiddenRequestBanner(ui.pending, vm::showPending)
@@ -617,6 +623,15 @@ fun PigApp(vm: AppViewModel) {
         ImageViewer.close()
     }
     ModelPickerDialog(vm)
+    if (showQueue) {
+        QueueDialog(
+            queued = ui.queuedMessages,
+            pendingCount = ui.pendingMessages,
+            onRemove = vm::removeQueued,
+            onClear = vm::clearQueued,
+            onDismiss = { showQueue = false },
+        )
+    }
     if (ui.setup) SetupDialog(ui, vm)
 }
 
@@ -5324,15 +5339,39 @@ private fun CommandPalette(
     }
 }
 
+/**
+ * What is still waiting in pig, split into the two queues it keeps: steering is
+ * injected into the running turn (插队), follow-up runs after it (排队). The
+ * counts come from `queue_update`; a reconnect only knows the total, which is
+ * why the unknown case does not claim one kind or the other.
+ */
 @Composable
-private fun PendingBanner(count: Int) {
+private fun PendingBanner(count: Int, queued: List<QueuedMessage>, onOpen: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
+    val steer = queued.count { it.isSteer }
+    val followUp = queued.size - steer
+    val label = when {
+        queued.isEmpty() ->
+            packText("banner.pendingUnknown", "待发送 · {count}")
+                .replace("{count}", count.toString())
+        steer > 0 && followUp > 0 ->
+            packText("banner.pendingBoth", "已插队 {steer} · 已排队 {follow}")
+                .replace("{steer}", steer.toString())
+                .replace("{follow}", followUp.toString())
+        steer > 0 ->
+            packText("banner.pending", "已插队，等待当前步骤 · {count}")
+                .replace("{count}", steer.toString())
+        else ->
+            packText("banner.pendingFollow", "已排队，本轮结束后发送 · {count}")
+                .replace("{count}", followUp.toString())
+    }
     Row(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 3.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(scheme.secondary.copy(alpha = 0.12f))
+            .clickable(onClick = onOpen)
             .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -5344,12 +5383,137 @@ private fun PendingBanner(count: Int) {
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            packText("banner.pending", "已插队，等待当前步骤 · {count}")
-                .replace("{count}", count.toString()),
+            label,
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.labelSmall,
             color = scheme.secondary,
         )
+        Text(
+            packText("banner.pendingManage", "管理"),
+            style = MaterialTheme.typography.labelSmall,
+            color = scheme.secondary.copy(alpha = 0.85f),
+        )
     }
+}
+
+/**
+ * The two queues pig keeps, with a way out of them. pig has no "drop one" RPC,
+ * so removing a row clears both queues and re-queues the rest (see
+ * [AppViewModel.removeQueued]); the list re-renders from pig's queue_update.
+ */
+@Composable
+private fun QueueDialog(
+    queued: List<QueuedMessage>,
+    pendingCount: Int,
+    onRemove: (QueuedMessage) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val steer = queued.count { it.isSteer }
+    val followUp = queued.size - steer
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(22.dp),
+        containerColor = scheme.surface,
+        title = {
+            Column {
+                Text(packText("queue.title", "待发送消息"))
+                Text(
+                    if (queued.isEmpty()) {
+                        packText("queue.unknown", "pig 报告 {count} 条待发送")
+                            .replace("{count}", pendingCount.toString())
+                    } else {
+                        packText("queue.summary", "插队 {steer} · 排队 {follow}")
+                            .replace("{steer}", steer.toString())
+                            .replace("{follow}", followUp.toString())
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+        },
+        text = {
+            if (queued.isEmpty()) {
+                Text(
+                    packText(
+                        "queue.contentsUnknown",
+                        "重连后 pig 只上报数量，不提供内容；之后发送的消息可以逐条管理。",
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            } else {
+                Column(
+                    Modifier
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    queued.forEachIndexed { index, message ->
+                        if (index > 0) Spacer(Modifier.height(6.dp))
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (message.isSteer) {
+                                        scheme.primary.copy(alpha = 0.1f)
+                                    } else {
+                                        scheme.secondary.copy(alpha = 0.1f)
+                                    },
+                                )
+                                .padding(start = 10.dp, end = 2.dp, top = 6.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                if (message.isSteer) {
+                                    packText("queue.steer", "插队")
+                                } else {
+                                    packText("queue.followUp", "排队")
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (message.isSteer) scheme.primary else scheme.secondary,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                message.text,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = scheme.onSurface,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            IconButton(onClick = { onRemove(message) }) {
+                                Icon(
+                                    packIcon("delete", "delete"),
+                                    contentDescription = packText("queue.remove", "移出队列"),
+                                    modifier = Modifier.size(18.dp),
+                                    tint = scheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(packText("dialog.ok", "确定"))
+            }
+        },
+        dismissButton = {
+            if (pendingCount > 0) {
+                TextButton(
+                    onClick = {
+                        onClear()
+                        onDismiss()
+                    },
+                ) {
+                    Text(packText("queue.clearAll", "全部清空"), color = scheme.error)
+                }
+            }
+        },
+    )
 }
 
 /**

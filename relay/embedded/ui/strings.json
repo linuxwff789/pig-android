@@ -80,7 +80,11 @@
   },
   "banner": {
     "readOnly": "历史会话 · 发送消息后启动后端",
-    "pending": "已插队，等待当前步骤 · {count}"
+    "pending": "已插队，等待当前步骤 · {count}",
+    "pendingFollow": "已排队，本轮结束后发送 · {count}",
+    "pendingBoth": "已插队 {steer} · 已排队 {follow}",
+    "pendingUnknown": "待发送 · {count}",
+    "pendingManage": "管理"
   },
   "composer": {
     "steerPlaceholder": "插队指令…",
@@ -308,5 +312,15 @@
     "deleteFailed": "删除失败：{error}",
     "bundledHint": "随 App 内置 · v{version} · {files} files",
     "bundledReadOnly": "内置 pack 不能删除"
+  },
+  "queue": {
+    "title": "待发送消息",
+    "summary": "插队 {steer} · 排队 {follow}",
+    "unknown": "pig 报告 {count} 条待发送",
+    "contentsUnknown": "重连后 pig 只上报数量，不提供内容；之后发送的消息可以逐条管理。",
+    "steer": "插队",
+    "followUp": "排队",
+    "remove": "移出队列",
+    "clearAll": "全部清空"
   }
 }

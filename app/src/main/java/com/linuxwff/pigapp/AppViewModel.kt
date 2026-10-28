@@ -1834,6 +1834,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(
             readOnly = false,
             pendingMessages = if (wasBusy) ui.pendingMessages + 1 else 0,
+            // Shown immediately; pig's queue_update replaces it with the
+            // authoritative lists (and knows about messages it consumed).
+            queuedMessages = if (wasBusy) {
+                ui.queuedMessages + QueuedMessage(if (steer) "steer" else "followUp", text)
+            } else {
+                // Nothing streams, so nothing can still be waiting.
+                emptyList()
+            },
             attachments = emptyList(),
         )
         val command = JSONObject()
@@ -1867,6 +1875,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun abort() = client.send(JSONObject().put("type", "abort"))
+
+    /**
+     * Remove one queued message. pig only offers `clear_queue` (everything), so
+     * the survivors are re-sent in order with `steer` / `follow_up`, which queue
+     * them again without echoing them into the transcript.
+     */
+    fun removeQueued(target: QueuedMessage) {
+        val rest = ui.queuedMessages.toMutableList()
+        if (!rest.remove(target)) return
+        rewriteQueue(rest)
+        ui = ui.copy(queuedMessages = rest, pendingMessages = rest.size)
+    }
+
+    /** Drop every queued steering and follow-up message. */
+    fun clearQueued() {
+        client.send(JSONObject().put("id", "q${nextId++}").put("type", "clear_queue"))
+        ui = ui.copy(queuedMessages = emptyList(), pendingMessages = 0)
+    }
+
+    private fun rewriteQueue(messages: List<QueuedMessage>) {
+        client.send(JSONObject().put("id", "q${nextId++}").put("type", "clear_queue"))
+        messages.forEach { message ->
+            client.send(
+                JSONObject()
+                    .put("id", "q${nextId++}")
+                    .put("type", if (message.isSteer) "steer" else "follow_up")
+                    .put("message", message.text),
+            )
+        }
+    }
 
     fun openModelPicker() {
         showModelPicker = true
@@ -3977,10 +4015,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "relay_session_error" ->
                 ui = ui.copy(toast = event.optString("message", str("toast.sessionError", "会话操作失败")))
             "response" -> handleResponse(event)
+            "queue_update" -> {
+                // The only place pig reports *what* is queued (get_state has a
+                // bare count), and the only way to tell steering from follow-up.
+                val steering = event.optJSONArray("steering").stringValues()
+                val followUp = event.optJSONArray("followUp").stringValues()
+                ui = ui.copy(
+                    queuedMessages = steering.map { QueuedMessage("steer", it) } +
+                        followUp.map { QueuedMessage("followUp", it) },
+                    pendingMessages = steering.size + followUp.size,
+                )
+            }
             "agent_start" -> ui = ui.copy(busy = true, status = "thinking")
             "turn_start" -> ui = ui.copy(status = "working")
             "agent_end", "agent_settled" -> {
-                ui = ui.copy(busy = false, status = "", streamingId = null, pendingMessages = 0)
+                ui = ui.copy(
+                    busy = false,
+                    status = "",
+                    streamingId = null,
+                    pendingMessages = 0,
+                    queuedMessages = emptyList(),
+                )
                 clearLive()
                 pendingToolPartials.clear()
                 requestStats()
@@ -4389,6 +4444,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     // reserved for real activity (and its spinner).
                     status = ""
                 }
+                // pig reports a bare queue size here, never its contents.
+                val pendingQueued = data.optInt("pendingMessageCount", ui.pendingMessages)
                 ui = ui.copy(
                     model = label,
                     sessionId = sessionId,
@@ -4421,7 +4478,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     },
                     contextTokens = ui.contextTokens,
                     thinkingLevel = data.optString("thinkingLevel", ui.thinkingLevel),
-                    pendingMessages = data.optInt("pendingMessageCount", ui.pendingMessages),
+                    pendingMessages = pendingQueued,
+                    // A zero count means nothing waits; a non-zero count with an
+                    // empty list is a reconnect, where the contents are unknown.
+                    queuedMessages = if (pendingQueued == 0) emptyList() else ui.queuedMessages,
                     autoCompaction = data.optBoolean(
                         "autoCompactionEnabled",
                         ui.autoCompaction,
@@ -5735,3 +5795,13 @@ private const val UPLOAD_IMAGE_MAX_DIM = 1568
 
 /** Target size of an encoded upload before the JPEG quality is lowered. */
 private const val UPLOAD_IMAGE_MAX_BYTES = 1_400_000
+
+/** Non-blank entries of an event array (`queue_update` carries plain text). */
+private fun JSONArray?.stringValues(): List<String> =
+    if (this == null) {
+        emptyList()
+    } else {
+        (0 until length()).mapNotNull { index ->
+            optString(index).takeIf { it.isNotBlank() }
+        }
+    }
