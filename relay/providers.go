@@ -439,7 +439,7 @@ func fetchProviderModels(def map[string]any) ([]any, error) {
 			headers["Authorization"] = "Bearer " + key
 		}
 	}
-	client := &http.Client{Timeout: providerFetchTimeout}
+	client := providerHTTPClient()
 	request, err := http.NewRequest(http.MethodGet, requestURL, nil)
 	if err != nil {
 		return nil, err
