@@ -1,12 +1,22 @@
 package com.linuxwff.pigapp
 
 import android.content.SharedPreferences
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.IOException
-import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.util.Base64
+import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 /**
  * WebDAV settings. The password lives in the app's private SharedPreferences
@@ -86,8 +96,8 @@ object WebDavClient {
     const val PREFIX = "pig-backup-"
     const val SUFFIX = ".tar.gz"
 
-    private const val TIMEOUT_MS = 20_000
     private const val MAX_REDIRECTS = 5
+    private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
     private const val PROPFIND_BODY =
         "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
             "<d:propfind xmlns:d=\"DAV:\"><d:prop>" +
@@ -175,12 +185,29 @@ object WebDavClient {
 
     private fun errorText(response: Response): String {
         val detail = response.text.take(200).replace(Regex("\\s+"), " ").trim()
-        return "HTTP ${response.code}" + if (detail.isNotBlank()) ": $detail" else ""
+        val head = "HTTP ${response.code}" + if (detail.isNotBlank()) ": $detail" else ""
+        return head + pathHint(response.code)
     }
+
+    /**
+     * 404/405 on WebDAV usually means the URL stops short of the DAV endpoint
+     * (AList serves it under `/dav`, Synology under `/webdav`).
+     */
+    private fun pathHint(code: Int): String =
+        if (code == 404 || code == 405) {
+            "（地址可能要写到 WebDAV 路径，例如 AList 用 /dav、群晖用 /webdav）"
+        } else {
+            ""
+        }
 
     private fun encodeName(name: String): String =
         name.replace(" ", "%20").replace("#", "%23").replace("?", "%3F")
 
+    /**
+     * One HTTP round trip for any method. `HttpURLConnection` refuses anything
+     * outside its whitelist (`ProtocolException: ... but was MKCOL`), and
+     * WebDAV needs PROPFIND and MKCOL, so this goes through OkHttp.
+     */
     private fun request(
         config: WebDavConfig,
         method: String,
@@ -192,98 +219,89 @@ object WebDavClient {
     ): Response {
         var target = url
         var redirects = 0
+        if (!target.startsWith("http://") && !target.startsWith("https://")) {
+            error("服务器地址要以 http:// 或 https:// 开头：$target")
+        }
         while (true) {
-            val connection = (URL(target).openConnection() as HttpURLConnection).apply {
-                requestMethod = method
-                connectTimeout = TIMEOUT_MS
-                readTimeout = TIMEOUT_MS
-                instanceFollowRedirects = false
-                if (config.user.isNotBlank() || config.password.isNotBlank()) {
-                    val raw = "${config.user}:${config.password}".toByteArray()
-                    setRequestProperty(
-                        "Authorization",
-                        "Basic " + Base64.getEncoder().encodeToString(raw),
-                    )
-                }
-                depth?.let { setRequestProperty("Depth", it) }
-                contentType?.let { setRequestProperty("Content-Type", it) }
-                if (config.insecureTls) allowInsecureTls(this)
-                when {
-                    file != null -> {
-                        setRequestProperty("Content-Length", file.length().toString())
-                        setFixedLengthStreamingMode(file.length())
-                        doOutput = true
-                    }
-                    body != null -> {
-                        setRequestProperty("Content-Length", body.size.toString())
-                        doOutput = true
-                    }
-                }
+            val declared = contentType
+                ?: if (method == "PROPFIND") "application/xml; charset=utf-8" else null
+            val mediaType = declared?.toMediaTypeOrNull()
+            val payload = when {
+                file != null -> file.asRequestBody(mediaType)
+                body != null -> body.toRequestBody(mediaType)
+                else -> null
             }
-            try {
-                if (file != null) {
-                    connection.outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
-                } else if (body != null) {
-                    connection.outputStream.use { it.write(body) }
-                }
-                val code = connection.responseCode
-                if (code in setOf(301, 302, 303, 307, 308) && redirects < MAX_REDIRECTS) {
-                    val location = connection.getHeaderField("Location")
-                    connection.disconnect()
-                    if (location.isNullOrBlank()) error("重定向缺少 Location")
-                    target = if (location.startsWith("http")) {
-                        location
-                    } else {
-                        URL(URL(target), location).toString()
-                    }
-                    redirects++
-                    continue
-                }
-                val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-                var text = ""
-                var bodyText: String? = null
-                if (method == "PROPFIND" && stream != null) {
-                    bodyText = stream.readBytes().toString(Charsets.UTF_8)
-                } else if (stream != null && method != "GET") {
-                    text = runCatching { stream.readBytes().toString(Charsets.UTF_8) }.getOrDefault("")
-                    stream.close()
-                } else if (stream != null) {
-                    // GET: the caller copies the body (backups are large).
-                    return Response(code, "", stream)
-                }
-                connection.disconnect()
-                return Response(code, text, body = bodyText)
+            val builder = Request.Builder().url(target).method(method, payload)
+            if (config.user.isNotBlank() || config.password.isNotBlank()) {
+                val raw = "${config.user}:${config.password}".toByteArray()
+                builder.header(
+                    "Authorization",
+                    "Basic " + Base64.getEncoder().encodeToString(raw),
+                )
+            }
+            depth?.let { builder.header("Depth", it) }
+            val response = try {
+                httpClient(config).newCall(builder.build()).execute()
             } catch (error: IOException) {
-                connection.disconnect()
                 throw IllegalStateException(friendlyError(error))
+            }
+            if (response.code in REDIRECT_CODES && redirects < MAX_REDIRECTS) {
+                val location = response.header("Location")
+                response.close()
+                if (location.isNullOrBlank()) error("重定向缺少 Location")
+                target = if (location.startsWith("http")) {
+                    location
+                } else {
+                    URL(URL(target), location).toString()
+                }
+                redirects++
+                continue
+            }
+            // GET keeps the body open for the caller (backups are large); the
+            // closing happens when that stream is closed.
+            if (method == "GET" && response.code in 200..299) {
+                return Response(response.code, "", stream = response.body?.byteStream())
+            }
+            response.use { done ->
+                val text = done.body?.string().orEmpty()
+                return Response(
+                    done.code,
+                    text,
+                    body = if (method == "PROPFIND") text else null,
+                )
             }
         }
     }
 
+    /** Clients are cheap but the pool is not: one per TLS mode is enough. */
+    private val clients = java.util.concurrent.ConcurrentHashMap<Boolean, OkHttpClient>()
+
+    private fun httpClient(config: WebDavConfig): OkHttpClient =
+        clients.getOrPut(config.insecureTls) {
+            val builder = OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(120, TimeUnit.SECONDS)
+                .followRedirects(false)
+                .followSslRedirects(false)
+            if (config.insecureTls) {
+                val trustAll = trustAllManager()
+                val context = SSLContext.getInstance("TLS")
+                context.init(null, arrayOf<TrustManager>(trustAll), SecureRandom())
+                builder.sslSocketFactory(context.socketFactory, trustAll)
+                builder.hostnameVerifier { _, _ -> true }
+            }
+            builder.build()
+        }
+
     /**
      * Opt-in trust-all, for a NAS with a self-signed certificate. Only used by
-     * this connection, never globally.
+     * this client, never globally.
      */
-    private fun allowInsecureTls(connection: HttpURLConnection) {
-        if (connection !is javax.net.ssl.HttpsURLConnection) return
-        val trustAll = object : javax.net.ssl.X509TrustManager {
-            override fun checkClientTrusted(
-                chain: Array<out java.security.cert.X509Certificate>,
-                authType: String,
-            ) = Unit
-
-            override fun checkServerTrusted(
-                chain: Array<out java.security.cert.X509Certificate>,
-                authType: String,
-            ) = Unit
-
-            override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> =
-                emptyArray()
-        }
-        val context = javax.net.ssl.SSLContext.getInstance("TLS")
-        context.init(null, arrayOf<javax.net.ssl.TrustManager>(trustAll), java.security.SecureRandom())
-        connection.sslSocketFactory = context.socketFactory
-        connection.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }
+    private fun trustAllManager(): X509TrustManager = object : X509TrustManager {
+        override fun checkClientTrusted(chain: Array<out X509Certificate>, authType: String) = Unit
+        override fun checkServerTrusted(chain: Array<out X509Certificate>, authType: String) = Unit
+        override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
     }
 
     /** Turn the usual Android/Java failures into something a user can act on. */
