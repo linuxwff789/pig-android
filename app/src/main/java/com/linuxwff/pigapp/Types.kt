@@ -37,6 +37,11 @@ data class PendingImage(
 data class QueuedMessage(
     val kind: String,
     val text: String,
+    /**
+     * Transcript bubble that was added when the prompt was queued, so taking
+     * the message back (or clearing it) can remove that bubble too.
+     */
+    val msgId: String = "",
 ) {
     val isSteer: Boolean get() = kind == "steer"
 }
