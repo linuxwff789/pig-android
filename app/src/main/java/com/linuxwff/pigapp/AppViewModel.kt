@@ -35,6 +35,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 import java.util.zip.ZipInputStream
 
@@ -441,6 +444,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * `~/.pig` before extracting anything.
      */
     fun importBackup(uri: Uri, name: String) {
+        val ctx = getApplication<Application>()
+        startRestore(
+            name = name,
+            size = {
+                runCatching {
+                    ctx.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }
+                }.getOrNull() ?: -1L
+            },
+            open = {
+                ctx.contentResolver.openInputStream(uri) ?: error("打不开备份文件")
+            },
+        )
+    }
+
+    /**
+     * Restores an archive from any stream. [open] is called on the IO thread so
+     * a WebDAV download and a file picker share the same path.
+     */
+    fun startRestore(name: String, size: () -> Long, open: () -> java.io.InputStream) {
         if (ui.maintenanceBusy) {
             ui = ui.copy(toast = str("backup.busy", "已有备份任务在进行"))
             return
@@ -462,17 +484,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             maintenanceTotal = 0,
         )
         viewModelScope.launch {
-            val ctx = getApplication<Application>()
             var lastUi = 0L
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    val size = runCatching {
-                        ctx.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }
-                    }.getOrNull() ?: -1L
-                    val input = ctx.contentResolver.openInputStream(uri)
-                        ?: error("打不开备份文件")
-                    input.use { stream ->
-                        client.restoreBackup(stream, name, size) { sent, total ->
+                    val bytes = runCatching { size() }.getOrDefault(-1L)
+                    open().use { stream ->
+                        client.restoreBackup(stream, name, bytes) { sent, total ->
                             val now = System.currentTimeMillis()
                             if (now - lastUi > 400) {
                                 lastUi = now
@@ -529,6 +546,175 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         maintenanceTotal = 0,
                         toast = str("backup.importFailed", "恢复失败：{error}")
                             .replace("{error}", error.message ?: error.toString()),
+                    )
+                },
+            )
+        }
+    }
+
+    // ---- WebDAV backup ---------------------------------------------------
+
+    fun webDavConfig(): WebDavConfig = WebDavConfig.from(prefs)
+
+    fun saveWebDav(config: WebDavConfig) {
+        WebDavConfig.save(prefs, config)
+        WebDavScheduler.apply(getApplication(), WebDavConfig.from(prefs))
+        ui = ui.copy(
+            webdavBusy = false,
+            webdavMessage = str("webdav.saved", "已保存"),
+            webdavMessageError = false,
+            toast = str("webdav.savedToast", "WebDAV 设置已保存"),
+        )
+    }
+
+    fun testWebDav(config: WebDavConfig) = webDavRun {
+        WebDavClient.test(config)
+        str("webdav.testOk", "连接成功，目录可写")
+    }
+
+    /**
+     * One manual upload. Scheduled runs live in [WebDavBackupWorker]: they open
+     * their own relay connection because no UI is there to own one.
+     */
+    fun backupNowWebDav(config: WebDavConfig) {
+        if (!client.connected.value || !ui.backupRemote) {
+            ui = ui.copy(
+                toast = str(
+                    "backup.needRelay",
+                    "需要新版 relay 才能导出备份：重装 Termux 组件后重启 relay",
+                ),
+            )
+            return
+        }
+        if (ui.webdavBusy || ui.maintenanceBusy) return
+        ui = ui.copy(
+            webdavBusy = true,
+            webdavMessage = str("webdav.uploading", "正在打包并上传…"),
+            webdavMessageError = false,
+        )
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val name = WebDavClient.PREFIX +
+                        SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date()) +
+                        WebDavClient.SUFFIX
+                    val file = File(ctx.cacheDir, name)
+                    try {
+                        file.outputStream().use { out ->
+                            client.exportBackup(out, includeSessions = true, includeUi = true) { }
+                        }
+                        WebDavClient.upload(config, name, file)
+                        val removed = runCatching { WebDavClient.prune(config, config.keep) }
+                            .getOrDefault(0)
+                        name to removed to file.length()
+                    } finally {
+                        file.delete()
+                    }
+                }
+            }
+            ui = result.fold(
+                onSuccess = { (pair, bytes) ->
+                    val (name, removed) = pair
+                    val extra = if (removed > 0) {
+                        str("webdav.pruned", "，清理 {n} 个旧备份").replace("{n}", removed.toString())
+                    } else {
+                        ""
+                    }
+                    ui.copy(
+                        webdavBusy = false,
+                        webdavMessage = str("webdav.uploaded", "已上传 {name}（{size}）{extra}")
+                            .replace("{name}", name)
+                            .replace("{size}", formatSize(bytes))
+                            .replace("{extra}", extra),
+                        webdavMessageError = false,
+                        toast = str("webdav.uploadedToast", "WebDAV 备份完成"),
+                    )
+                },
+                onFailure = { error ->
+                    ui.copy(
+                        webdavBusy = false,
+                        webdavMessage = error.message ?: error.toString(),
+                        webdavMessageError = true,
+                    )
+                },
+            )
+            runCatching { withContext(Dispatchers.IO) { WebDavClient.list(config) } }
+                .onSuccess { ui = ui.copy(webdavBackups = it) }
+        }
+    }
+
+    fun loadWebDavBackups(config: WebDavConfig) {
+        webDavRun {
+            val list = WebDavClient.list(config)
+            ui = ui.copy(webdavBackups = list)
+            if (list.isEmpty()) {
+                str("webdav.none", "远端还没有备份")
+            } else {
+                str("webdav.count", "找到 {n} 个备份").replace("{n}", list.size.toString())
+            }
+        }
+    }
+
+    /** Downloads an archive and hands it to the normal restore path. */
+    fun restoreWebDav(config: WebDavConfig, name: String) {
+        if (!client.connected.value || !ui.backupRemote) {
+            ui = ui.copy(
+                toast = str(
+                    "backup.needRelay",
+                    "需要新版 relay 才能导出备份：重装 Termux 组件后重启 relay",
+                ),
+            )
+            return
+        }
+        if (ui.webdavBusy || ui.maintenanceBusy) return
+        ui = ui.copy(
+            webdavBusy = true,
+            webdavMessage = str("webdav.downloading", "正在下载 {name}…").replace("{name}", name),
+            webdavMessageError = false,
+        )
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            val file = File(ctx.cacheDir, name)
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    WebDavClient.download(config, name, file)
+                    file.length()
+                }
+            }
+            ui = ui.copy(webdavBusy = false, webdavMessage = "")
+            result.fold(
+                onSuccess = { size ->
+                    startRestore(name = name, size = { size }, open = { file.inputStream() })
+                },
+                onFailure = { error ->
+                    ui = ui.copy(
+                        webdavMessage = error.message ?: error.toString(),
+                        webdavMessageError = true,
+                    )
+                },
+            )
+        }
+    }
+
+    private fun webDavRun(block: suspend () -> String) {
+        if (ui.webdavBusy) return
+        ui = ui.copy(
+            webdavBusy = true,
+            webdavMessage = str("webdav.working", "处理中…"),
+            webdavMessageError = false,
+        )
+        viewModelScope.launch {
+            val result = runCatching { withContext(Dispatchers.IO) { block() } }
+            ui = result.fold(
+                onSuccess = {
+                    ui.copy(webdavBusy = false, webdavMessage = it, webdavMessageError = false)
+                },
+                onFailure = {
+                    ui.copy(
+                        webdavBusy = false,
+                        webdavMessage = it.message ?: it.toString(),
+                        webdavMessageError = true,
                     )
                 },
             )

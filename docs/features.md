@@ -410,6 +410,32 @@ Older relays reply `relay_settings_error`; the section then shows a hint instead
 of pretending to save. Pig reads these values at process start, so they apply to
 newly spawned sessions.
 
+## WebDAV backup
+
+Settings → 备份与维护 → **WebDAV 备份** uploads the same archive as 导出备份
+(sessions, settings, keys, extensions and UI pack) to any WebDAV server that
+speaks Basic auth — Nextcloud, Alist, Synology, rclone serve.
+
+- **Server / user / password / folder**: the folder is created on first upload
+  (`MKCOL`); the URL may already point at a user's home, e.g.
+  `https://dav.example.com/remote.php/dav/files/me`.
+- **保留 N 份**: after each upload the oldest `pig-backup-*.tar.gz` files beyond
+  N are deleted from that folder.
+- **定时备份**: off / every 6 h / 12 h / daily / every 3 days / weekly. It is a
+  WorkManager job with a network constraint; it survives reboots and app
+  restarts. The worker opens its own relay connection (starting the relay if
+  Termux is not running one), so while it runs a foreground app briefly
+  reconnects.
+- **测试连接** does a `PROPFIND` (and `MKCOL` when the folder is missing);
+  **立即备份** uploads once; **远端备份** lists the archives, each with 恢复.
+- Restore downloads the archive to the app cache and goes through the normal
+  restore path: the relay backs up the current `~/.pig` first, then extracts,
+  then the app reconnects.
+
+Security: the password sits in the app's private settings (not encrypted at
+rest), and the archive itself contains plain-text API keys — use HTTPS and
+restrict access to the folder.
+
 ## Notifications
 
 While the app is in the background, session state changes raise a notification.

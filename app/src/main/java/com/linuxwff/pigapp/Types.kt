@@ -568,6 +568,14 @@ data class AppUiState(
     /** Expected total: uncompressed archive size for export, file size for restore. */
     val maintenanceTotal: Long = 0,
 
+    /** WebDAV dialog: a test/upload/restore is running. */
+    val webdavBusy: Boolean = false,
+    /** Result line shown under the WebDAV fields. */
+    val webdavMessage: String = "",
+    val webdavMessageError: Boolean = false,
+    /** Archives found on the server, newest first. */
+    val webdavBackups: List<WebDavBackup> = emptyList(),
+
     /** `hideThinkingBlock` from settings.json: hide reasoning in the transcript. */
     val hideThinkingBlock: Boolean = false,
 
