@@ -163,7 +163,7 @@
     "warmingIdle": "空闲",
     "warmingStreaming": "始终",
     "webdav": "WebDAV 备份",
-    "webdavHint": "把同一份备份上传到 WebDAV；可按小时/天定时上传并保留最近几份",
+    "webdavHint": "把同一份备份上传到 WebDAV；可以每天定时上传并保留最近几份",
     "webdavAction": "配置"
   },
   "model": {
