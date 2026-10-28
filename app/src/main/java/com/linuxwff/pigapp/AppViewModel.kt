@@ -174,6 +174,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // (enqueued by a version that connected alongside the app) must not
         // keep running with its previous shape.
         runCatching { WebDavScheduler.apply(getApplication(), WebDavConfig.from(prefs)) }
+        ui = ui.copy(webdavReady = WebDavConfig.from(prefs).ready)
         AppLog.fact("relay", "127.0.0.1:$port")
         ui = ui.copy(
             commands = builtinCommands(),
@@ -566,10 +567,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         WebDavScheduler.apply(getApplication(), WebDavConfig.from(prefs))
         ui = ui.copy(
             webdavBusy = false,
+            webdavReady = config.ready,
             webdavMessage = str("webdav.saved", "已保存"),
             webdavMessageError = false,
             toast = str("webdav.savedToast", "WebDAV 设置已保存"),
         )
+    }
+
+    /**
+     * "Sync now" outside the dialog: one upload with the saved config. Same
+     * path as the dialog button, so both report through the toast.
+     */
+    fun syncNowWebDav() {
+        val config = WebDavConfig.from(prefs)
+        if (!config.ready) {
+            ui = ui.copy(toast = str("webdav.notConfigured", "先在设置里配置 WebDAV 服务器"))
+            return
+        }
+        backupNowWebDav(config)
     }
 
     fun testWebDav(config: WebDavConfig) = webDavRun {
@@ -637,10 +652,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 },
                 onFailure = { error ->
+                    val text = error.message ?: error.toString()
                     ui.copy(
                         webdavBusy = false,
-                        webdavMessage = error.message ?: error.toString(),
+                        webdavMessage = text,
                         webdavMessageError = true,
+                        // The dialog is often closed when "sync now" runs, so
+                        // the failure also has to reach the toast.
+                        toast = text,
                     )
                 },
             )
