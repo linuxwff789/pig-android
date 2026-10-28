@@ -678,6 +678,13 @@ App 重启后优先级相同：pack 提供默认值，已保存的偏好（如�
 | `chipShape` | `circle` | `circle` 或 `rounded` |
 | `chipRadius` | -1 | `chipShape` = `rounded` 时的圆角；`-1` = 10 |
 | `emptyTitleColor` | `""` | 空状态标题 token；`""` 继承环境颜色 |
+| `fabBackground` | `primary` | 「回到底部」气泡的填充 token |
+| `fabBackgroundAlpha` | 1.0 | 气泡填充透明度 |
+| `fabTint` | `onPrimary` | 气泡图标/文字的 token |
+| `fabTintAlpha` | 1.0 | 气泡图标/文字的透明度 |
+
+气泡的投影来自 `theme/colors.json` → `fabElevation`；`chat.chrome` 只负责颜色、
+透明度和这个高度。
 
 ### 思考（`chat.thinking`）
 

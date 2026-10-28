@@ -878,6 +878,10 @@ object UiPackParser {
             chipShape = if (shape == "rounded") "rounded" else "circle",
             chipRadius = radius("chipRadius", d.chipRadius),
             emptyTitleColor = token("emptyTitleColor", d.emptyTitleColor),
+            fabBackground = token("fabBackground", d.fabBackground),
+            fabBackgroundAlpha = alpha("fabBackgroundAlpha", d.fabBackgroundAlpha),
+            fabTint = token("fabTint", d.fabTint),
+            fabTintAlpha = alpha("fabTintAlpha", d.fabTintAlpha),
         )
     }
 

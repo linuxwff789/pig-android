@@ -696,6 +696,13 @@ these new keys are for deeper visual tuning.
 | `chipShape` | `circle` | `circle` or `rounded` |
 | `chipRadius` | -1 | radius when `chipShape` = `rounded`; `-1` = 10 |
 | `emptyTitleColor` | `""` | empty-state title token; `""` inherits the ambient colour |
+| `fabBackground` | `primary` | 回到底部 pill fill token |
+| `fabBackgroundAlpha` | 1.0 | pill fill opacity |
+| `fabTint` | `onPrimary` | pill icon/label token |
+| `fabTintAlpha` | 1.0 | pill icon/label opacity |
+
+The pill's shadow comes from `theme/colors.json` → `fabElevation`; the pack's
+`chat.chrome` only supplies colour, opacity and that elevation.
 
 ### Thinking (`chat.thinking`)
 
