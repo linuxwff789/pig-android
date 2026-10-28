@@ -136,6 +136,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -176,6 +177,8 @@ import com.linuxwff.pigapp.UiLayout
 import com.linuxwff.pigapp.UiRequest
 import com.linuxwff.pigapp.UiSkin
 import com.linuxwff.pigapp.UiToolCardAppearance
+import com.linuxwff.pigapp.WebDavClient
+import com.linuxwff.pigapp.WebDavConfig
 import com.linuxwff.pigapp.resolve
 import com.linuxwff.pigapp.toolPresentation
 import kotlinx.coroutines.Dispatchers
@@ -199,6 +202,7 @@ fun PigApp(vm: AppViewModel) {
     var showStats by remember { mutableStateOf(false) }
     var showPackManager by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
+    var showWebDav by remember { mutableStateOf(false) }
     // System photo picker: GetMultipleContents needs no storage permission.
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents(),
@@ -624,6 +628,9 @@ fun PigApp(vm: AppViewModel) {
         ImageViewer.close()
     }
     ModelPickerDialog(vm)
+    if (showWebDav) {
+        WebDavDialog(vm) { showWebDav = false }
+    }
     if (showQueue) {
         QueueDialog(
             queued = ui.queuedMessages,
@@ -1973,6 +1980,25 @@ private fun SettingsDialog(
                         onClick = { runCatching { backupPicker.launch(arrayOf("*/*")) } },
                     ) {
                         Text(packText("settings.backupImportAction", "导入"))
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            packText("settings.webdav", "WebDAV 备份"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            packText(
+                                "settings.webdavHint",
+                                "把同一份备份上传到 WebDAV；可按小时/天定时上传并保留最近几份",
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = { showWebDav = true }) {
+                        Text(packText("settings.webdavAction", "配置"))
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -5555,6 +5581,248 @@ private fun QueueDialog(
             }
         },
     )
+}
+
+/** Periodic WebDAV backup choices, in hours; 0 turns the schedule off. */
+private val WEBDAV_INTERVALS = listOf(0, 6, 12, 24, 72, 168)
+
+/**
+ * WebDAV settings, manual upload and restore. Scheduling is a WorkManager job
+ * ([com.linuxwff.pigapp.WebDavScheduler]); this dialog only stores the config
+ * and shows what the background job and the buttons report.
+ */
+@Composable
+private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
+    val initial = remember { vm.webDavConfig() }
+    var url by remember { mutableStateOf(initial.url) }
+    var user by remember { mutableStateOf(initial.user) }
+    var password by remember { mutableStateOf(initial.password) }
+    var dir by remember { mutableStateOf(initial.dir) }
+    var keep by remember { mutableStateOf(initial.keep.toString()) }
+    var hours by remember { mutableStateOf(initial.everyHours) }
+    var pendingRestore by remember { mutableStateOf<String?>(null) }
+    val scheme = MaterialTheme.colorScheme
+    val ui = vm.ui
+    val config = WebDavConfig(
+        url = url,
+        user = user,
+        password = password,
+        dir = dir,
+        keep = keep.toIntOrNull()?.coerceIn(1, 60) ?: 7,
+        everyHours = hours,
+    )
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = scheme.primary.copy(alpha = 0.7f),
+        unfocusedBorderColor = scheme.outline.copy(alpha = 0.5f),
+    )
+
+    PackAlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        containerColor = scheme.surface,
+        title = { Text(packText("webdav.title", "WebDAV 备份")) },
+        text = {
+            Column(
+                Modifier
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it.trim() },
+                    singleLine = true,
+                    label = { Text(packText("webdav.url", "服务器地址")) },
+                    placeholder = { Text("https://dav.example.com/dav") },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = fieldColors,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = user,
+                        onValueChange = { user = it },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        label = { Text(packText("webdav.user", "用户名")) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = fieldColors,
+                    )
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        label = { Text(packText("webdav.password", "密码")) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = fieldColors,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = dir,
+                        onValueChange = { dir = it },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        label = { Text(packText("webdav.dir", "远程目录")) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = fieldColors,
+                    )
+                    OutlinedTextField(
+                        value = keep,
+                        onValueChange = { keep = it.filter { c -> c.isDigit() }.take(2) },
+                        singleLine = true,
+                        modifier = Modifier.width(96.dp),
+                        label = { Text(packText("webdav.keep", "保留")) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = fieldColors,
+                    )
+                }
+                Text(
+                    packText("webdav.schedule", "定时备份"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+                WEBDAV_INTERVALS.chunked(3).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        row.forEach { value ->
+                            FilterChip(
+                                selected = hours == value,
+                                onClick = { hours = value },
+                                label = {
+                                    Text(
+                                        when (value) {
+                                            0 -> packText("webdav.off", "关闭")
+                                            6 -> packText("webdav.every6", "每 6 小时")
+                                            12 -> packText("webdav.every12", "每 12 小时")
+                                            24 -> packText("webdav.daily", "每天")
+                                            72 -> packText("webdav.every3d", "每 3 天")
+                                            else -> packText("webdav.weekly", "每周")
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                }
+                Text(
+                    packText(
+                        "webdav.hint",
+                        "密码保存在应用私有设置里；备份本身包含密钥，远端请自行加密或加访问控制。",
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(
+                        enabled = !ui.webdavBusy && config.ready,
+                        onClick = { vm.testWebDav(config) },
+                    ) { Text(packText("webdav.test", "测试连接")) }
+                    TextButton(
+                        enabled = !ui.webdavBusy && !ui.maintenanceBusy && config.ready,
+                        onClick = {
+                            vm.saveWebDav(config)
+                            vm.backupNowWebDav(config)
+                        },
+                    ) { Text(packText("webdav.backupNow", "立即备份")) }
+                    TextButton(
+                        enabled = !ui.webdavBusy && config.ready,
+                        onClick = {
+                            vm.saveWebDav(config)
+                            vm.loadWebDavBackups(config)
+                        },
+                    ) { Text(packText("webdav.list", "远端备份")) }
+                }
+                if (ui.webdavBackups.isNotEmpty()) {
+                    ui.webdavBackups.take(6).forEach { backup ->
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    backup.name
+                                        .removePrefix(WebDavClient.PREFIX)
+                                        .removeSuffix(WebDavClient.SUFFIX),
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                                Text(
+                                    webDavSize(backup.size),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = scheme.onSurfaceVariant,
+                                )
+                            }
+                            TextButton(
+                                enabled = !ui.webdavBusy && !ui.maintenanceBusy,
+                                onClick = { pendingRestore = backup.name },
+                            ) {
+                                Text(packText("webdav.restore", "恢复"))
+                            }
+                        }
+                    }
+                }
+                if (ui.webdavMessage.isNotBlank()) {
+                    Text(
+                        ui.webdavMessage,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (ui.webdavMessageError) scheme.error else scheme.primary,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    vm.saveWebDav(config)
+                    onDismiss()
+                },
+            ) { Text(packText("webdav.save", "保存")) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(packText("dialog.cancel", "取消")) }
+        },
+    )
+
+    pendingRestore?.let { name ->
+        PackAlertDialog(
+            onDismissRequest = { pendingRestore = null },
+            shape = RoundedCornerShape(22.dp),
+            containerColor = scheme.surface,
+            title = { Text(packText("webdav.restoreTitle", "从现在这份备份恢复？")) },
+            text = {
+                Text(
+                    packText(
+                        "webdav.restoreHint",
+                        "{name}\n\n会覆盖 Termux 里的 ~/.pig（恢复前 relay 会自动备份现有数据），之后重连。",
+                    ).replace("{name}", name),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.saveWebDav(config)
+                        vm.restoreWebDav(config, name)
+                        pendingRestore = null
+                        onDismiss()
+                    },
+                ) { Text(packText("webdav.restoreConfirm", "恢复")) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRestore = null }) {
+                    Text(packText("dialog.cancel", "取消"))
+                }
+            },
+        )
+    }
+}
+
+private fun webDavSize(bytes: Long): String = when {
+    bytes >= 1L shl 30 -> "%.1f GB".format(bytes / (1L shl 30).toFloat()).replace(".0 GB", " GB")
+    bytes >= 1L shl 20 -> "%.1f MB".format(bytes / (1L shl 20).toFloat()).replace(".0 MB", " MB")
+    bytes >= 1024 -> "${bytes / 1024} KB"
+    else -> "$bytes B"
 }
 
 /**

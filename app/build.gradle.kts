@@ -93,5 +93,6 @@ dependencies {
     implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.26.0")
     implementation("org.jetbrains:markdown:0.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

@@ -161,7 +161,10 @@
     "cacheWarmingHint": "空闲时提前刷新 prompt 缓存：off 关闭 · idle 仅在空闲时 · streaming 也在输出时",
     "warmingOff": "关闭",
     "warmingIdle": "空闲",
-    "warmingStreaming": "始终"
+    "warmingStreaming": "始终",
+    "webdav": "WebDAV 备份",
+    "webdavHint": "把同一份备份上传到 WebDAV；可按小时/天定时上传并保留最近几份",
+    "webdavAction": "配置"
   },
   "model": {
     "title": "选择模型",
@@ -323,5 +326,28 @@
     "remove": "移出队列",
     "clearAll": "全部清空",
     "editHint": "点一条取回输入框修改，右侧图标删除"
+  },
+  "webdav": {
+    "title": "WebDAV 备份",
+    "url": "服务器地址",
+    "user": "用户名",
+    "password": "密码",
+    "dir": "远程目录",
+    "keep": "保留",
+    "schedule": "定时备份",
+    "off": "关闭",
+    "every6": "每 6 小时",
+    "every12": "每 12 小时",
+    "daily": "每天",
+    "every3d": "每 3 天",
+    "weekly": "每周",
+    "hint": "密码保存在应用私有设置里；备份本身包含密钥，远端请自行加密或加访问控制。",
+    "test": "测试连接",
+    "backupNow": "立即备份",
+    "list": "远端备份",
+    "restore": "恢复",
+    "save": "保存",
+    "restoreTitle": "从现在这份备份恢复？",
+    "restoreConfirm": "恢复"
   }
 }
