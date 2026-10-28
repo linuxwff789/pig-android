@@ -140,19 +140,23 @@ object WebDavScheduler {
             workManager.cancelUniqueWork(WORK_NAME)
             return
         }
-        val request = if (config.everyHours == 24) {
-            dailyRequest(config.dailyMinutes)
-        } else {
-            PeriodicWorkRequestBuilder<WebDavBackupWorker>(
-                config.everyHours.toLong(),
-                TimeUnit.HOURS,
+        if (config.everyHours == 24) {
+            workManager.enqueueUniqueWork(
+                WORK_NAME,
+                ExistingWorkPolicy.REPLACE,
+                dailyRequest(config.dailyMinutes),
             )
-                // Turning the switch on must not fire a backup immediately (that
-                // used to replace the app's relay connection right away).
-                .setInitialDelay(config.everyHours.toLong(), TimeUnit.HOURS)
-                .setConstraints(NETWORK)
-                .build()
+            return
         }
+        val request = PeriodicWorkRequestBuilder<WebDavBackupWorker>(
+            config.everyHours.toLong(),
+            TimeUnit.HOURS,
+        )
+            // Turning the switch on must not fire a backup immediately (that
+            // used to replace the app's relay connection right away).
+            .setInitialDelay(config.everyHours.toLong(), TimeUnit.HOURS)
+            .setConstraints(NETWORK)
+            .build()
         workManager.enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.REPLACE, request)
     }
 

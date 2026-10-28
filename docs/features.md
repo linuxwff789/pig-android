@@ -433,7 +433,11 @@ speaks Basic auth — Nextcloud, Alist, Synology, rclone serve.
   settings also offers **Sync now**, which uploads immediately with the stored
   config and reports the result as a toast.
 - **测试连接** does a `PROPFIND` (and `MKCOL` when the folder is missing);
-  **立即备份** uploads once; **远端备份** lists the archives, each with 恢复.
+  **立即备份** uploads once.
+- **存档管理** lists every archive on the server with its local time and size,
+  offers 刷新 / 立即备份, and gives each row 恢复 and 删除 (delete asks first).
+  Restore reuses the normal restore path, so the current `~/.pig` is backed up
+  by the relay before the archive is extracted.
 - Restore downloads the archive to the app cache and goes through the normal
   restore path: the relay backs up the current `~/.pig` first, then extracts,
   then the app reconnects.

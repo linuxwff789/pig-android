@@ -169,6 +169,14 @@ object WebDavClient {
         }
     }
 
+    /** Deletes one archive; a missing file counts as deleted. */
+    fun delete(config: WebDavConfig, name: String) {
+        val response = request(config, "DELETE", "${config.dirUrl()}/${encodeName(name)}")
+        if (response.code !in 200..299 && response.code != 404) {
+            error("删除失败：${errorText(response)}")
+        }
+    }
+
     /**
      * Keep the newest [WebDavConfig.keep] archives; older ones are deleted so a
      * daily schedule does not fill the server.
