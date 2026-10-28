@@ -43,7 +43,59 @@
       "chipRadius": 4,
       "chipAlpha": 0.12,
       "groupRadius": 7,
-      "groupPadding": 8
+      "groupPadding": 8,
+      "byTool": {
+        "bash": {
+          "iconTint": "success",
+          "iconBackground": "success",
+          "titleColor": "success"
+        },
+        "edit": {
+          "iconTint": "warning",
+          "iconBackground": "warning",
+          "titleColor": "warning"
+        },
+        "write": {
+          "iconTint": "warning",
+          "iconBackground": "warning",
+          "titleColor": "warning"
+        },
+        "read": {
+          "iconTint": "secondary",
+          "iconBackground": "secondary",
+          "titleColor": "secondary"
+        },
+        "webfetch": {
+          "iconTint": "primary",
+          "iconBackground": "primary",
+          "titleColor": "primary"
+        },
+        "websearch": {
+          "iconTint": "primary",
+          "iconBackground": "primary",
+          "titleColor": "primary"
+        },
+        "memory*": {
+          "iconTint": "tertiary",
+          "iconBackground": "tertiary",
+          "titleColor": "tertiary"
+        },
+        "scratchpad": {
+          "iconTint": "tertiary",
+          "iconBackground": "tertiary",
+          "titleColor": "tertiary"
+        },
+        "codegraph*": {
+          "iconTint": "tertiary",
+          "iconBackground": "tertiary",
+          "titleColor": "tertiary"
+        },
+        "subagent": {
+          "iconTint": "primary",
+          "iconBackground": "primary",
+          "titleColor": "primary"
+        }
+      }
     },
     "thinking": {
       "show": true,
