@@ -173,7 +173,7 @@ object UpdateChecker {
             } else {
                 "稍后"
             }
-            return IllegalStateException("GitHub 限流，$whenText再试")
+            return IllegalStateException("GitHub 限流，${whenText}再试")
         }
         return IllegalStateException(
             when (code) {
