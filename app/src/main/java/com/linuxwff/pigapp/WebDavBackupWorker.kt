@@ -160,7 +160,11 @@ object WebDavScheduler {
             .build()
         // UPDATE (not REPLACE) so re-applying on every app start does not push
         // the next run further out each time.
-        workManager.enqueueUniqueWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
+        workManager.enqueueUniquePeriodicWork(
+            WORK_NAME,
+            ExistingPeriodicWorkPolicy.UPDATE,
+            request,
+        )
     }
 
     /**
