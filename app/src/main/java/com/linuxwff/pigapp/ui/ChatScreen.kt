@@ -5605,6 +5605,7 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     var dir by remember { mutableStateOf(initial.dir) }
     var keep by remember { mutableStateOf(initial.keep.toString()) }
     var hours by remember { mutableStateOf(initial.everyHours) }
+    var insecureTls by remember { mutableStateOf(initial.insecureTls) }
     var pendingRestore by remember { mutableStateOf<String?>(null) }
     val scheme = MaterialTheme.colorScheme
     val ui = vm.ui
@@ -5615,6 +5616,7 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
         dir = dir,
         keep = keep.toIntOrNull()?.coerceIn(1, 60) ?: 7,
         everyHours = hours,
+        insecureTls = insecureTls,
     )
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = scheme.primary.copy(alpha = 0.7f),
@@ -5710,6 +5712,33 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                             )
                         }
                     }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            packText("webdav.insecure", "忽略证书错误"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            packText(
+                                "webdav.insecureHint",
+                                "自签名证书的 NAS 才需要；开启后这个服务器不再校验证书和域名",
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = insecureTls, onCheckedChange = { insecureTls = it })
+                }
+                if (url.startsWith("http://")) {
+                    Text(
+                        packText(
+                            "webdav.cleartext",
+                            "明文 HTTP：账号密码和备份都会裸传，能上 https 就上 https",
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.error,
+                    )
                 }
                 Text(
                     packText(

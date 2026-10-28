@@ -348,6 +348,9 @@
     "restore": "恢复",
     "save": "保存",
     "restoreTitle": "从现在这份备份恢复？",
-    "restoreConfirm": "恢复"
+    "restoreConfirm": "恢复",
+    "insecure": "忽略证书错误",
+    "insecureHint": "自签名证书的 NAS 才需要；开启后这个服务器不再校验证书和域名",
+    "cleartext": "明文 HTTP：账号密码和备份都会裸传，能上 https 就上 https"
   }
 }

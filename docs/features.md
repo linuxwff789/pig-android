@@ -432,6 +432,12 @@ speaks Basic auth — Nextcloud, Alist, Synology, rclone serve.
   restore path: the relay backs up the current `~/.pig` first, then extracts,
   then the app reconnects.
 
+- **http / self-signed certificates**: cleartext is allowed app-wide (the
+  dialog shows a red warning when the URL starts with `http://`), and
+  **忽略证书错误** accepts a self-signed or mismatched certificate for that one
+  server. Both are off by default in spirit: HTTPS with a trusted certificate
+  is the recommended setup.
+
 Security: the password sits in the app's private settings (not encrypted at
 rest), and the archive itself contains plain-text API keys — use HTTPS and
 restrict access to the folder.
