@@ -116,7 +116,15 @@ fetch_relay_api() {
         _api_release="$_api_base/latest"
     fi
     _api_json="$PREFIX/tmp/.pig-release.$$.json"
-    if ! curl_get "$_api_release" "$_api_json"; then
+    # An unauthenticated API call is capped at 60/hour per IP and mobile
+    # networks share one; a token (no scopes needed for public repos) raises it
+    # to 5000/hour, which this fallback needs when github.com itself is blocked.
+    if [ -n "${PIG_GITHUB_TOKEN:-}" ]; then
+        if ! curl_get "$_api_release" "$_api_json" -H "Authorization: Bearer $PIG_GITHUB_TOKEN"; then
+            rm -f "$_api_json"
+            return 1
+        fi
+    elif ! curl_get "$_api_release" "$_api_json"; then
         rm -f "$_api_json"
         return 1
     fi
@@ -128,7 +136,13 @@ fetch_relay_api() {
         return 1
     fi
     say "trying the release asset API: api.github.com/.../assets/$_api_id"
-    curl_get "$_api_base/assets/$_api_id" "$_api_dest" -H 'Accept: application/octet-stream'
+    if [ -n "${PIG_GITHUB_TOKEN:-}" ]; then
+        curl_get "$_api_base/assets/$_api_id" "$_api_dest" \
+            -H 'Accept: application/octet-stream' \
+            -H "Authorization: Bearer $PIG_GITHUB_TOKEN"
+    else
+        curl_get "$_api_base/assets/$_api_id" "$_api_dest" -H 'Accept: application/octet-stream'
+    fi
 }
 
 # A fresh Termux points its main repo at packages.termux.dev, which is slow or
