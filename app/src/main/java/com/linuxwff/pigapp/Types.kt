@@ -26,6 +26,21 @@ data class PendingImage(
     val bitmap: ImageBitmap,
 )
 
+/**
+ * One message waiting in pig's queue.
+ *
+ * `kind` is `steer` (injected into the running turn, 插队) or `followUp`
+ * (sent after it settles, 排队). The same text can legitimately be queued in
+ * both lists, so identity is the whole value, not an id (pig's queue is a
+ * plain string list).
+ */
+data class QueuedMessage(
+    val kind: String,
+    val text: String,
+) {
+    val isSteer: Boolean get() = kind == "steer"
+}
+
 data class ChatMsg(
     val id: String,
     val role: Role,
@@ -574,6 +589,12 @@ data class AppUiState(
     val historyLoadingOlder: Boolean = false,
     /** Steering/follow-up messages still queued in pig. */
     val pendingMessages: Int = 0,
+    /**
+     * Contents of those queues, as pig reported them in `queue_update`.
+     * Empty after a reconnect until the next queue change: pig's `get_state`
+     * only carries a count, so the manager falls back to that count.
+     */
+    val queuedMessages: List<QueuedMessage> = emptyList(),
     /** Images picked in the composer and not sent yet. */
     val attachments: List<PendingImage> = emptyList(),
     /** Slash commands (built-ins + registered extension commands). */

@@ -260,6 +260,29 @@ the loaded history. Packs can bind the same numbers through `stats.*`
 usage until the next model call, so the header shows `已压缩` instead of a
 misleading `0%`; the real number reappears after the next turn.
 
+## Steering and follow-up queue
+
+While a turn is running the send button has two actions:
+
+- **tap** — `steer`, injected into the running turn after the current tool
+  batch (插队);
+- **long press** — `follow_up`, queued until the turn settles (排队).
+
+PiG reports both queues with `queue_update`, so the banner above the composer
+names what is actually waiting (`已插队 1 · 已排队 2`) instead of calling every
+queued message a steer. Tapping the banner opens 待发送消息:
+
+- each row shows its kind and text and can be removed with the delete icon;
+- **全部清空** drops both queues (`clear_queue`);
+- pig has no "drop one" RPC, so removing a row clears both queues and re-queues
+  the survivors in order with `steer` / `follow_up`; they are not echoed into
+  the transcript;
+- after a reconnect `get_state` only carries `pendingMessageCount`, so the
+  dialog shows the count (and the clear action) until the next queue change.
+
+设置 → 会话行为 → 打断消息 / 追问消息 still chooses `one-at-a-time` vs `all`
+for each queue, exactly as before.
+
 ## Thinking
 
 Reasoning blocks (`content: [{"type":"thinking", …}]`) are part of the
