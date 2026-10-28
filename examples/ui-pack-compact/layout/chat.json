@@ -60,6 +60,9 @@
       "paddingV": 5,
       "maxHeight": 200,
       "italic": false
+    },
+    "chrome": {
+      "fabBackgroundAlpha": 0.5
     }
   },
   "composer": {
