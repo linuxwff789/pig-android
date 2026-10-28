@@ -5636,6 +5636,7 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     var dir by remember { mutableStateOf(initial.dir) }
     var keep by remember { mutableStateOf(initial.keep.toString()) }
     var hours by remember { mutableStateOf(initial.everyHours) }
+    var dailyMinutes by remember { mutableStateOf(initial.dailyMinutes) }
     var insecureTls by remember { mutableStateOf(initial.insecureTls) }
     var pendingRestore by remember { mutableStateOf<String?>(null) }
     val scheme = MaterialTheme.colorScheme
@@ -5647,6 +5648,7 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
         dir = dir,
         keep = keep.toIntOrNull()?.coerceIn(1, 60) ?: 7,
         everyHours = hours,
+        dailyMinutes = dailyMinutes,
         insecureTls = insecureTls,
     )
     val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -5741,6 +5743,42 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                                     )
                                 },
                             )
+                        }
+                    }
+                }
+                if (hours == 24) {
+                    // A daily backup at a fixed wall-clock time: pick the hour,
+                    // the job is pinned to it instead of drifting with Doze.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            packText("webdav.dailyAt", "每天几点"),
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        var timeMenu by remember { mutableStateOf(false) }
+                        Box {
+                            TextButton(onClick = { timeMenu = true }) {
+                                Text("%02d:00".format(dailyMinutes / 60))
+                            }
+                            DropdownMenu(
+                                expanded = timeMenu,
+                                onDismissRequest = { timeMenu = false },
+                            ) {
+                                for (hour in 0..23) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                "%02d:00".format(hour),
+                                                style = MaterialTheme.typography.labelMedium,
+                                            )
+                                        },
+                                        onClick = {
+                                            dailyMinutes = hour * 60
+                                            timeMenu = false
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
