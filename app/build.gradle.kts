@@ -94,5 +94,7 @@ dependencies {
     implementation("org.jetbrains:markdown:0.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    // WebDAV needs PROPFIND/MKCOL, which HttpURLConnection rejects outright.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
