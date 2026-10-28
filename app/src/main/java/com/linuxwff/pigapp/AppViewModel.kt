@@ -721,6 +721,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Removes one archive from the server and drops it from the list. */
+    fun deleteWebDav(config: WebDavConfig, name: String) {
+        webDavRun {
+            AppLog.event("webdav", "delete $name")
+            WebDavClient.delete(config, name)
+            ui = ui.copy(webdavBackups = ui.webdavBackups.filterNot { it.name == name })
+            str("webdav.deleted", "已删除 {name}").replace("{name}", name)
+        }
+    }
+
     /** Downloads an archive and hands it to the normal restore path. */
     fun restoreWebDav(config: WebDavConfig, name: String) {
         if (!client.connected.value || !ui.backupRemote) {

@@ -5636,8 +5636,9 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     var dir by remember { mutableStateOf(initial.dir) }
     var keep by remember { mutableStateOf(initial.keep.toString()) }
     var hours by remember { mutableStateOf(initial.everyHours) }
+    var dailyMinutes by remember { mutableStateOf(initial.dailyMinutes) }
     var insecureTls by remember { mutableStateOf(initial.insecureTls) }
-    var pendingRestore by remember { mutableStateOf<String?>(null) }
+    var showArchives by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
     val ui = vm.ui
     val config = WebDavConfig(
@@ -5647,6 +5648,7 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
         dir = dir,
         keep = keep.toIntOrNull()?.coerceIn(1, 60) ?: 7,
         everyHours = hours,
+        dailyMinutes = dailyMinutes,
         insecureTls = insecureTls,
     )
     val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -5744,6 +5746,42 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                         }
                     }
                 }
+                if (hours == 24) {
+                    // A daily backup at a fixed wall-clock time: pick the hour,
+                    // the job is pinned to it instead of drifting with Doze.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            packText("webdav.dailyAt", "每天几点"),
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        var timeMenu by remember { mutableStateOf(false) }
+                        Box {
+                            TextButton(onClick = { timeMenu = true }) {
+                                Text("%02d:00".format(dailyMinutes / 60))
+                            }
+                            DropdownMenu(
+                                expanded = timeMenu,
+                                onDismissRequest = { timeMenu = false },
+                            ) {
+                                for (hour in 0..23) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                "%02d:00".format(hour),
+                                                style = MaterialTheme.typography.labelMedium,
+                                            )
+                                        },
+                                        onClick = {
+                                            dailyMinutes = hour * 60
+                                            timeMenu = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -5795,37 +5833,17 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                         enabled = !ui.webdavBusy && config.ready,
                         onClick = {
                             vm.saveWebDav(config)
-                            vm.loadWebDavBackups(config)
+                            showArchives = true
                         },
-                    ) { Text(packText("webdav.list", "远端备份")) }
+                    ) { Text(packText("webdav.archiveManage", "存档管理")) }
                 }
                 if (ui.webdavBackups.isNotEmpty()) {
-                    ui.webdavBackups.take(6).forEach { backup ->
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    backup.name
-                                        .removePrefix(WebDavClient.PREFIX)
-                                        .removeSuffix(WebDavClient.SUFFIX),
-                                    style = MaterialTheme.typography.labelMedium,
-                                )
-                                Text(
-                                    webDavSize(backup.size),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = scheme.onSurfaceVariant,
-                                )
-                            }
-                            TextButton(
-                                enabled = !ui.webdavBusy && !ui.maintenanceBusy,
-                                onClick = { pendingRestore = backup.name },
-                            ) {
-                                Text(packText("webdav.restore", "恢复"))
-                            }
-                        }
-                    }
+                    Text(
+                        packText("webdav.count", "找到 {n} 个备份")
+                            .replace("{n}", ui.webdavBackups.size.toString()),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
                 }
                 if (ui.webdavMessage.isNotBlank()) {
                     Text(
@@ -5849,6 +5867,103 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
         },
     )
 
+    if (showArchives) {
+        WebDavArchiveDialog(vm) { showArchives = false }
+    }
+}
+
+/**
+ * Archive management: what is on the server, when it was taken, how big it is,
+ * plus restore and delete. Restore is the same path as an imported file: the
+ * relay backs up the current `~/.pig`, extracts, then the app reconnects.
+ */
+@Composable
+private fun WebDavArchiveDialog(vm: AppViewModel, onDismiss: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val ui = vm.ui
+    val config = remember { vm.webDavConfig() }
+    var pendingRestore by remember { mutableStateOf<String?>(null) }
+    var pendingDelete by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { vm.loadWebDavBackups(config) }
+    val busy = ui.webdavBusy || ui.maintenanceBusy
+
+    PackAlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(22.dp),
+        containerColor = scheme.surface,
+        title = { Text(packText("webdav.archiveTitle", "WebDAV 存档管理")) },
+        text = {
+            Column(
+                Modifier
+                    .heightIn(max = 430.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (ui.webdavBackups.isEmpty()) {
+                            packText("webdav.none", "远端还没有备份")
+                        } else {
+                            packText("webdav.count", "找到 {n} 个备份")
+                                .replace("{n}", ui.webdavBackups.size.toString())
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        enabled = !busy,
+                        onClick = { vm.loadWebDavBackups(config) },
+                    ) { Text(packText("webdav.refresh", "刷新")) }
+                    TextButton(
+                        enabled = !busy,
+                        onClick = { vm.backupNowWebDav(config, notify = true) },
+                    ) { Text(packText("webdav.backupNow", "立即备份")) }
+                }
+                if (ui.webdavMessage.isNotBlank()) {
+                    Text(
+                        ui.webdavMessage,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (ui.webdavMessageError) scheme.error else scheme.primary,
+                    )
+                }
+                ui.webdavBackups.forEach { backup ->
+                    HorizontalDivider(color = scheme.outline.copy(alpha = 0.35f))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                webDavStamp(backup.name),
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                            Text(
+                                webDavSize(backup.size) +
+                                    if (backup.modified.isBlank()) "" else " · ${backup.modified.take(16)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = scheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(
+                            enabled = !busy,
+                            onClick = { pendingRestore = backup.name },
+                        ) { Text(packText("webdav.restore", "恢复")) }
+                        TextButton(
+                            enabled = !busy,
+                            onClick = { pendingDelete = backup.name },
+                        ) {
+                            Text(
+                                packText("webdav.delete", "删除"),
+                                color = scheme.error,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(packText("dialog.done", "完成")) }
+        },
+    )
+
     pendingRestore?.let { name ->
         PackAlertDialog(
             onDismissRequest = { pendingRestore = null },
@@ -5860,14 +5975,13 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                     packText(
                         "webdav.restoreHint",
                         "{name}\n\n会覆盖 Termux 里的 ~/.pig（恢复前 relay 会自动备份现有数据），之后重连。",
-                    ).replace("{name}", name),
+                    ).replace("{name}", webDavStamp(name)),
                     style = MaterialTheme.typography.labelSmall,
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        vm.saveWebDav(config)
                         vm.restoreWebDav(config, name)
                         pendingRestore = null
                         onDismiss()
@@ -5881,6 +5995,45 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
             },
         )
     }
+
+    pendingDelete?.let { name ->
+        PackAlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            shape = RoundedCornerShape(22.dp),
+            containerColor = scheme.surface,
+            title = { Text(packText("webdav.deleteTitle", "删除这份存档？")) },
+            text = {
+                Text(
+                    packText("webdav.deleteHint", "{name}\n\n删除后不可恢复。")
+                        .replace("{name}", webDavStamp(name)),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.deleteWebDav(config, name)
+                        pendingDelete = null
+                    },
+                ) {
+                    Text(packText("webdav.deleteConfirm", "删除"), color = scheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) {
+                    Text(packText("dialog.cancel", "取消"))
+                }
+            },
+        )
+    }
+}
+
+/** `pig-backup-20261028-221713.tar.gz` -> `2026-10-28 22:17:13`. */
+private fun webDavStamp(name: String): String {
+    val raw = name.removePrefix(WebDavClient.PREFIX).removeSuffix(WebDavClient.SUFFIX)
+    if (raw.length != 15 || raw[8] != '-') return raw
+    return raw.substring(0, 4) + "-" + raw.substring(4, 6) + "-" + raw.substring(6, 8) +
+        " " + raw.substring(9, 11) + ":" + raw.substring(11, 13) + ":" + raw.substring(13, 15)
 }
 
 private fun webDavSize(bytes: Long): String = when {

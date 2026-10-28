@@ -423,7 +423,9 @@ speaks Basic auth — Nextcloud, Alist, Synology, rclone serve.
   N are deleted from that folder.
 - **定时备份**: off / every 6 h / 12 h / daily / every 3 days / weekly. It is a
   WorkManager job with a network constraint; it survives reboots and app
-  restarts and the first run happens one interval after it is enabled. When the
+  restarts and the first run happens one interval after it is enabled. **Daily**
+  also picks an hour (default 03:00): that mode is a chain of one-time works
+  pinned to the wall clock, so it does not drift when Doze delays a run. When the
   app process is alive the job uploads over the app's relay connection; a
   second connection would replace the app, which would replace it back and
   make the relay flap. With no app process it opens a one-shot connection
@@ -431,7 +433,11 @@ speaks Basic auth — Nextcloud, Alist, Synology, rclone serve.
   settings also offers **Sync now**, which uploads immediately with the stored
   config and reports the result as a toast.
 - **测试连接** does a `PROPFIND` (and `MKCOL` when the folder is missing);
-  **立即备份** uploads once; **远端备份** lists the archives, each with 恢复.
+  **立即备份** uploads once.
+- **存档管理** lists every archive on the server with its local time and size,
+  offers 刷新 / 立即备份, and gives each row 恢复 and 删除 (delete asks first).
+  Restore reuses the normal restore path, so the current `~/.pig` is backed up
+  by the relay before the archive is extracted.
 - Restore downloads the archive to the app cache and goes through the normal
   restore path: the relay backs up the current `~/.pig` first, then extracts,
   then the app reconnects.

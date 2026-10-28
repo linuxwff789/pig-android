@@ -4,8 +4,11 @@ import android.content.Context
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.ListenableWorker.Result
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequest
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -33,9 +36,17 @@ class WebDavBackupWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val context = applicationContext
+        // No Activity means no ViewModel: open the log tail here so a nightly
+        // run still leaves a trace when the app was never opened.
+        AppLog.attach(context)
         val prefs = context.getSharedPreferences("pig", Context.MODE_PRIVATE)
         val config = WebDavConfig.from(prefs)
         if (!config.ready || config.everyHours <= 0) return@withContext Result.success()
+
+        // "Every day at HH:00" is a one-time work that re-arms itself: WorkManager
+        // periodic work drifts by whatever Doze delays a run, and the point of a
+        // daily backup is a predictable time.
+        runCatching { WebDavScheduler.chainNextDaily(context, config) }
 
         val port = prefs.getInt("port", 8791)
         val token = prefs.getString("token", "").orEmpty()
@@ -113,14 +124,29 @@ class WebDavBackupWorker(
     }
 }
 
-/** Registers (or removes) the periodic job that matches [config]. */
+/**
+ * Owns the scheduled upload. Hourly periods use WorkManager periodic work;
+ * "every day" is a chain of one-time works pinned to the chosen wall-clock
+ * time, because a periodic work's next run drifts with Doze.
+ */
 object WebDavScheduler {
     private const val WORK_NAME = "webdav-backup"
+    private val NETWORK: Constraints = Constraints.Builder()
+        .setRequiredNetworkType(NetworkType.CONNECTED)
+        .build()
 
     fun apply(context: Context, config: WebDavConfig) {
         val workManager = WorkManager.getInstance(context)
         if (!config.ready || config.everyHours <= 0) {
             workManager.cancelUniqueWork(WORK_NAME)
+            return
+        }
+        if (config.everyHours == 24) {
+            workManager.enqueueUniqueWork(
+                WORK_NAME,
+                ExistingWorkPolicy.REPLACE,
+                dailyRequest(config.dailyMinutes),
+            )
             return
         }
         val request = PeriodicWorkRequestBuilder<WebDavBackupWorker>(
@@ -130,16 +156,53 @@ object WebDavScheduler {
             // Turning the switch on must not fire a backup immediately (that
             // used to replace the app's relay connection right away).
             .setInitialDelay(config.everyHours.toLong(), TimeUnit.HOURS)
-            .setConstraints(
-                Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build(),
-            )
+            .setConstraints(NETWORK)
             .build()
+        // UPDATE (not REPLACE) so re-applying on every app start does not push
+        // the next run further out each time.
         workManager.enqueueUniquePeriodicWork(
             WORK_NAME,
             ExistingPeriodicWorkPolicy.UPDATE,
             request,
         )
+    }
+
+    /**
+     * Queues tomorrow's daily run. Called by the worker itself, hence the
+     * append: replacing the unique work here would cancel the caller.
+     */
+    fun chainNextDaily(context: Context, config: WebDavConfig) {
+        if (!config.ready || config.everyHours != 24) return
+        val delay = delayUntilNext(config.dailyMinutes)
+        AppLog.event(
+            "webdav",
+            "next daily run in ${delay.toMinutes()} min " +
+                "(${String.format("%02d:%02d", config.dailyMinutes / 60, config.dailyMinutes % 60)})",
+        )
+        runCatching {
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                WORK_NAME,
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                dailyRequest(config.dailyMinutes),
+            )
+        }
+    }
+
+    private fun dailyRequest(minutes: Int): OneTimeWorkRequest =
+        OneTimeWorkRequestBuilder<WebDavBackupWorker>()
+            .setInitialDelay(delayUntilNext(minutes))
+            .setConstraints(NETWORK)
+            .build()
+
+    /** Delay from [now] to the next [minutes] past midnight. */
+    fun delayUntilNext(
+        minutes: Int,
+        now: java.time.ZonedDateTime = java.time.ZonedDateTime.now(),
+    ): java.time.Duration {
+        var next = now.toLocalDate()
+            .atTime(minutes / 60, minutes % 60)
+            .atZone(now.zone)
+        if (!next.isAfter(now)) next = next.plusDays(1)
+        return java.time.Duration.between(now, next)
     }
 }

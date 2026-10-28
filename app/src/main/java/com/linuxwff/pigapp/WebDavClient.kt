@@ -31,6 +31,8 @@ data class WebDavConfig(
     val keep: Int = 7,
     /** 0 = no scheduled backup; otherwise the period in hours. */
     val everyHours: Int = 0,
+    /** Daily runs start at this minute of the day (default 03:00). */
+    val dailyMinutes: Int = DEFAULT_DAILY_MINUTES,
     /**
      * Accept a self-signed / mismatched certificate for this server. Off by
      * default; the dialog spells out what it means.
@@ -47,12 +49,15 @@ data class WebDavConfig(
 
     companion object {
         const val DEFAULT_DIR = "pig-backups"
+        /** 03:00, the default time for a daily backup. */
+        const val DEFAULT_DAILY_MINUTES = 3 * 60
         private const val URL_KEY = "webdav.url"
         private const val USER_KEY = "webdav.user"
         private const val PASS_KEY = "webdav.password"
         private const val DIR_KEY = "webdav.dir"
         private const val KEEP_KEY = "webdav.keep"
         private const val EVERY_KEY = "webdav.everyHours"
+        private const val DAILY_KEY = "webdav.dailyMinutes"
         private const val INSECURE_KEY = "webdav.insecureTls"
 
         fun from(prefs: SharedPreferences): WebDavConfig = WebDavConfig(
@@ -62,6 +67,7 @@ data class WebDavConfig(
             dir = prefs.getString(DIR_KEY, DEFAULT_DIR).orEmpty().ifBlank { DEFAULT_DIR },
             keep = prefs.getInt(KEEP_KEY, 7).coerceIn(1, 60),
             everyHours = prefs.getInt(EVERY_KEY, 0).coerceIn(0, 24 * 14),
+            dailyMinutes = prefs.getInt(DAILY_KEY, DEFAULT_DAILY_MINUTES).coerceIn(0, 24 * 60 - 1),
             insecureTls = prefs.getBoolean(INSECURE_KEY, false),
         )
 
@@ -73,6 +79,7 @@ data class WebDavConfig(
                 .putString(DIR_KEY, config.dir.trim().trim('/'))
                 .putInt(KEEP_KEY, config.keep.coerceIn(1, 60))
                 .putInt(EVERY_KEY, config.everyHours.coerceIn(0, 24 * 14))
+                .putInt(DAILY_KEY, config.dailyMinutes.coerceIn(0, 24 * 60 - 1))
                 .putBoolean(INSECURE_KEY, config.insecureTls)
                 .apply()
         }
@@ -159,6 +166,14 @@ object WebDavClient {
         val stream = response.stream ?: error("下载失败：没有响应内容")
         stream.use { input ->
             dest.outputStream().use { out -> input.copyTo(out) }
+        }
+    }
+
+    /** Deletes one archive; a missing file counts as deleted. */
+    fun delete(config: WebDavConfig, name: String) {
+        val response = request(config, "DELETE", "${config.dirUrl()}/${encodeName(name)}")
+        if (response.code !in 200..299 && response.code != 404) {
+            error("删除失败：${errorText(response)}")
         }
     }
 
