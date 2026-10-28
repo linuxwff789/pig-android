@@ -42,6 +42,12 @@ class RelayClient(
     private val host: String,
     private val port: Int,
     token: String,
+    /**
+     * When false the client connects once and stops. A background worker must
+     * not keep retrying: the relay accepts one client, so a retry loop here
+     * would kick the app, which reconnects and kicks the worker, forever.
+     */
+    private val autoReconnect: Boolean = true,
 ) {
     /**
      * Shared secret for `relay_auth`. Mutable because an app-data restore can
@@ -137,6 +143,7 @@ class RelayClient(
                     runCatching { s?.close() }
                 }
                 if (gen != generation) return@launch
+                if (!autoReconnect) return@launch
                 attempt++
                 // Show the setup hint only when the relay never came up; a
                 // dropped connection after a successful handshake is retried

@@ -423,9 +423,11 @@ speaks Basic auth — Nextcloud, Alist, Synology, rclone serve.
   N are deleted from that folder.
 - **定时备份**: off / every 6 h / 12 h / daily / every 3 days / weekly. It is a
   WorkManager job with a network constraint; it survives reboots and app
-  restarts. The worker opens its own relay connection (starting the relay if
-  Termux is not running one), so while it runs a foreground app briefly
-  reconnects.
+  restarts and the first run happens one interval after it is enabled. When the
+  app process is alive the job uploads over the app's relay connection; a
+  second connection would replace the app, which would replace it back and
+  make the relay flap. With no app process it opens a one-shot connection
+  (starting the relay if Termux is not running one).
 - **测试连接** does a `PROPFIND` (and `MKCOL` when the folder is missing);
   **立即备份** uploads once; **远端备份** lists the archives, each with 恢复.
 - Restore downloads the archive to the app cache and goes through the normal

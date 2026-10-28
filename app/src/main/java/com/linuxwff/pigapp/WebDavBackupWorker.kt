@@ -19,10 +19,12 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
- * Uploads a full backup to WebDAV on the user's schedule. It runs without the
- * UI, so it opens its own relay connection (and starts the relay if Termux is
- * not running one); a live app connection is replaced for the duration and
- * reconnects on its own.
+ * Uploads a full backup to WebDAV on the user's schedule.
+ *
+ * When the app process is alive this reuses its relay connection: the relay
+ * accepts one client, so a second connection would replace the app, the app
+ * would reconnect and replace the worker, and the relay would flap forever.
+ * Only with no UI process does it open a one-shot connection of its own.
  */
 class WebDavBackupWorker(
     context: Context,
@@ -38,7 +40,31 @@ class WebDavBackupWorker(
         val port = prefs.getInt("port", 8791)
         val token = prefs.getString("token", "").orEmpty()
         val cwd = prefs.getString("cwd", null) ?: "/data/data/com.termux/files/home"
-        val client = RelayClient("127.0.0.1", port, token)
+
+        // The app process is alive: upload over its connection. A second
+        // RelayClient would replace it, the app would reconnect, replace the
+        // worker, and the relay would flap until one of them gives up.
+        AppViewModel.current?.let { live ->
+            var uploaded = runCatching { live.scheduledWebDavBackup(config) }.getOrNull()
+            if (uploaded == null) {
+                // Relay down: start it and let the app's own client reconnect.
+                RelayLauncher.launch(context, port, token, cwd)
+                var waited = 0
+                while (uploaded == null && waited < 40) {
+                    delay(500)
+                    waited++
+                    uploaded = runCatching { live.scheduledWebDavBackup(config) }.getOrNull()
+                }
+            }
+            if (uploaded != null) {
+                AppLog.event("webdav", "scheduled backup ok (app connection): $uploaded")
+                return@withContext Result.success()
+            }
+            AppLog.event("webdav", "scheduled backup: the app is alive but offline")
+            return@withContext if (runAttemptCount < 3) Result.retry() else Result.failure()
+        }
+
+        val client = RelayClient("127.0.0.1", port, token, autoReconnect = false)
         val archive = File(
             context.cacheDir,
             WebDavClient.PREFIX +
@@ -51,6 +77,9 @@ class WebDavBackupWorker(
                 // No relay yet (Termux was closed, or the app never started it
                 // in this boot): ask Termux to start one and wait again.
                 RelayLauncher.launch(context, port, token, cwd)
+                delay(1_500)
+                // One-shot: the failed attempt ended, so this is a new connect.
+                client.connect()
                 if (!awaitConnection(client)) {
                     AppLog.event("webdav", "scheduled backup: relay is not reachable")
                     return@withContext if (runAttemptCount < 3) Result.retry() else Result.failure()
@@ -98,6 +127,9 @@ object WebDavScheduler {
             config.everyHours.toLong(),
             TimeUnit.HOURS,
         )
+            // Turning the switch on must not fire a backup immediately (that
+            // used to replace the app's relay connection right away).
+            .setInitialDelay(config.everyHours.toLong(), TimeUnit.HOURS)
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)

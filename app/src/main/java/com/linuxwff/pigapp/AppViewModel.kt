@@ -169,6 +169,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     init {
         current = this
         AppLog.attach(getApplication<Application>())
+        // Re-apply the periodic WebDAV job from the stored config: an updated
+        // APK may change its constraints/initial delay, and the old request
+        // (enqueued by a version that connected alongside the app) must not
+        // keep running with its previous shape.
+        runCatching { WebDavScheduler.apply(getApplication(), WebDavConfig.from(prefs)) }
         AppLog.fact("relay", "127.0.0.1:$port")
         ui = ui.copy(
             commands = builtinCommands(),
@@ -694,6 +699,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 },
             )
+        }
+    }
+
+    /**
+     * A scheduled upload on the live connection. Returns null when the app is
+     * not attached to the relay; the background worker then waits or starts
+     * the relay instead of opening a second connection (which would fight this
+     * one for the relay's single client slot).
+     */
+    suspend fun scheduledWebDavBackup(config: WebDavConfig): String? {
+        if (!client.connected.value || !ui.backupRemote) return null
+        return withContext(Dispatchers.IO) {
+            val ctx = getApplication<Application>()
+            val name = WebDavClient.PREFIX +
+                SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date()) +
+                WebDavClient.SUFFIX
+            val file = File(ctx.cacheDir, name)
+            try {
+                file.outputStream().use { out ->
+                    client.exportBackup(out, includeSessions = true, includeUi = true) { }
+                }
+                WebDavClient.upload(config, name, file)
+                runCatching { WebDavClient.prune(config, config.keep) }
+                name
+            } finally {
+                file.delete()
+            }
         }
     }
 
