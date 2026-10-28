@@ -3,6 +3,7 @@ package com.linuxwff.pigapp
 import android.content.Context
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ListenableWorker.Result
 import androidx.work.NetworkType
@@ -157,7 +158,9 @@ object WebDavScheduler {
             .setInitialDelay(config.everyHours.toLong(), TimeUnit.HOURS)
             .setConstraints(NETWORK)
             .build()
-        workManager.enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.REPLACE, request)
+        // UPDATE (not REPLACE) so re-applying on every app start does not push
+        // the next run further out each time.
+        workManager.enqueueUniqueWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
     }
 
     /**
