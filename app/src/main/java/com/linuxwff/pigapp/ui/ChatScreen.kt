@@ -3893,6 +3893,12 @@ private fun ToolGroupCard(
     toolMode: String,
     cornerRadius: Int,
     onToolModeAll: (String) -> Unit,
+    /**
+     * The reader opened a card: stop auto-following the transcript. An opened
+     * card is taller than the viewport, so the next tool result would scroll
+     * them away from the card they just tapped.
+     */
+    onUserRead: () -> Unit = {},
 ) {
     val scheme = MaterialTheme.colorScheme
     val theme = packTheme()
@@ -3928,7 +3934,12 @@ private fun ToolGroupCard(
     }
     Column(Modifier.fillMaxWidth()) {
     if (thinking.isNotBlank()) {
-        ThinkingBlock(id = tools.first().id + ":group", text = thinking, streaming = false)
+        ThinkingBlock(
+            id = tools.first().id + ":group",
+            text = thinking,
+            streaming = false,
+            onOpen = onUserRead,
+        )
         Spacer(Modifier.height(4.dp))
     }
     Surface(
@@ -3942,7 +3953,10 @@ private fun ToolGroupCard(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable { expanded = !expanded }
+                    .clickable {
+                        onUserRead()
+                        expanded = !expanded
+                    }
                     .padding(horizontal = 2.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -4016,7 +4030,7 @@ private fun ToolGroupCard(
                 val limit = if (showAll) tools.size else GROUP_PAGE
                 tools.take(limit).forEachIndexed { index, tool ->
                     if (index > 0) Spacer(Modifier.height(6.dp))
-                    ToolCard(tool, toolMode, cornerRadius, onToolModeAll)
+                    ToolCard(tool, toolMode, cornerRadius, onToolModeAll, onUserRead)
                 }
                 if (!showAll && tools.size > limit) {
                     TextButton(onClick = { showAll = true }) {
@@ -4214,6 +4228,7 @@ private fun MessageList(
                         bubbleShadow = bubbleShadow,
                         onCopy = onCopy,
                         onToolModeAll = onToolModeAll,
+                        onUserRead = { autoScroll = false },
                     )
                     is ChatListItem.ToolGroup -> ToolGroupCard(
                         tools = item.tools,
@@ -4221,6 +4236,7 @@ private fun MessageList(
                         toolMode = toolMode,
                         cornerRadius = cornerRadius,
                         onToolModeAll = onToolModeAll,
+                        onUserRead = { autoScroll = false },
                     )
                 }
             }
@@ -4462,7 +4478,12 @@ private fun CopyButton(onClick: () -> Unit) {
  * choice for that message only.
  */
 @Composable
-private fun ThinkingBlock(id: String, text: String, streaming: Boolean) {
+private fun ThinkingBlock(
+    id: String,
+    text: String,
+    streaming: Boolean,
+    onOpen: () -> Unit = {},
+) {
     val style = LocalUiPack.current.layout.thinking
     if (!style.show) return
     val scheme = MaterialTheme.colorScheme
@@ -4495,6 +4516,7 @@ private fun ThinkingBlock(id: String, text: String, streaming: Boolean) {
             Modifier
                 .fillMaxWidth()
                 .clickable {
+                    onOpen()
                     userChoice = true
                     open = !open
                 }
@@ -4557,6 +4579,7 @@ private fun MessageRow(
     bubbleShadow: Boolean,
     onCopy: (String) -> Unit,
     onToolModeAll: (String) -> Unit,
+    onUserRead: () -> Unit = {},
 ) {
     val components = packComponents()
     val theme = packTheme()
@@ -4717,6 +4740,7 @@ private fun MessageRow(
                 Spacer(Modifier.height(4.dp))
                 if (!hideThinking && message.thinking.isNotBlank()) {
                     ThinkingBlock(
+                        onOpen = onUserRead,
                         id = message.id,
                         text = message.thinking,
                         streaming = streaming,
@@ -4816,7 +4840,7 @@ private fun MessageRow(
         }
 
         Role.TOOL -> Column(Modifier.fillMaxWidth().padding(start = 33.dp)) {
-            ToolCard(message, toolMode, cornerRadius, onToolModeAll)
+            ToolCard(message, toolMode, cornerRadius, onToolModeAll, onUserRead)
         }
 
         Role.NOTICE -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -4850,6 +4874,7 @@ private fun ToolCard(
     mode: String,
     cornerRadius: Int,
     onToolModeAll: (String) -> Unit,
+    onUserRead: () -> Unit = {},
 ) {
     var viewMode by remember(message.id, mode) {
         mutableStateOf(
@@ -5041,21 +5066,30 @@ private fun ToolCard(
                     packText("tool.collapse", "收起"),
                     viewMode == ToolMode.COLLAPSED,
                     cornerRadius,
-                    onClick = { viewMode = ToolMode.COLLAPSED },
+                    onClick = {
+                        onUserRead()
+                        viewMode = ToolMode.COLLAPSED
+                    },
                     onLongClick = { onToolModeAll("collapsed") },
                 )
                 ToolModeChip(
                     packText("tool.summary", "摘要"),
                     viewMode == ToolMode.SUMMARY,
                     cornerRadius,
-                    onClick = { viewMode = ToolMode.SUMMARY },
+                    onClick = {
+                        onUserRead()
+                        viewMode = ToolMode.SUMMARY
+                    },
                     onLongClick = { onToolModeAll("summary") },
                 )
                 ToolModeChip(
                     packText("tool.expand", "展开"),
                     viewMode == ToolMode.EXPANDED,
                     cornerRadius,
-                    onClick = { viewMode = ToolMode.EXPANDED },
+                    onClick = {
+                        onUserRead()
+                        viewMode = ToolMode.EXPANDED
+                    },
                     onLongClick = { onToolModeAll("expanded") },
                 )
             }
