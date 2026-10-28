@@ -21,6 +21,11 @@ data class WebDavConfig(
     val keep: Int = 7,
     /** 0 = no scheduled backup; otherwise the period in hours. */
     val everyHours: Int = 0,
+    /**
+     * Accept a self-signed / mismatched certificate for this server. Off by
+     * default; the dialog spells out what it means.
+     */
+    val insecureTls: Boolean = false,
 ) {
     val ready: Boolean get() = url.isNotBlank()
 
@@ -38,6 +43,7 @@ data class WebDavConfig(
         private const val DIR_KEY = "webdav.dir"
         private const val KEEP_KEY = "webdav.keep"
         private const val EVERY_KEY = "webdav.everyHours"
+        private const val INSECURE_KEY = "webdav.insecureTls"
 
         fun from(prefs: SharedPreferences): WebDavConfig = WebDavConfig(
             url = prefs.getString(URL_KEY, "").orEmpty(),
@@ -46,6 +52,7 @@ data class WebDavConfig(
             dir = prefs.getString(DIR_KEY, DEFAULT_DIR).orEmpty().ifBlank { DEFAULT_DIR },
             keep = prefs.getInt(KEEP_KEY, 7).coerceIn(1, 60),
             everyHours = prefs.getInt(EVERY_KEY, 0).coerceIn(0, 24 * 14),
+            insecureTls = prefs.getBoolean(INSECURE_KEY, false),
         )
 
         fun save(prefs: SharedPreferences, config: WebDavConfig) {
@@ -56,6 +63,7 @@ data class WebDavConfig(
                 .putString(DIR_KEY, config.dir.trim().trim('/'))
                 .putInt(KEEP_KEY, config.keep.coerceIn(1, 60))
                 .putInt(EVERY_KEY, config.everyHours.coerceIn(0, 24 * 14))
+                .putBoolean(INSECURE_KEY, config.insecureTls)
                 .apply()
         }
     }
@@ -199,6 +207,7 @@ object WebDavClient {
                 }
                 depth?.let { setRequestProperty("Depth", it) }
                 contentType?.let { setRequestProperty("Content-Type", it) }
+                if (config.insecureTls) allowInsecureTls(this)
                 when {
                     file != null -> {
                         setRequestProperty("Content-Length", file.length().toString())
@@ -246,8 +255,49 @@ object WebDavClient {
                 return Response(code, text, body = bodyText)
             } catch (error: IOException) {
                 connection.disconnect()
-                throw IllegalStateException("连接失败：${error.message ?: error.toString()}")
+                throw IllegalStateException(friendlyError(error))
             }
+        }
+    }
+
+    /**
+     * Opt-in trust-all, for a NAS with a self-signed certificate. Only used by
+     * this connection, never globally.
+     */
+    private fun allowInsecureTls(connection: HttpURLConnection) {
+        if (connection !is javax.net.ssl.HttpsURLConnection) return
+        val trustAll = object : javax.net.ssl.X509TrustManager {
+            override fun checkClientTrusted(
+                chain: Array<out java.security.cert.X509Certificate>,
+                authType: String,
+            ) = Unit
+
+            override fun checkServerTrusted(
+                chain: Array<out java.security.cert.X509Certificate>,
+                authType: String,
+            ) = Unit
+
+            override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> =
+                emptyArray()
+        }
+        val context = javax.net.ssl.SSLContext.getInstance("TLS")
+        context.init(null, arrayOf<javax.net.ssl.TrustManager>(trustAll), java.security.SecureRandom())
+        connection.sslSocketFactory = context.socketFactory
+        connection.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }
+    }
+
+    /** Turn the usual Android/Java failures into something a user can act on. */
+    private fun friendlyError(error: IOException): String {
+        val text = error.message ?: error.javaClass.simpleName
+        return when {
+            text.contains("Cleartext", ignoreCase = true) ->
+                "系统拦截了明文 HTTP（$text）：改用 https，或使用已允许明文的新版本"
+            error is javax.net.ssl.SSLException ->
+                "TLS/证书错误：$text（自签名证书请勾选「忽略证书错误」）"
+            error is java.net.UnknownHostException -> "域名解析失败：$text"
+            error is java.net.SocketTimeoutException -> "连接超时：$text"
+            error is java.net.ConnectException -> "连不上服务器：$text"
+            else -> "连接失败：$text"
         }
     }
 
