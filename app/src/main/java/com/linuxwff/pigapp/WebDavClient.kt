@@ -143,7 +143,7 @@ object WebDavClient {
             file = file,
             contentType = "application/gzip",
         )
-        if (response.code !in 200..299) error("上传失败：${errorText(response)}${pathHint(response.code)}")
+        if (response.code !in 200..299) error("上传失败：${errorText(response)}")
     }
 
     fun list(config: WebDavConfig): List<WebDavBackup> {
@@ -185,7 +185,8 @@ object WebDavClient {
 
     private fun errorText(response: Response): String {
         val detail = response.text.take(200).replace(Regex("\\s+"), " ").trim()
-        return "HTTP ${response.code}" + if (detail.isNotBlank()) ": $detail" else ""
+        val head = "HTTP ${response.code}" + if (detail.isNotBlank()) ": $detail" else ""
+        return head + pathHint(response.code)
     }
 
     /**
