@@ -575,6 +575,8 @@ data class AppUiState(
     val webdavMessageError: Boolean = false,
     /** Archives found on the server, newest first. */
     val webdavBackups: List<WebDavBackup> = emptyList(),
+    /** A server is configured, so "sync now" can be offered outside the dialog. */
+    val webdavReady: Boolean = false,
 
     /** `hideThinkingBlock` from settings.json: hide reasoning in the transcript. */
     val hideThinkingBlock: Boolean = false,

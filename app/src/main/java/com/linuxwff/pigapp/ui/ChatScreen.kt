@@ -2002,6 +2002,20 @@ private fun SettingsDialog(
                             color = scheme.onSurfaceVariant,
                         )
                     }
+                    if (ui.webdavReady) {
+                        TextButton(
+                            enabled = !ui.webdavBusy && !ui.maintenanceBusy,
+                            onClick = { vm.syncNowWebDav() },
+                        ) {
+                            Text(
+                                if (ui.webdavBusy) {
+                                    packText("webdav.syncBusy", "同步中…")
+                                } else {
+                                    packText("webdav.sync", "立即同步")
+                                },
+                            )
+                        }
+                    }
                     TextButton(onClick = onOpenWebDav) {
                         Text(packText("settings.webdavAction", "配置"))
                     }

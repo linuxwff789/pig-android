@@ -427,7 +427,9 @@ speaks Basic auth — Nextcloud, Alist, Synology, rclone serve.
   app process is alive the job uploads over the app's relay connection; a
   second connection would replace the app, which would replace it back and
   make the relay flap. With no app process it opens a one-shot connection
-  (starting the relay if Termux is not running one).
+  (starting the relay if Termux is not running one). Once a server is saved,
+  settings also offers **Sync now**, which uploads immediately with the stored
+  config and reports the result as a toast.
 - **测试连接** does a `PROPFIND` (and `MKCOL` when the folder is missing);
   **立即备份** uploads once; **远端备份** lists the archives, each with 恢复.
 - Restore downloads the archive to the app cache and goes through the normal
