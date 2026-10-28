@@ -1,0 +1,97 @@
+{
+  "default": "graphite",
+  "skins": [
+    {
+      "id": "graphite",
+      "name": "石墨",
+      "theme": {}
+    },
+    {
+      "id": "neutral",
+      "name": "中性灰",
+      "theme": {
+        "background": "#0E0F10",
+        "surface": "#161819",
+        "surfaceVariant": "#1F2224",
+        "primary": "#D5DADD",
+        "secondary": "#9AA3A9",
+        "accent": "#E8ECEF",
+        "text": "#ECEEF0",
+        "textMuted": "#969CA1",
+        "danger": "#E06C6C",
+        "success": "#7FD1A8",
+        "warning": "#DDBB6B",
+        "outline": "#2C3134",
+        "outlineVariant": "#1F2325",
+        "onPrimary": "#101314",
+        "onSecondary": "#101314",
+        "onAccent": "#101314",
+        "bubbleStart": "#C3C9CE",
+        "bubbleEnd": "#8C949A",
+        "bubbleStartAlpha": 0.18,
+        "bubbleEndAlpha": 0.1,
+        "bubbleBorderAlpha": 0.24,
+        "cardBorderAlpha": 0.26,
+        "chipAlpha": 0.12
+      }
+    },
+    {
+      "id": "indigo",
+      "name": "靛蓝",
+      "theme": {
+        "background": "#090B15",
+        "surface": "#111426",
+        "surfaceVariant": "#191D33",
+        "primary": "#7C8CF8",
+        "secondary": "#67E8F9",
+        "accent": "#22D3EE",
+        "text": "#E9EBFA",
+        "textMuted": "#98A0BD",
+        "danger": "#F0728A",
+        "success": "#5FE3B0",
+        "warning": "#F5C46B",
+        "outline": "#2A3152",
+        "outlineVariant": "#1B2038",
+        "onPrimary": "#0B0D1A",
+        "onSecondary": "#04191D",
+        "onAccent": "#04191D",
+        "bubbleStart": "#7C8CF8",
+        "bubbleEnd": "#22D3EE",
+        "bubbleStartAlpha": 0.24,
+        "bubbleEndAlpha": 0.12,
+        "bubbleBorderAlpha": 0.26,
+        "cardBorderAlpha": 0.32,
+        "chipAlpha": 0.13
+      }
+    },
+    {
+      "id": "paper",
+      "name": "素纸",
+      "theme": {
+        "background": "#F6F4F0",
+        "surface": "#FFFFFF",
+        "surfaceVariant": "#EDEAE4",
+        "primary": "#1F2937",
+        "secondary": "#9A5B3A",
+        "accent": "#C2410C",
+        "text": "#1F2328",
+        "textMuted": "#6B6560",
+        "danger": "#B91C1C",
+        "success": "#047857",
+        "warning": "#B45309",
+        "outline": "#D9D3C8",
+        "outlineVariant": "#E7E2DA",
+        "onPrimary": "#FFFFFF",
+        "onSecondary": "#FFFFFF",
+        "onAccent": "#FFFFFF",
+        "bubbleStart": "#C2410C",
+        "bubbleEnd": "#E07A5F",
+        "bubbleStartAlpha": 0.16,
+        "bubbleEndAlpha": 0.08,
+        "bubbleBorderAlpha": 0.22,
+        "cardBorderAlpha": 0.28,
+        "chipAlpha": 0.1
+      }
+    }
+  ]
+}

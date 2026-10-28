@@ -1,10 +1,10 @@
 {
   "header": {
-    "title": "Ember",
+    "title": "Graphite",
     "model": "点击选择模型"
   },
   "brand": {
-    "emoji": "🔥"
+    "emoji": "◆"
   },
   "empty": {
     "title": "说点什么",

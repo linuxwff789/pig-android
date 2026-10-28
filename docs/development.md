@@ -29,7 +29,7 @@ of `extensions/` that the binary embeds and extracts on first start.
   directory without the relay's `.embedded-hash` marker is the user's: it is
   left untouched and never registered twice, and an entry that already names
   the same package from somewhere else wins.
-- `examples/ui-pack-ember` (the relay's default pack) is written into
+- `examples/ui-pack-graphite` (the relay's default pack) is written into
   `~/.pig/android-ui` as `relay/embedded/ui`. The APK bundles a different pack
   (`examples/ui-pack-compact`), so the pushed pack and the built-in one are two
   distinct looks. Only missing files are added, so a

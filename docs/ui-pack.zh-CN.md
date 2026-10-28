@@ -39,14 +39,14 @@ App 认识三种来源，顺序与 **设置 → UI pack 管理** 对话框中的
 
 | 来源 | 所在位置 | id | 说明 |
 | --- | --- | --- | --- |
-| relay（默认值） | Termux 中的 `~/.pig/android-ui/`，由 `pig-relay` 推送 | `""` | 每次变更都会自动生效，无需导入；初始内容来自 `examples/ui-pack-ember/` |
+| relay（默认值） | Termux 中的 `~/.pig/android-ui/`，由 `pig-relay` 推送 | `""` | 每次变更都会自动生效，无需导入；初始内容来自 `examples/ui-pack-graphite/` |
 | 内置 | APK 内的 `assets/ui-packs/<name>/` | `builtin:<name>` | 只读，离线时也会列出 |
 | 导入 | App 私有目录中的 `files/ui-packs/<id>/` | `<id>` | 来自 导入 ZIP / 导入文件夹，可删除 |
 
 内置 pack 随 APK 一起发布；第一个是 `builtin:compact`
 （`examples/ui-pack-compact/`，构建前复制到
 `app/src/main/assets/ui-packs/compact/`）。它和 relay 的默认 pack
-（`examples/ui-pack-ember/`）是两套不同的设计，所以管理器最上面两行是两个
+（`examples/ui-pack-graphite/`）是两套不同的设计，所以管理器最上面两行是两个
 明显不同的外观。它们不能删除 —— 只能选择 ——
 并且直接从 `assets/` 读取，所以选择内置 pack 不会向 App 的 files 目录复制任何
 内容。选择结果保存在 `activePackId` 中，因此能跨重启保留，并且在用户重新选择
