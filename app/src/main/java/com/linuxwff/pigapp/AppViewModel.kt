@@ -2126,9 +2126,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             applyDefaultModel()
         }
         val wasBusy = ui.busy
+        // Remembered on the queued entry: taking the message back has to remove
+        // this optimistic bubble, or the old text stays above the edited one.
+        val bubbleId = "u${nextId++}"
         append(
             ChatMsg(
-                id = "u${nextId++}",
+                id = bubbleId,
                 role = Role.USER,
                 text = text,
                 images = attachments.map { ChatImage(it.bitmap, it.mimeType) },
@@ -2142,7 +2145,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // Shown immediately; pig's queue_update replaces it with the
             // authoritative lists (and knows about messages it consumed).
             queuedMessages = if (wasBusy) {
-                ui.queuedMessages + QueuedMessage(if (steer) "steer" else "followUp", text)
+                ui.queuedMessages +
+                    QueuedMessage(if (steer) "steer" else "followUp", text, bubbleId)
             } else {
                 // Nothing streams, so nothing can still be waiting.
                 emptyList()
@@ -2190,12 +2194,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val rest = ui.queuedMessages.toMutableList()
         if (!rest.remove(target)) return
         rewriteQueue(rest)
+        // The prompt was appended optimistically when it was queued; pig never
+        // processed it, so its bubble has to go too (taking a message back to
+        // edit it otherwise leaves the old text above the new one).
+        if (target.msgId.isNotBlank()) remove(target.msgId)
         ui = ui.copy(queuedMessages = rest, pendingMessages = rest.size)
     }
 
     /** Drop every queued steering and follow-up message. */
     fun clearQueued() {
         client.send(JSONObject().put("id", "q${nextId++}").put("type", "clear_queue"))
+        val dropped = ui.queuedMessages.mapNotNull { it.msgId.takeIf(String::isNotBlank) }.toSet()
+        if (dropped.isNotEmpty()) {
+            ui = ui.copy(messages = ui.messages.filterNot { it.id in dropped })
+        }
         ui = ui.copy(queuedMessages = emptyList(), pendingMessages = 0)
     }
 
@@ -4325,9 +4337,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // bare count), and the only way to tell steering from follow-up.
                 val steering = event.optJSONArray("steering").stringValues()
                 val followUp = event.optJSONArray("followUp").stringValues()
+                // pig replies with text only; keep the bubble id of the message
+                // we queued under that text so it can still be taken back.
+                val previous = ui.queuedMessages
+                fun adopt(kind: String, text: String): QueuedMessage {
+                    val known = previous.firstOrNull {
+                        it.msgId.isNotBlank() && (it.text == text || it.text.trim() == text.trim())
+                    }
+                    return if (known != null) {
+                        QueuedMessage(kind, text, known.msgId)
+                    } else {
+                        QueuedMessage(kind, text)
+                    }
+                }
                 ui = ui.copy(
-                    queuedMessages = steering.map { QueuedMessage("steer", it) } +
-                        followUp.map { QueuedMessage("followUp", it) },
+                    queuedMessages = steering.map { adopt("steer", it) } +
+                        followUp.map { adopt("followUp", it) },
                     pendingMessages = steering.size + followUp.size,
                 )
             }
