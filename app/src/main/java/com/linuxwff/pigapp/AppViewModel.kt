@@ -4026,7 +4026,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     pendingMessages = steering.size + followUp.size,
                 )
             }
-            "agent_start" -> ui = ui.copy(busy = true, status = "thinking")
+            "agent_start" -> {
+                ui = ui.copy(busy = true, status = "thinking")
+                // A just-started pig is when the model list becomes readable
+                // again after the relay restarted without an agent.
+                if (models.isEmpty()) requestModels()
+            }
             "turn_start" -> ui = ui.copy(status = "working")
             "agent_end", "agent_settled" -> {
                 ui = ui.copy(
@@ -4310,6 +4315,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (switchingToFile) requestMessages()
             requestStats()
             requestSessions()
+            // The relay starts pig for this session, and the picker may have
+            // been opened while it was still down.
+            requestModels()
             refreshDataSources("session_switch")
             return
         }
