@@ -424,8 +424,9 @@ speaks Basic auth — Nextcloud, Alist, Synology, rclone serve.
 - **定时备份**: off / every 6 h / 12 h / daily / every 3 days / weekly. It is a
   WorkManager job with a network constraint; it survives reboots and app
   restarts and the first run happens one interval after it is enabled. **Daily**
-  also picks an hour (default 03:00): that mode is a chain of one-time works
-  pinned to the wall clock, so it does not drift when Doze delays a run. When the
+  also picks an hour (default 03:00): the first run waits for that hour and the
+  24 h period keeps following it. Every mode stays periodic, so a failed or
+  never-started run cannot end the schedule. When the
   app process is alive the job uploads over the app's relay connection; a
   second connection would replace the app, which would replace it back and
   make the relay flap. With no app process it opens a one-shot connection
