@@ -553,6 +553,10 @@ fun PigApp(vm: AppViewModel) {
                     vm.refreshStats()
                     showStats = true
                 },
+                onOpenWebDav = {
+                    showSettings = false
+                    showWebDav = true
+                },
             ) { showSettings = false }
         }
         if (ui.providerManagerOpen) {
@@ -1235,6 +1239,7 @@ private fun SettingsDialog(
     ui: AppUiState,
     onOpenPacks: () -> Unit,
     onOpenStats: () -> Unit,
+    onOpenWebDav: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -1997,7 +2002,7 @@ private fun SettingsDialog(
                             color = scheme.onSurfaceVariant,
                         )
                     }
-                    TextButton(onClick = { showWebDav = true }) {
+                    TextButton(onClick = onOpenWebDav) {
                         Text(packText("settings.webdavAction", "配置"))
                     }
                 }
