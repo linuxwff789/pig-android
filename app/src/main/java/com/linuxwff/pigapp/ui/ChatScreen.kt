@@ -175,6 +175,7 @@ import com.linuxwff.pigapp.UpdateInfo
 import com.linuxwff.pigapp.UiLayout
 import com.linuxwff.pigapp.UiRequest
 import com.linuxwff.pigapp.UiSkin
+import com.linuxwff.pigapp.UiToolCardAppearance
 import com.linuxwff.pigapp.resolve
 import com.linuxwff.pigapp.toolPresentation
 import kotlinx.coroutines.Dispatchers
@@ -627,6 +628,15 @@ fun PigApp(vm: AppViewModel) {
         QueueDialog(
             queued = ui.queuedMessages,
             pendingCount = ui.pendingMessages,
+            onEdit = { message ->
+                // Taking it back is the only way to change a queued message:
+                // pig has no edit-in-queue RPC, and once consumed it is part of
+                // the session.
+                vm.removeQueued(message)
+                draft = message.text
+                vm.setDraft(draftKey, message.text)
+                showQueue = false
+            },
             onRemove = vm::removeQueued,
             onClear = vm::clearQueued,
             onDismiss = { showQueue = false },
@@ -3927,10 +3937,11 @@ private fun ToolGroupCard(
     var showAll by remember(tools.first().id) { mutableStateOf(false) }
     val groupRadius = if (appearance.groupRadius >= 0) appearance.groupRadius else cornerRadius
     val shape = RoundedCornerShape(groupRadius.dp)
+    val groupStyle = appearance.styleFor(name)
     val groupBorder = if (appearance.borderWidth > 0) {
         BorderStroke(
             appearance.borderWidth.dp,
-            packColor(appearance.borderColor).copy(
+            packColor(groupStyle.borderColor.ifBlank { appearance.borderColor }).copy(
                 alpha = if (appearance.borderAlpha >= 0f) {
                     appearance.borderAlpha
                 } else {
@@ -3961,7 +3972,7 @@ private fun ToolGroupCard(
         color = toolSurfaceColor(appearance),
         shape = shape,
         border = groupBorder,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = toolCardWidth(appearance),
     ) {
         Column(Modifier.padding(appearance.groupPadding.dp)) {
             Row(
@@ -3979,7 +3990,7 @@ private fun ToolGroupCard(
                     Modifier
                         .size(groupBox.dp)
                         .clip(RoundedCornerShape(appearance.iconRadius.dp))
-                        .background(packColor(appearance.iconBackground).copy(alpha = appearance.iconAlpha)),
+                        .background(packColor(groupStyle.iconBackground.ifBlank { appearance.iconBackground }).copy(alpha = appearance.iconAlpha)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -3988,7 +3999,7 @@ private fun ToolGroupCard(
                         modifier = Modifier.size(
                             (appearance.iconSize - 1).coerceAtLeast(8).dp,
                         ),
-                        tint = packColor(appearance.iconTint),
+                        tint = packColor(groupStyle.iconTint.ifBlank { appearance.iconTint }),
                     )
                 }
                 Spacer(Modifier.width(8.dp))
@@ -4887,6 +4898,18 @@ private fun MessageRow(
 
 private enum class ToolMode { COLLAPSED, SUMMARY, EXPANDED }
 
+/**
+ * `chat.toolCard.maxWidth`: 0 fills the transcript row; any other value caps the
+ * card and keeps it left aligned (a tool call is an aside to the answer, not a
+ * centred bubble).
+ */
+private fun toolCardWidth(appearance: UiToolCardAppearance): Modifier =
+    if (appearance.maxWidth > 0) {
+        Modifier.widthIn(max = appearance.maxWidth.dp)
+    } else {
+        Modifier.fillMaxWidth()
+    }
+
 @Composable
 private fun ToolCard(
     message: ChatMsg,
@@ -4931,11 +4954,16 @@ private fun ToolCard(
     val toolRadius = if (appearance.radius >= 0) appearance.radius else cornerRadius
     val toolShape = RoundedCornerShape(toolRadius.dp)
     val toolColor = toolSurfaceColor(appearance)
+    val toolStyle = appearance.styleFor(message.toolName)
     val toolBorder = if (appearance.borderWidth > 0) {
         BorderStroke(
             appearance.borderWidth.dp,
             packColor(
-                if (message.isError) appearance.errorBorderColor else appearance.borderColor,
+                if (message.isError) {
+                    appearance.errorBorderColor
+                } else {
+                    toolStyle.borderColor.ifBlank { appearance.borderColor }
+                },
             ).copy(
                 alpha = if (appearance.borderAlpha >= 0f) {
                     appearance.borderAlpha
@@ -4961,7 +4989,7 @@ private fun ToolCard(
             color = toolColor,
             shape = toolShape,
             border = toolBorder,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = toolCardWidth(appearance),
         ) {
             Row(
                 Modifier
@@ -4977,7 +5005,7 @@ private fun ToolCard(
                     Modifier
                         .size(collapsedBox.dp)
                         .clip(RoundedCornerShape(appearance.iconRadius.dp))
-                        .background(packColor(appearance.iconBackground).copy(alpha = appearance.iconAlpha)),
+                        .background(packColor(toolStyle.iconBackground.ifBlank { appearance.iconBackground }).copy(alpha = appearance.iconAlpha)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -4986,14 +5014,14 @@ private fun ToolCard(
                         modifier = Modifier.size(
                             (appearance.iconSize - 1).coerceAtLeast(8).dp,
                         ),
-                        tint = packColor(appearance.iconTint),
+                        tint = packColor(toolStyle.iconTint.ifBlank { appearance.iconTint }),
                     )
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(
                     message.toolName ?: "tool",
                     style = titleStyle,
-                    color = packColor(appearance.titleColor),
+                    color = packColor(toolStyle.titleColor.ifBlank { appearance.titleColor }),
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -5026,7 +5054,7 @@ private fun ToolCard(
         color = toolColor,
         shape = toolShape,
         border = toolBorder,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = toolCardWidth(appearance),
     ) {
         Column(Modifier.padding(appearance.padding.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -5034,14 +5062,14 @@ private fun ToolCard(
                     Modifier
                         .size(appearance.iconBoxSize.dp)
                         .clip(RoundedCornerShape(appearance.iconRadius.dp))
-                        .background(packColor(appearance.iconBackground).copy(alpha = appearance.iconAlpha)),
+                        .background(packColor(toolStyle.iconBackground.ifBlank { appearance.iconBackground }).copy(alpha = appearance.iconAlpha)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         packIcon("tool", "build"),
                         contentDescription = null,
                         modifier = Modifier.size(appearance.iconSize.dp),
-                        tint = packColor(appearance.iconTint),
+                        tint = packColor(toolStyle.iconTint.ifBlank { appearance.iconTint }),
                     )
                 }
                 Spacer(Modifier.width(9.dp))
@@ -5049,7 +5077,7 @@ private fun ToolCard(
                     Text(
                         message.toolName ?: "tool",
                         style = titleStyle,
-                        color = packColor(appearance.titleColor),
+                        color = packColor(toolStyle.titleColor.ifBlank { appearance.titleColor }),
                     )
                     Text(
                         view.headline,
@@ -5409,6 +5437,7 @@ private fun PendingBanner(count: Int, queued: List<QueuedMessage>, onOpen: () ->
 private fun QueueDialog(
     queued: List<QueuedMessage>,
     pendingCount: Int,
+    onEdit: (QueuedMessage) -> Unit,
     onRemove: (QueuedMessage) -> Unit,
     onClear: () -> Unit,
     onDismiss: () -> Unit,
@@ -5459,6 +5488,7 @@ private fun QueueDialog(
                             Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
+                                .clickable { onEdit(message) }
                                 .background(
                                     if (message.isSteer) {
                                         scheme.primary.copy(alpha = 0.1f)
@@ -5497,6 +5527,12 @@ private fun QueueDialog(
                             }
                         }
                     }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        packText("queue.editHint", "点一条取回输入框修改，右侧图标删除"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
                 }
             }
         },

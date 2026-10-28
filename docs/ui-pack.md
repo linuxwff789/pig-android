@@ -661,7 +661,35 @@ The user bubble gradient stops, alpha, elevation and shadow still come from
 | `diffRemoveColor` | `error` | `-` lines |
 | `diffContextColor` | `onSurfaceVariant` | unchanged lines |
 | `codeFontFamily` | `""` | diff font family name (see typography); `""` = code font |
+| `codeFontFamily` | `""` | diff font family name (see typography); `""` = code font |
 | `codeFontSize` | 0 | diff text size; `0` = 11sp |
+| `maxWidth` | 0 | card width cap in dp; `0` fills the transcript row |
+
+### Per-tool colours (`chat.toolCard.byTool`)
+
+Cards can be tinted by tool name, so a long run reads at a glance:
+
+```json
+"chat": {
+  "toolCard": {
+    "byTool": {
+      "bash":  { "iconTint": "success", "iconBackground": "success" },
+      "edit":  { "iconTint": "warning", "iconBackground": "warning" },
+      "write": { "iconTint": "primary", "iconBackground": "primary" },
+      "read":  { "iconTint": "secondary", "iconBackground": "secondary" },
+      "codegraph*": { "iconTint": "warning", "titleColor": "warning" }
+    }
+  }
+}
+```
+
+- keys are lowercase tool names; a trailing `*` is a prefix rule, and an exact
+  key wins over a prefix;
+- each entry may set `iconTint`, `iconBackground`, `titleColor` and
+  `borderColor`; anything omitted inherits the card defaults;
+- the tool *group* header uses the first tool of the group, and an error border
+  still wins over `borderColor`.
+
 
 These only affect card/bubble visuals; tool execution, grouping and actions are
 unchanged.

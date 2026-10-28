@@ -943,6 +943,27 @@ object UiPackParser {
         )
     }
 
+    /**
+     * `chat.toolCard.byTool`: tool name -> colour overrides. Keys are matched
+     * case-insensitively; a trailing `*` makes the key a prefix rule.
+     */
+    private fun parseToolStyles(json: JSONObject?): Map<String, UiToolStyle> {
+        if (json == null) return emptyMap()
+        val out = mutableMapOf<String, UiToolStyle>()
+        for (key in json.keys()) {
+            val name = key.trim().lowercase().take(40)
+            val value = json.optJSONObject(key) ?: continue
+            if (name.isBlank() || out.size >= 64) continue
+            out[name] = UiToolStyle(
+                iconTint = value.optString("iconTint").trim().take(24),
+                iconBackground = value.optString("iconBackground").trim().take(24),
+                titleColor = value.optString("titleColor").trim().take(24),
+                borderColor = value.optString("borderColor").trim().take(24),
+            )
+        }
+        return out
+    }
+
     private fun parseToolCard(
         json: JSONObject?,
         warnings: MutableList<String>,
@@ -979,6 +1000,8 @@ object UiPackParser {
             groupRadius = json.optInt("groupRadius", d.groupRadius)
                 .let { if (it < 0) -1 else it.coerceIn(0, 40) },
             groupPadding = json.optInt("groupPadding", d.groupPadding).coerceIn(0, 40),
+            maxWidth = json.optInt("maxWidth", d.maxWidth).coerceIn(0, 2000),
+            byTool = parseToolStyles(json.optJSONObject("byTool")),
             borderColor = json.optString("borderColor", d.borderColor)
                 .takeIf { it.isNotBlank() } ?: d.borderColor,
             errorBorderColor = json.optString("errorBorderColor", d.errorBorderColor)

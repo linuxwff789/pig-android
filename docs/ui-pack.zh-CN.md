@@ -645,6 +645,30 @@ App 重启后优先级相同：pack 提供默认值，已保存的偏好（如�
 | `diffContextColor` | `onSurfaceVariant` | 未变更的行 |
 | `codeFontFamily` | `""` | diff 字体族名称（见字体排版）；`""` = 代码字体 |
 | `codeFontSize` | 0 | diff 文字字号；`0` = 11sp |
+| `maxWidth` | 0 | 卡片宽度上限（dp）；`0` = 铺满 |
+
+### 按工具类型配色（`chat.toolCard.byTool`）
+
+按工具名给卡片上色，一长串调用一眼能分辨：
+
+```json
+"chat": {
+  "toolCard": {
+    "byTool": {
+      "bash":  { "iconTint": "success", "iconBackground": "success" },
+      "edit":  { "iconTint": "warning", "iconBackground": "warning" },
+      "write": { "iconTint": "primary", "iconBackground": "primary" },
+      "read":  { "iconTint": "secondary", "iconBackground": "secondary" },
+      "codegraph*": { "iconTint": "warning", "titleColor": "warning" }
+    }
+  }
+}
+```
+
+- 键是小写工具名；结尾的 `*` 表示前缀匹配，精确键优先于前缀；
+- 每项可设 `iconTint`、`iconBackground`、`titleColor`、`borderColor`，未设的继承卡片默认值；
+- 工具组表头用组内第一个工具；出错时错误描边仍然优先于 `borderColor`。
+
 
 这些只影响卡片/气泡的视觉；工具的执行、分组和动作不变。
 
