@@ -4009,6 +4009,7 @@ private fun ToolGroupCard(
                             .replace("{tool}", name)
                             .replace("{count}", tools.size.toString()),
                         style = groupTitle,
+                        color = packColor(groupStyle.titleColor.ifBlank { appearance.titleColor }),
                     )
                     Text(
                         buildString {
