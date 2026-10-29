@@ -4042,10 +4042,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } else if (message.contains("bad token")) {
                     recoverFromBadToken()
                 } else {
+                    // Not every relay_error means "the backend is missing":
+                    // a failed get_available_models after a session switch used
+                    // to open the setup dialog with a misleading hint.
+                    val backend = !ui.connected ||
+                        message.contains("install", ignoreCase = true) ||
+                        message.contains("cannot start pig", ignoreCase = true)
                     ui = ui.copy(
                         error = message,
-                        setup = true,
-                        setupHint = message,
+                        setup = backend,
+                        setupHint = if (backend) message else null,
                         historyLoading = false,
                         historyLoadingOlder = false,
                     )
@@ -4329,8 +4335,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 requestSessions()
             }
-            "relay_session_error" ->
-                ui = ui.copy(toast = event.optString("message", str("toast.sessionError", "会话操作失败")))
+            "relay_session_error" -> {
+                val message = event.optString("message", str("toast.sessionError", "会话操作失败"))
+                AppLog.event("session", "relay_session_error: $message")
+                ui = ui.copy(toast = message)
+                // The list is stale in every case worth reporting (a delete or
+                // rename that the relay refused).
+                requestSessions()
+            }
             "response" -> handleResponse(event)
             "queue_update" -> {
                 // The only place pig reports *what* is queued (get_state has a

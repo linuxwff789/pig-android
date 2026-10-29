@@ -1372,6 +1372,14 @@ func (s *session) handleClientLine(line []byte) {
 		s.agentMu.Lock()
 		a := s.agents[head.Path]
 		s.agentMu.Unlock()
+		// The deleted file must not stay the target of a later get_state /
+		// ensureAgent call: the next client would have pig load a session that
+		// no longer exists.
+		s.agentMu.Lock()
+		if s.activePath == head.Path {
+			s.activePath = ""
+		}
+		s.agentMu.Unlock()
 		if a != nil {
 			s.stopAgent(a)
 		}
