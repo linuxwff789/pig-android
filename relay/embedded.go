@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -327,11 +328,24 @@ func runPigInstall(pigBin, dir string) error {
 func logf(format string, args ...any) {
 	message := fmt.Sprintf(format, args...)
 	fmt.Fprintf(os.Stderr, "pig-relay: %s\n", message)
-	if sink := relayLogSink; sink != nil {
+	relayLogMu.RLock()
+	sink := relayLogSink
+	relayLogMu.RUnlock()
+	if sink != nil {
 		sink("relay", logLevel(message), message)
 	}
 }
 
 // relayLogSink is set once, by the single session created in main. Lines
-// logged before that (or after it is gone) only reach stderr.
-var relayLogSink func(source, level, message string)
+// logged before that (or after it is gone) only reach stderr. The mutex also
+// keeps tests that create several sessions race-free.
+var (
+	relayLogMu   sync.RWMutex
+	relayLogSink func(source, level, message string)
+)
+
+func setRelayLogSink(fn func(source, level, message string)) {
+	relayLogMu.Lock()
+	relayLogSink = fn
+	relayLogMu.Unlock()
+}

@@ -122,9 +122,9 @@ func newSession(token, cwd, uiDir, sessionsDir, pigBin string) *session {
 	}
 	// Every logf() now also reaches the app (see logs.go). One session per
 	// process, so a package-level sink is enough.
-	relayLogSink = func(source, level, message string) {
+	setRelayLogSink(func(source, level, message string) {
 		s.emitLog(source, level, message)
-	}
+	})
 	return s
 }
 
