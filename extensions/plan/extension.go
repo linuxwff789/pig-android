@@ -201,14 +201,22 @@ func persist(ctx sdk.Context) {
 // the permission chip keep working next to them.
 func render(ctx sdk.Context) {
 	current := snapshot()
+	// The widget payload is JSON the Android app turns into a native checklist.
+	// A TUI lays []string out literally, so the same frame becomes one huge
+	// wrapped line; there the status chip is the whole plan UI.
+	widgetHost := ctx.Mode() == "rpc"
 	if !planCardVisible(current.Enabled, current.Executing, current.Steps) {
-		_ = ctx.SetWidget(widgetKey, []string{}, sdk.WidgetOptions{"placement": "aboveEditor"})
+		if widgetHost {
+			_ = ctx.SetWidget(widgetKey, []string{}, sdk.WidgetOptions{"placement": "aboveEditor"})
+		}
 		ctx.SetStatus(statusKey, "")
 		return
 	}
-	payload := map[string]any{"plan": map[string]any{"steps": current.Steps}}
-	if raw, err := json.Marshal(payload); err == nil {
-		_ = ctx.SetWidget(widgetKey, []string{string(raw)}, sdk.WidgetOptions{"placement": "aboveEditor"})
+	if widgetHost {
+		payload := map[string]any{"plan": map[string]any{"steps": current.Steps}}
+		if raw, err := json.Marshal(payload); err == nil {
+			_ = ctx.SetWidget(widgetKey, []string{string(raw)}, sdk.WidgetOptions{"placement": "aboveEditor"})
+		}
 	}
 	// enabled -> planning, executing -> progress, neither -> clear.
 	ctx.SetStatus(statusKey, statusLine(current.Enabled, current.Executing, current.Steps))
