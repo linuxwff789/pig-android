@@ -115,5 +115,8 @@ dependencies {
     // WebDAV needs PROPFIND/MKCOL, which HttpURLConnection rejects outright.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("junit:junit:4.13.2")
+    // The Android org.json stub throws in local unit tests; use the real
+    // implementation so pack/plan parsers can be tested on the JVM.
+    testImplementation("org.json:json:20240303")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

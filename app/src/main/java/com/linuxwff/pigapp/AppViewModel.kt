@@ -1233,26 +1233,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Dotted numeric compare; null when either side is not a release version. */
-    private fun compareVersions(left: String, right: String): Int? {
-        fun parts(value: String): List<Int>? {
-            val trimmed = value.trim()
-            if (trimmed.isEmpty() ||
-                !Regex("""^\d+(\.\d+)*$""").matches(trimmed)
-            ) {
-                return null
-            }
-            return trimmed.split('.').map { it.toIntOrNull() ?: return null }
-        }
-        val a = parts(left) ?: return null
-        val b = parts(right) ?: return null
-        for (index in 0 until maxOf(a.size, b.size)) {
-            val x = a.getOrElse(index) { 0 }
-            val y = b.getOrElse(index) { 0 }
-            if (x != y) return x.compareTo(y)
-        }
-        return 0
-    }
-
     fun bootstrap() {
         AppLog.event("vm", "install requested (bootstrap)")
         val error = RelayLauncher.bootstrap(getApplication(), cwd)
@@ -4209,7 +4189,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     event.optBoolean("installing", ui.installRunning)
                 val relayVersion = event.optString("version").trim()
                 val versionCompare = if (versionChecksEnabled) {
-                    compareVersions(relayVersion, appVersion)
+                    compareVersionNames(relayVersion, appVersion)
                 } else {
                     null
                 }
@@ -6631,6 +6611,25 @@ private const val HISTORY_IMAGE_PIXEL_BUDGET = 6_000_000L
 
 /** Decoded screenshots kept across rebuilds and page growth (~24 MB). */
 private const val HISTORY_IMAGE_CACHE_PIXELS = 6_000_000
+
+/** Numeric comparison of dot-separated version names; null when either is not numeric. */
+internal fun compareVersionNames(left: String, right: String): Int? {
+    fun parts(value: String): List<Int>? {
+        val trimmed = value.trim()
+        if (trimmed.isEmpty() || !Regex("""^\d+(\.\d+)*$""").matches(trimmed)) {
+            return null
+        }
+        return trimmed.split('.').map { it.toIntOrNull() ?: return null }
+    }
+    val a = parts(left) ?: return null
+    val b = parts(right) ?: return null
+    for (index in 0 until maxOf(a.size, b.size)) {
+        val x = a.getOrElse(index) { 0 }
+        val y = b.getOrElse(index) { 0 }
+        if (x != y) return x.compareTo(y)
+    }
+    return 0
+}
 
 /** Messages in the first history page; pulling at the top doubles it. */
 private const val HISTORY_PAGE = 40
