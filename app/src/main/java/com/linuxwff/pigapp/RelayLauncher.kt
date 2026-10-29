@@ -19,8 +19,15 @@ object RelayLauncher {
     private const val WAKE_LOCK_BIN = "/data/data/com.termux/files/usr/bin/termux-wake-lock"
     private const val TERMUX_ACTIVITY = "com.termux.app.TermuxActivity"
     private const val REPO = "https://github.com/linuxwff789/pig-android"
-    private const val INSTALL_SCRIPT =
-        "$REPO/releases/latest/download/install-termux.sh"
+    private const val RAW = "https://raw.githubusercontent.com/linuxwff789/pig-android/main"
+    /**
+     * Fallback installer (debug builds, which have no tagged release). The
+     * script is taken from the repository rather than a release asset: every
+     * release is a pre-release now, and `/releases/latest` would serve the
+     * script of the last *stable* build. The script resolves the newest
+     * release itself, previews included.
+     */
+    private const val INSTALL_SCRIPT = "$RAW/scripts/install-termux.sh"
     private val RELEASE_VERSION = Regex("""\d+\.\d+\.\d+""")
 
     /** The release this app was built from, or null for a debug/CI build: those

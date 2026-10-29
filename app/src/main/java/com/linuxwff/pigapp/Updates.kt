@@ -37,8 +37,11 @@ object UpdateChecker {
     // /releases/latest skips pre-releases; the list endpoint includes them.
     private const val LATEST_API = "https://api.github.com/repos/$REPO/releases?per_page=1"
     const val RELEASES_URL = "https://github.com/$REPO/releases"
+    // Same reason as in RelayLauncher: releases are pre-releases, so the asset
+    // of `/releases/latest` is the script of the last stable build.
     const val INSTALL_COMMAND =
-        "curl -fsSL https://github.com/$REPO/releases/latest/download/install-termux.sh | sh"
+        "curl -fsSL https://raw.githubusercontent.com/linuxwff789/pig-android" +
+            "/main/scripts/install-termux.sh | sh"
 
     /** The feed rarely changes; a repeated tap must not hammer GitHub either. */
     private const val CACHE_MS = 5 * 60_000L
