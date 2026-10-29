@@ -3368,6 +3368,42 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /** Moves a session out of the drawer without deleting the file. */
+    fun archiveSession(session: SessionInfo) {
+        if (session.path == ui.sessionFile) {
+            ui = ui.copy(toast = str("toast.currentNoArchive", "当前会话不能归档，先切换或新建会话"))
+            return
+        }
+        client.send(
+            JSONObject()
+                .put("id", "archive-${nextId++}")
+                .put("type", "relay_session_archive")
+                .put("path", session.path),
+        )
+    }
+
+    fun loadArchivedSessions() {
+        client.send(JSONObject().put("id", "archived-${nextId++}").put("type", "relay_archived_sessions"))
+    }
+
+    fun restoreArchived(session: SessionInfo) {
+        client.send(
+            JSONObject()
+                .put("id", "restore-${nextId++}")
+                .put("type", "relay_session_restore")
+                .put("path", session.path),
+        )
+    }
+
+    fun purgeArchived(session: SessionInfo) {
+        client.send(
+            JSONObject()
+                .put("id", "purge-${nextId++}")
+                .put("type", "relay_session_purge")
+                .put("path", session.path),
+        )
+    }
+
     fun clearLocal() {
         ui = ui.copy(messages = emptyList(), extensionStatuses = emptyMap())
     }
@@ -3878,12 +3914,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 var backupRemote = false
                 var providerRemote = false
                 var installStatusRemote = false
+                var archiveRemote = false
                 event.optJSONArray("features")?.let { features ->
                     for (i in 0 until features.length()) {
                         when (features.optString(i)) {
                             "backup" -> backupRemote = true
                             "providers" -> providerRemote = true
                             "install" -> installStatusRemote = true
+                            "archive" -> archiveRemote = true
                         }
                     }
                 }
@@ -3913,6 +3951,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     backupRemote = backupRemote,
                     providerRemote = providerRemote,
                     installStatusRemote = installStatusRemote,
+                    archiveRemote = archiveRemote,
                     relayVersion = relayVersion,
                     relayOutdated = relayOutdated,
                     relayAhead = relayAhead,
@@ -4326,6 +4365,39 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 AppLog.event("provider", "error: ${event.optString("op")} $message")
             }
             "relay_sessions" -> handleSessions(event)
+            "relay_archived_sessions" -> {
+                val array = event.optJSONArray("sessions") ?: JSONArray()
+                val visited = prefs.getStringSet("visitedSessions", emptySet()) ?: emptySet()
+                val list = buildList {
+                    for (index in 0 until array.length()) {
+                        val item = array.optJSONObject(index) ?: continue
+                        add(sessionInfo(item, visited))
+                    }
+                }
+                ui = ui.copy(archivedSessions = list)
+            }
+            "relay_session_archived" -> {
+                val path = event.optString("path")
+                ui = ui.copy(
+                    sessions = ui.sessions.filterNot { it.path == path },
+                    toast = str("toast.archived", "会话已归档"),
+                )
+                loadArchivedSessions()
+                requestSessions()
+            }
+            "relay_session_restored" -> {
+                ui = ui.copy(toast = str("toast.restoredFromArchive", "已恢复到会话列表"))
+                loadArchivedSessions()
+                requestSessions()
+            }
+            "relay_session_purged" -> {
+                val path = event.optString("path")
+                ui = ui.copy(
+                    archivedSessions = ui.archivedSessions.filterNot { it.path == path },
+                    toast = str("toast.purged", "归档已永久删除"),
+                )
+                loadArchivedSessions()
+            }
             "relay_session_renamed" -> {
                 val path = event.optString("path")
                 val name = event.optString("name")
@@ -5164,26 +5236,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (array != null) {
                 for (index in 0 until array.length()) {
                     val item = array.optJSONObject(index) ?: continue
-                    val path = item.optString("path")
-                    add(
-                        SessionInfo(
-                            path = path,
-                            id = item.optString("id"),
-                            cwd = item.optString("cwd"),
-                            name = item.optString("name"),
-                            preview = item.optString("preview"),
-                            updated = item.optLong("updated"),
-                            size = item.optLong("size"),
-                            live = item.optBoolean("live", false),
-                            busy = item.optBoolean("busy", false),
-                            visited = visited.contains(path),
-                            unsaved = item.optBoolean("unsaved", false),
-                        ),
-                    )
+                    add(sessionInfo(item, visited))
                 }
             }
         }
         ui = ui.copy(sessions = sessions, sessionsLoading = false)
+    }
+
+    /** One relay `sessions` entry, shared by the drawer and the archive list. */
+    private fun sessionInfo(item: JSONObject, visited: Set<String>): SessionInfo {
+        val path = item.optString("path")
+        return SessionInfo(
+            path = path,
+            id = item.optString("id"),
+            cwd = item.optString("cwd"),
+            name = item.optString("name"),
+            preview = item.optString("preview"),
+            updated = item.optLong("updated"),
+            size = item.optLong("size"),
+            live = item.optBoolean("live", false),
+            busy = item.optBoolean("busy", false),
+            visited = visited.contains(path),
+            unsaved = item.optBoolean("unsaved", false),
+        )
     }
 
     private data class HistoryBuild(

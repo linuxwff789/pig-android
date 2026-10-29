@@ -1374,6 +1374,46 @@ func (s *session) handleClientLine(line []byte) {
 				"path": head.Path, "name": truncateRunes(head.Name, 80),
 			})
 		}
+	case "relay_session_archive":
+		s.agentMu.Lock()
+		a := s.agents[head.Path]
+		s.agentMu.Unlock()
+		if a != nil {
+			s.stopAgent(a)
+		}
+		s.agentMu.Lock()
+		if s.activePath == head.Path {
+			s.activePath = ""
+		}
+		s.agentMu.Unlock()
+		s.msgMu.Lock()
+		delete(s.msgCache, head.Path)
+		s.msgMu.Unlock()
+		if dest, err := archiveSessionFile(head.Path, s.sessionsDir); err != nil {
+			_ = s.send(frame{"type": "relay_session_error", "id": head.ID, "message": "archive: " + err.Error()})
+		} else {
+			_ = s.send(frame{
+				"type": "relay_session_archived", "id": head.ID,
+				"path": head.Path, "archived": dest,
+			})
+		}
+	case "relay_archived_sessions":
+		_ = s.send(frame{
+			"type": "relay_archived_sessions", "id": head.ID,
+			"sessions": listArchived(s.sessionsDir),
+		})
+	case "relay_session_restore":
+		if dest, err := restoreArchivedFile(head.Path, s.sessionsDir); err != nil {
+			_ = s.send(frame{"type": "relay_session_error", "id": head.ID, "message": "restore: " + err.Error()})
+		} else {
+			_ = s.send(frame{"type": "relay_session_restored", "id": head.ID, "path": dest})
+		}
+	case "relay_session_purge":
+		if err := purgeArchivedFile(head.Path, s.sessionsDir); err != nil {
+			_ = s.send(frame{"type": "relay_session_error", "id": head.ID, "message": "purge: " + err.Error()})
+		} else {
+			_ = s.send(frame{"type": "relay_session_purged", "id": head.ID, "path": head.Path})
+		}
 	case "relay_session_delete":
 		s.agentMu.Lock()
 		a := s.agents[head.Path]

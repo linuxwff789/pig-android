@@ -30,6 +30,7 @@
     "rename": "重命名",
     "delete": "删除",
     "currentNoDelete": "当前会话不可删除",
+    "archive": "归档",
     "renameTitle": "重命名会话",
     "nameLabel": "名称（留空清除）",
     "save": "保存",
@@ -162,6 +163,9 @@
     "warmingOff": "关闭",
     "warmingIdle": "空闲",
     "warmingStreaming": "始终",
+    "archive": "会话归档",
+    "archiveHint": "归档的会话从列表里移走但不删除，可随时恢复或永久删除",
+    "manage": "管理",
     "webdav": "WebDAV 备份",
     "webdavHint": "把同一份备份上传到 WebDAV；可以每天定时上传并保留最近几份",
     "webdavAction": "配置"
@@ -190,6 +194,10 @@
     "attached": "已接上正在运行的会话",
     "renamed": "会话已重命名",
     "deleted": "会话已删除",
+    "archived": "会话已归档",
+    "restoredFromArchive": "已恢复到会话列表",
+    "purged": "归档已永久删除",
+    "currentNoArchive": "当前会话不能归档，先切换或新建会话",
     "sessionError": "会话操作失败",
     "currentNoDelete": "当前会话不能删除，先切换或新建会话",
     "keepAliveOn": "后台保活已开启",
@@ -327,6 +335,17 @@
     "remove": "移出队列",
     "clearAll": "全部清空",
     "editHint": "点一条取回输入框修改，右侧图标删除"
+  },
+  "archive": {
+    "title": "会话归档",
+    "empty": "还没有归档的会话",
+    "count": "共 {n} 个归档",
+    "refresh": "刷新",
+    "restore": "恢复",
+    "purge": "永久删除",
+    "purgeTitle": "永久删除这份归档？",
+    "purgeHint": "{name}\n\n会话文件会被真正删除，不能恢复。",
+    "purgeConfirm": "永久删除"
   },
   "webdav": {
     "title": "WebDAV 备份",
