@@ -139,6 +139,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val pendingUiRequests = ArrayDeque<UiRequest>()
     private var currentAssistant: String? = null
     private val toolMsgIds = mutableMapOf<String, String>()
+    /** Tool calls that only update state (the plan card) and need no card. */
+    private val hiddenToolCalls = mutableSetOf<String>()
 
     private var foreground = false
     /** True once the user picked a pack by hand, so relay pushes stop winning. */
@@ -1104,6 +1106,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun clearLive() {
+        hiddenToolCalls.clear()
         liveActive = false
         liveBuffer.setLength(0)
         liveThinking.setLength(0)
@@ -5567,6 +5570,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     for (blockIndex in 0 until blocks.length()) {
                         val block = blocks.optJSONObject(blockIndex) ?: continue
                         if (block.optString("type") != "toolCall") continue
+                        if (block.optString("name") in HIDDEN_TOOL_NAMES) continue
                         val callId = block.optString("id")
                         val id = itemId()
                         if (callId.isNotBlank()) {
@@ -5611,6 +5615,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             imagesOmitted = decoded.omitted,
                         )
                     } else {
+                        if (message.optString("toolName") in HIDDEN_TOOL_NAMES) continue
                         out.add(
                             ChatMsg(
                                 id = itemId(),
@@ -5992,6 +5997,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun handleRelayTool(event: JSONObject) {
         val callId = event.optString("toolCallId")
         if (callId.isEmpty()) return
+        if (event.optString("toolName") in HIDDEN_TOOL_NAMES) {
+            hiddenToolCalls.add(callId)
+            return
+        }
         val partial = event.optJSONObject("partialResult")?.let { contentText(it) } ?: ""
         val id = toolMsgIds[callId]
         if (id == null) {
@@ -6098,6 +6107,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun handleToolStart(event: JSONObject) {
         val callId = event.optString("toolCallId")
         if (callId.isEmpty()) return
+        val name = event.optString("toolName", "tool")
+        if (name in HIDDEN_TOOL_NAMES) {
+            // plan_done only moves the plan widget; a transcript card for every
+            // step would bury the actual work.
+            hiddenToolCalls.add(callId)
+            return
+        }
         val id = "t${nextId++}"
         toolMsgIds[callId] = id
         append(
@@ -6118,7 +6134,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun handleToolUpdate(event: JSONObject) {
         val callId = event.optString("toolCallId")
-        if (callId.isEmpty()) return
+        if (callId.isEmpty() || callId in hiddenToolCalls) return
         val partial = event.optJSONObject("partialResult") ?: return
         toolPartialRaw[callId] = partial
         scheduleToolFlush()
@@ -6155,7 +6171,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun handleToolEnd(event: JSONObject) {
-        val id = toolMsgIds.remove(event.optString("toolCallId")) ?: return
+        val callId = event.optString("toolCallId")
+        if (hiddenToolCalls.remove(callId)) return
+        val id = toolMsgIds.remove(callId) ?: return
         val resultObject = event.optJSONObject("result")
         val result = contentText(resultObject)
         val meta = JSONObject()
@@ -6459,6 +6477,13 @@ private const val HISTORY_PAGE = 40
 /** How long a new session may take to replace its runtime before the app treats
  *  whatever the backend reports as the new conversation (~10 s in practice). */
 private const val NEW_SESSION_SETTLE_MS = 20_000L
+
+/**
+ * Tool calls that are pure state updates for a widget. `plan_done` ticks a plan
+ * step; the card already shows it, so the transcript should not fill up with
+ * one tool row per step.
+ */
+private val HIDDEN_TOOL_NAMES = setOf("plan_done")
 
 /** Sessions whose widget cards are kept for the next reconnect. */
 private const val WIDGET_SNAPSHOT_SESSIONS = 20
