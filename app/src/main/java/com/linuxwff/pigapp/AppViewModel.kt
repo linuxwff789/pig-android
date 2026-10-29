@@ -5394,7 +5394,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     // Pig stores failed turns as an assistant message with
                     // errorMessage; without this they vanish on reload.
-                    val failure = message.optString("errorMessage")
+                    val failure = failureText(message)
                     if (failure.isNotBlank()) {
                         out.add(ChatMsg(itemId(), Role.NOTICE, text = failure, isError = true))
                     }
@@ -5854,6 +5854,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun handleMessageEnd(message: JSONObject?) {
         if (message == null || message.optString("role") != "assistant") return
+        // A failed turn is stored as an assistant message with errorMessage and
+        // reported right here. History reload already turns it into a notice
+        // (see buildHistory), but nothing did it live: the failure showed up
+        // only after the next reconnect, when the transcript was read again.
+        val failure = failureText(message)
+        if (failure.isNotBlank()) {
+            val tail = ui.messages.lastOrNull()
+            if (tail?.role != Role.NOTICE || tail.text != failure) appendNotice(failure)
+            ui = ui.copy(busy = false, status = "", streamingId = null)
+        }
         val id = currentAssistant
         if (id == null) {
             clearLive()
@@ -5890,6 +5900,34 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         currentAssistant = null
         clearLive()
         ui = ui.copy(streamingId = null)
+    }
+
+    /**
+     * What a failed turn should show. pig's `errorMessage` is short and vague
+     * ("Connection error."); the useful cause is in `diagnostics`, which history
+     * reload never used. Both paths go through here so the live notice and the
+     * replayed one are the same text and do not stack up after a reconnect.
+     */
+    private fun failureText(message: JSONObject): String {
+        val base = message.optString("errorMessage").trim()
+        if (base.isBlank()) return ""
+        var cause = ""
+        val diagnostics = message.optJSONArray("diagnostics") ?: JSONArray()
+        for (index in 0 until diagnostics.length()) {
+            if (cause.isNotBlank()) break
+            val entry = diagnostics.optJSONObject(index) ?: continue
+            val error = entry.optJSONObject("error")
+            val text = error?.optString("message").orEmpty()
+                .ifBlank { entry.optString("message") }
+                .trim()
+            if (text.isBlank()) continue
+            val code = error?.optString("code").orEmpty().trim()
+            cause = if (code.isBlank() || text.contains(code)) text else "$text ($code)"
+        }
+        return when {
+            cause.isBlank() || cause == base -> base
+            else -> "$base — $cause"
+        }
     }
 
     private fun handleToolStart(event: JSONObject) {
