@@ -37,8 +37,17 @@ const (
 	backupChunkSize = 48 * 1024
 	// A restore chunk bigger than this is a protocol error, not a busy phone.
 	backupMaxChunk = 4 << 20
-	// Refuse absurd archives before they fill /data/data.
+	// Refuse absurd archives before they fill /data/data. The compressed size
+	// is capped separately: a tiny gzip bomb can expand to hundreds of GB.
 	backupMaxBytes = 1 << 30
+)
+
+// Total bytes written by one extract, and the number of entries. A theme
+// config archive is a few thousand files at most. Variables so a test can
+// exercise the budget without writing gigabytes.
+var (
+	backupMaxExtracted int64 = 2 << 30
+	backupMaxEntries         = 200000
 )
 
 // relayFeatures lets the app hide a button instead of discovering a missing
@@ -54,6 +63,13 @@ type transferState struct {
 	busy    bool
 	cancel  atomic.Bool
 	restore *restoreSession
+	// connGen is the connection that started this transfer; detach only
+	// abandons a transfer it owns.
+	connGen uint64
+	// Set while the archive is being extracted after the upload finished.
+	// applyCancel is checked between entries; applyGen is its owner.
+	applyGen    uint64
+	applyCancel atomic.Bool
 }
 
 type restoreSession struct {
@@ -61,9 +77,15 @@ type restoreSession struct {
 	path    string
 	size    int64
 	written int64
+	// id of the relay_restore_begin that opened this staging file. A replay
+	// of an older chunk must not be appended to a newer restore.
+	id string
 }
 
 func (s *session) beginTransfer(id any, errorType string) bool {
+	s.mu.Lock()
+	gen := s.connGen
+	s.mu.Unlock()
 	s.transfer.mu.Lock()
 	if s.transfer.busy {
 		s.transfer.mu.Unlock()
@@ -75,6 +97,10 @@ func (s *session) beginTransfer(id any, errorType string) bool {
 		return false
 	}
 	s.transfer.busy = true
+	s.transfer.connGen = gen
+	s.transfer.applyGen = 0
+	s.transfer.cancel.Store(false)
+	s.transfer.applyCancel.Store(false)
 	s.transfer.mu.Unlock()
 	return true
 }
@@ -83,6 +109,8 @@ func (s *session) finishTransfer() {
 	s.transfer.mu.Lock()
 	s.transfer.busy = false
 	s.transfer.restore = nil
+	s.transfer.connGen = 0
+	s.transfer.applyGen = 0
 	s.transfer.mu.Unlock()
 }
 
@@ -412,6 +440,7 @@ func (s *session) beginRestore(id any, name string, size int64) {
 		file: file,
 		path: file.Name(),
 		size: size,
+		id:   fmt.Sprint(id),
 	}
 	s.transfer.mu.Unlock()
 	_ = s.send(frame{
@@ -425,9 +454,18 @@ func (s *session) beginRestore(id any, name string, size int64) {
 // abandonTransfer runs when the client goes away: an export picks up the cancel
 // flag at its next write, and a half-uploaded restore is thrown away instead of
 // blocking the next transfer forever.
-func (s *session) abandonTransfer() {
-	s.transfer.cancel.Store(true)
+func (s *session) abandonTransfer(gen uint64) {
 	s.transfer.mu.Lock()
+	// A newer client may already own the transfer; the previous connection's
+	// detach must not delete its staging file or clear its busy flag.
+	if s.transfer.connGen != gen {
+		s.transfer.mu.Unlock()
+		return
+	}
+	s.transfer.cancel.Store(true)
+	if s.transfer.applyGen == gen {
+		s.transfer.applyCancel.Store(true)
+	}
 	r := s.transfer.restore
 	if r != nil {
 		s.transfer.restore = nil
@@ -462,7 +500,11 @@ func (s *session) abortRestore(id any, message string) {
 func (s *session) restoreChunk(id any, data string) {
 	r := s.currentRestore()
 	if r == nil {
-		_ = s.send(frame{"type": "relay_restore_error", "message": "no restore in progress"})
+		_ = s.send(frame{"type": "relay_restore_error", "id": id, "message": "no restore in progress"})
+		return
+	}
+	if r.id != fmt.Sprint(id) {
+		_ = s.send(frame{"type": "relay_restore_error", "id": id, "message": "chunk belongs to another restore"})
 		return
 	}
 	payload, err := base64.StdEncoding.DecodeString(data)
@@ -495,6 +537,10 @@ func (s *session) endRestore(id any, wantSha string) {
 		_ = s.send(frame{"type": "relay_restore_error", "id": id, "message": "no restore in progress"})
 		return
 	}
+	if r.id != fmt.Sprint(id) {
+		_ = s.send(frame{"type": "relay_restore_error", "id": id, "message": "end belongs to another restore"})
+		return
+	}
 	if err := r.file.Close(); err != nil {
 		s.abortRestore(id, "close staging file: "+err.Error())
 		return
@@ -507,23 +553,33 @@ func (s *session) endRestore(id any, wantSha string) {
 		s.finishTransfer()
 		_ = s.send(frame{"type": "relay_restore_error", "id": id, "message": message})
 	}
+	if r.written == 0 {
+		fail("empty archive")
+		return
+	}
 	if r.size > 0 && r.written != r.size {
 		fail(fmt.Sprintf("incomplete upload: %d of %d bytes", r.written, r.size))
 		return
 	}
-	if wantSha != "" {
-		sum, err := fileSHA256(r.path)
-		if err != nil {
-			fail("hash staging file: " + err.Error())
-			return
-		}
-		if !strings.EqualFold(sum, wantSha) {
-			fail("checksum mismatch: the transfer was corrupted")
-			return
-		}
+	// Always require a checksum: without one a truncated/replayed upload is
+	// extracted as if it were a valid archive.
+	if strings.TrimSpace(wantSha) == "" {
+		fail("missing checksum")
+		return
+	}
+	sum, err := fileSHA256(r.path)
+	if err != nil {
+		fail("hash staging file: " + err.Error())
+		return
+	}
+	if !strings.EqualFold(sum, wantSha) {
+		fail("checksum mismatch: the transfer was corrupted")
+		return
 	}
 	s.transfer.mu.Lock()
 	s.transfer.restore = nil
+	s.transfer.applyGen = s.transfer.connGen
+	s.transfer.applyCancel.Store(false)
 	s.transfer.mu.Unlock()
 	go func() {
 		defer s.finishTransfer()
@@ -535,7 +591,22 @@ func (s *session) endRestore(id any, wantSha string) {
 // pig process: they cache settings/models/auth at startup, so the restored
 // files only take effect on a fresh process (the app reconnects right after).
 func (s *session) applyRestore(id any, r *restoreSession) {
+	// Stop the pigs before touching their files: a live turn keeps appending
+	// to sessions/*.jsonl and rewrites settings.json on shutdown, so extracting
+	// first produced a mixed transcript or let the exiting process overwrite
+	// the restored settings.
+	cutoff := time.Now()
+	s.stopAgentsStartedBefore(cutoff)
+	if s.transfer.applyCancel.Load() {
+		_ = os.Remove(r.path)
+		return
+	}
 	autoPath, autoErr := s.writeAutoBackup()
+	if s.transfer.applyCancel.Load() {
+		_ = os.Remove(r.path)
+		_ = os.Remove(autoPath)
+		return
+	}
 	if autoErr != nil {
 		_ = os.Remove(r.path)
 		_ = s.send(frame{
@@ -545,9 +616,12 @@ func (s *session) applyRestore(id any, r *restoreSession) {
 		})
 		return
 	}
-	entries, err := extractArchive(r.path, s.cwd)
+	entries, err := extractArchiveCancellable(r.path, s.cwd, s.transfer.applyCancel.Load)
 	_ = os.Remove(r.path)
 	if err != nil {
+		if errors.Is(err, errTransferCancelled) {
+			return
+		}
 		_ = s.send(frame{
 			"type":    "relay_restore_error",
 			"id":      id,
@@ -566,7 +640,9 @@ func (s *session) applyRestore(id any, r *restoreSession) {
 	s.msgMu.Lock()
 	s.msgCache = map[string]msgCacheEntry{}
 	s.msgMu.Unlock()
-	s.stopAllAgents()
+	// Anything started after `cutoff` belongs to a client that reconnected
+	// while the archive was extracting; leave it alone.
+	s.stopAgentsStartedBefore(cutoff)
 	done := frame{
 		"type":    "relay_restore_done",
 		"id":      id,
@@ -584,15 +660,25 @@ func (s *session) applyRestore(id any, r *restoreSession) {
 }
 
 func (s *session) stopAllAgents() {
+	s.stopAgentsStartedBefore(time.Now().Add(time.Hour))
+}
+
+// stopAgentsStartedBefore stops every agent spawned before cutoff, leaving
+// newer ones (a client that reconnected during a restore) running.
+func (s *session) stopAgentsStartedBefore(cutoff time.Time) {
 	s.agentMu.Lock()
-	agents := make([]*agentProc, 0, len(s.agents))
-	for _, a := range s.agents {
-		agents = append(agents, a)
+	stopped := map[*agentProc]bool{}
+	for key, a := range s.agents {
+		if a.startedAt.Before(cutoff) {
+			delete(s.agents, key)
+			if s.active == a {
+				s.active = nil
+			}
+			stopped[a] = true
+		}
 	}
-	s.agents = map[string]*agentProc{}
-	s.active = nil
 	s.agentMu.Unlock()
-	for _, a := range agents {
+	for a := range stopped {
 		a.pig.stop()
 	}
 }
@@ -638,6 +724,10 @@ func fileSHA256(path string) (string, error) {
 // and hardlinks are never created: an archive is untrusted input even when the
 // token says it comes from the app.
 func extractArchive(path, home string) (int, error) {
+	return extractArchiveCancellable(path, home, nil)
+}
+
+func extractArchiveCancellable(path, home string, cancelled func() bool) (int, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return 0, err
@@ -651,7 +741,11 @@ func extractArchive(path, home string) (int, error) {
 	tr := tar.NewReader(gz)
 	root := filepath.Clean(home)
 	entries := 0
+	var extracted int64
 	for {
+		if cancelled != nil && cancelled() {
+			return entries, errTransferCancelled
+		}
 		hdr, err := tr.Next()
 		if err == io.EOF {
 			break
@@ -672,6 +766,15 @@ func extractArchive(path, home string) (int, error) {
 			if hdr.Size < 0 || hdr.Size > backupMaxBytes {
 				continue
 			}
+			if entries >= backupMaxEntries {
+				return entries, fmt.Errorf("archive has more than %d entries", backupMaxEntries)
+			}
+			// The compressed file is capped, but gzip can expand ~1000x.
+			// Without this a tiny archive fills /data/data and bricks Termux.
+			if extracted+hdr.Size > backupMaxExtracted {
+				return entries, fmt.Errorf("archive expands past %d bytes", int64(backupMaxExtracted))
+			}
+			extracted += hdr.Size
 			if err := os.MkdirAll(filepath.Dir(name), 0o700); err != nil {
 				return entries, err
 			}

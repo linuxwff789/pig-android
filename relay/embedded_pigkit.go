@@ -200,6 +200,8 @@ func syncPigkitPackage(dir string, files map[string][]byte) (string, error) {
 // pointing at the same directory counts; an entry with the same package name
 // somewhere else wins, because loading both would register the commands twice.
 func (s *session) registerPigkitPackages(agentDir, target string, pkgs []string) error {
+	settingsWriteMu.Lock()
+	defer settingsWriteMu.Unlock()
 	settings, err := readSettingsFile(s.settingsPath)
 	if err != nil {
 		return err

@@ -13,6 +13,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -399,6 +400,15 @@ func (s *session) sendProviderModels(id any, entry map[string]any) {
 	})
 }
 
+// providerSecretQuery matches API keys carried in a query string. Errors and
+// status messages interpolate the request URL, and those strings go straight
+// to the app's provider screen and into exported logs.
+var providerSecretQuery = regexp.MustCompile(`(?i)([?&](?:key|api_key|api-key|token|access_token)=)[^&\s"]+`)
+
+func redactProviderText(text string) string {
+	return providerSecretQuery.ReplaceAllString(text, "$1***")
+}
+
 // fetchProviderModels asks the endpoint for its model list, mirroring the
 // provider-ui extension's headers/api-key rules.
 func fetchProviderModels(def map[string]any) ([]any, error) {
@@ -449,16 +459,19 @@ func fetchProviderModels(def map[string]any) ([]any, error) {
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, err
+		// url.Error wraps the full URL, including `?key=...`.
+		return nil, fmt.Errorf("%s", redactProviderText(err.Error()))
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 512))
 		message := strings.TrimSpace(string(body))
 		if message != "" {
-			return nil, fmt.Errorf("%s -> HTTP %d: %s", requestURL, response.StatusCode, message)
+			return nil, fmt.Errorf("%s", redactProviderText(
+				fmt.Sprintf("%s -> HTTP %d: %s", requestURL, response.StatusCode, message)))
 		}
-		return nil, fmt.Errorf("%s -> HTTP %d %s", requestURL, response.StatusCode, response.Status)
+		return nil, fmt.Errorf("%s", redactProviderText(
+			fmt.Sprintf("%s -> HTTP %d %s", requestURL, response.StatusCode, response.Status)))
 	}
 	var payload any
 	if err := json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&payload); err != nil {
@@ -466,7 +479,7 @@ func fetchProviderModels(def map[string]any) ([]any, error) {
 	}
 	list := providerExtractModels(payload)
 	if len(list) == 0 {
-		return nil, fmt.Errorf("%s 未返回任何模型", requestURL)
+		return nil, fmt.Errorf("%s 未返回任何模型", redactProviderText(requestURL))
 	}
 	models := make([]any, 0, len(list))
 	for _, raw := range list {
@@ -593,21 +606,15 @@ func expandProviderValue(raw string) string {
 }
 
 func providerRunShell(command string) string {
-	done := make(chan string, 1)
-	go func() {
-		out, err := exec.Command("sh", "-c", command).Output()
-		if err != nil {
-			done <- ""
-			return
-		}
-		done <- strings.TrimSpace(string(out))
-	}()
-	select {
-	case value := <-done:
-		return value
-	case <-time.After(providerResolveLimit):
+	// CommandContext kills the shell (and waits for it) when the limit is hit;
+	// the old timer returned "" but left the child and its own children alive.
+	ctx, cancel := context.WithTimeout(context.Background(), providerResolveLimit)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "sh", "-c", command).Output()
+	if err != nil {
 		return ""
 	}
+	return strings.TrimSpace(string(out))
 }
 
 func providerOffline() bool {

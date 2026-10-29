@@ -43,12 +43,39 @@ var buildVersion = "dev"
 // token no longer matches; it exits instead of blocking the port.
 var hadClient atomic.Bool
 
+// noteAuthFailure records a bad-token attempt and reports whether at least
+// three arrived within ten seconds (a stale-token client retries quickly).
+var (
+	authFailMu    sync.Mutex
+	authFailTimes []time.Time
+)
+
+func noteAuthFailure() bool {
+	now := time.Now()
+	authFailMu.Lock()
+	defer authFailMu.Unlock()
+	cutoff := now.Add(-10 * time.Second)
+	kept := authFailTimes[:0]
+	for _, at := range authFailTimes {
+		if at.After(cutoff) {
+			kept = append(kept, at)
+		}
+	}
+	authFailTimes = append(kept, now)
+	return len(authFailTimes) >= 3
+}
+
 type frame map[string]any
 
 type connWriter struct {
 	mu   sync.Mutex
 	conn net.Conn
 }
+
+// A stalled/never-reading client used to block conn.Write forever while
+// holding this mutex, which in turn wedged backup streaming and every other
+// frame. Loopback writes are instant; 20 s only catches a dead peer.
+const writeTimeout = 20 * time.Second
 
 func (w *connWriter) send(v any) error {
 	payload, err := json.Marshal(v)
@@ -57,6 +84,7 @@ func (w *connWriter) send(v any) error {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	_ = w.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
 	_, err = w.conn.Write(append(payload, '\n'))
 	return err
 }
@@ -107,6 +135,7 @@ func (p *pigProcess) stop() {
 func (w *connWriter) sendRaw(payload []byte) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	_ = w.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
 	_, err := w.conn.Write(append(payload, '\n'))
 	return err
 }
@@ -483,10 +512,36 @@ func isBinary(data []byte) bool {
 	return false
 }
 
+var errBadToken = errors.New("bad token")
+
+// A client frame has to fit in memory before it is parsed. 32 MiB covers a
+// prompt with several screenshots; anything larger is a protocol error.
+const maxClientFrame = 32 << 20
+
+// readFrame reads one newline-terminated frame without buffering an unbounded
+// line (ReadBytes had no limit at all).
+func readFrame(reader *bufio.Reader, limit int) ([]byte, error) {
+	var out []byte
+	for {
+		part, err := reader.ReadSlice('\n')
+		if len(out)+len(part) > limit {
+			return nil, fmt.Errorf("frame exceeds %d bytes", limit)
+		}
+		out = append(out, part...)
+		if err == nil {
+			return out, nil
+		}
+		if errors.Is(err, bufio.ErrBufferFull) {
+			continue
+		}
+		return out, err
+	}
+}
+
 func authenticate(conn net.Conn, token string) (*bufio.Reader, error) {
 	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	reader := bufio.NewReaderSize(conn, 256*1024)
-	line, err := reader.ReadBytes('\n')
+	line, err := readFrame(reader, maxClientFrame)
 	if err != nil {
 		return reader, err
 	}
@@ -502,8 +557,12 @@ func authenticate(conn net.Conn, token string) (*bufio.Reader, error) {
 	if auth.Type != "relay_auth" {
 		return reader, errors.New("first frame must be relay_auth")
 	}
-	if subtle.ConstantTimeCompare([]byte(auth.Token), []byte(token)) != 1 {
-		return reader, errors.New("bad token")
+	// Hash both sides first: ConstantTimeCompare returns immediately on a
+	// length mismatch, leaking the token length through timing.
+	want := sha256.Sum256([]byte(token))
+	got := sha256.Sum256([]byte(auth.Token))
+	if subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
+		return reader, errBadToken
 	}
 	return reader, nil
 }
@@ -566,7 +625,9 @@ func main() {
 			log.Fatalf("generate token: %v", err)
 		}
 		*token = hex.EncodeToString(buf)
-		log.Printf("generated token: %s", *token)
+		// Never log the secret: this process's stdout ends up in the app's
+		// diagnostics and in bug reports. Pass --token to choose one.
+		log.Printf("generated a random relay token (not logged)")
 	}
 	if *cwd == "" {
 		home, err := os.UserHomeDir()
@@ -627,10 +688,14 @@ func serve(conn net.Conn, s *session) {
 	reader, err := authenticate(conn, s.token)
 	if err != nil {
 		_ = (&connWriter{conn: conn}).send(frame{"type": "relay_error", "message": "auth failed: " + err.Error()})
-		if !hadClient.Load() {
+		// A relay left over from an older install still holds the port and
+		// answers the fresh app with "bad token"; release it. Require several
+		// failures first: any local process could otherwise kill a relay that
+		// had simply not seen its first client yet.
+		if !hadClient.Load() && errors.Is(err, errBadToken) && noteAuthFailure() {
 			go func() {
 				time.Sleep(300 * time.Millisecond)
-				log.Printf("no client ever authenticated; releasing port")
+				log.Printf("repeated bad tokens and no client ever authenticated; releasing port")
 				os.Exit(0)
 			}()
 		}
@@ -647,7 +712,7 @@ func serve(conn net.Conn, s *session) {
 	defer s.detach(conn, gen)
 
 	for {
-		line, err := reader.ReadBytes('\n')
+		line, err := readFrame(reader, maxClientFrame)
 		if len(line) > 0 {
 			trimmed := []byte(strings.TrimSpace(string(line)))
 			if len(trimmed) > 0 {
@@ -655,6 +720,11 @@ func serve(conn net.Conn, s *session) {
 			}
 		}
 		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				// Use s.send (the shared writer): a separate connWriter would
+				// race pig frames written through s.out on the same socket.
+				_ = s.send(frame{"type": "relay_error", "message": err.Error()})
+			}
 			return
 		}
 	}

@@ -181,6 +181,23 @@ func (s *session) activeAgent() *agentProc {
 	return s.active
 }
 
+// activePathValue snapshots activePath; writers hold agentMu.
+func (s *session) activePathValue() string {
+	s.agentMu.Lock()
+	defer s.agentMu.Unlock()
+	return s.activePath
+}
+
+// agentPath reads a.path under the lock that guards it.
+func (s *session) agentPath(a *agentProc) string {
+	if a == nil {
+		return ""
+	}
+	s.agentMu.Lock()
+	defer s.agentMu.Unlock()
+	return a.path
+}
+
 func (s *session) isActive(a *agentProc) bool {
 	s.agentMu.Lock()
 	defer s.agentMu.Unlock()
@@ -447,8 +464,17 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 		}
 		if err := scanner.Err(); err != nil {
 			log.Printf("pig stdout scan: %v", err)
-			if s.isActive(a) {
-				_ = s.sendRaw([]byte(`{"type":"relay_log","message":"pig frame dropped: ` + err.Error() + `"}`))
+			wasActive := s.isActive(a)
+			// A frame that does not fit cannot be recovered at a line boundary:
+			// leaving the process in s.agents made every later request hang on a
+			// pig whose stdout is no longer read.
+			s.stopAgent(a)
+			if wasActive {
+				_ = s.send(frame{
+					"type":   "relay_exit",
+					"code":   -1,
+					"reason": "pig frame too large: " + err.Error(),
+				})
 			}
 		}
 	}()
@@ -506,9 +532,9 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 		if a.pig.stopping.Load() {
 			// "exited" makes logLevel() classify the line as an error, and the
 			// app toasts every relay error; a deliberate stop is not one.
-			logf("pig stopped: code=%d path=%q", code, a.path)
+			logf("pig stopped: code=%d path=%q", code, s.agentPath(a))
 		} else {
-			logf("pig exited: code=%d err=%v path=%q", code, err, a.path)
+			logf("pig exited: code=%d err=%v path=%q", code, err, s.agentPath(a))
 		}
 	}()
 
@@ -618,6 +644,7 @@ func (s *session) promoteEmptyParked() *agentProc {
 		old := s.active
 		s.active = a
 		s.activePath = ""
+		// Already under agentMu; agentPath() would self-deadlock here.
 		if old != nil && old != a && !old.isBusy() && sessionHasContent(old.path) {
 			toStop = old
 		}
@@ -644,7 +671,7 @@ func (s *session) switchTo(path string) *agentProc {
 	s.active = a
 	s.activePath = path
 	s.agentMu.Unlock()
-	if old != nil && old != a && !old.isBusy() && sessionHasContent(old.path) {
+	if old != nil && old != a && !old.isBusy() && sessionHasContent(s.agentPath(old)) {
 		s.stopAgent(old)
 	}
 	return a
@@ -783,15 +810,23 @@ func sortedRawKeys(frames map[string]json.RawMessage) []string {
 
 func (s *session) detach(conn net.Conn, gen uint64) {
 	s.mu.Lock()
-	if s.conn == conn && s.connGen == gen {
+	currentGen := s.connGen
+	if s.conn == conn && currentGen == gen {
 		s.conn = nil
 		s.out = nil
 	}
 	s.mu.Unlock()
 	_ = conn.Close()
+	// attach() closes the previous socket, so the old connection's detach runs
+	// after a new client is already attached. Abandoning "the" transfer or
+	// looking up "the" active agent here would hit the new client's restore
+	// staging file / freshly started pig.
+	if gen != currentGen {
+		return
+	}
 	// A backup/restore is a request from this client; without it the transfer
 	// has nowhere to go and must not hold ~/.pig hostage.
-	s.abandonTransfer()
+	s.abandonTransfer(gen)
 	// No client: keep streaming turns, drop an idle active process so a later
 	// switch to history does not need one.
 	go func() {
@@ -904,7 +939,7 @@ func scanMessages(path string, offset int64) ([]json.RawMessage, error) {
 }
 
 func (s *session) syntheticState(id any) frame {
-	path := s.activePath
+	path := s.activePathValue()
 	sid, provider, model, count := readSessionSummary(path)
 	return frame{
 		"type":        "response",
@@ -932,7 +967,8 @@ func (s *session) syntheticState(id any) frame {
 
 func (s *session) syntheticMessages(id any) frame {
 	limit, limited := s.takeHistoryLimit(id)
-	all := s.cachedMessages(s.activePath)
+	activePath := s.activePathValue()
+	all := s.cachedMessages(activePath)
 	start := 0
 	window := all
 	if limited {
@@ -943,7 +979,7 @@ func (s *session) syntheticMessages(id any) frame {
 		"id":          id,
 		"command":     "get_messages",
 		"success":     true,
-		"sessionPath": s.activePath,
+		"sessionPath": activePath,
 		"data": frame{
 			"messages":     window,
 			"historyStart": start,
@@ -1126,10 +1162,28 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 	// Keep pings and control frames alive, but do not start a half-installed
 	// agent from a get_state/switch_session/prompt that arrived too early.
 	if !s.install.isReady() {
+		// Dropping the request left the app waiting forever with only the
+		// install banner to explain it.
+		if id != nil {
+			_ = s.send(frame{
+				"type": "response", "id": id, "command": typ,
+				"success": false, "error": "install in progress",
+			})
+		}
 		return
 	}
 	switch typ {
 	case "switch_session":
+		// Every other path-taking command validates; without this a client
+		// could make pig create/append JSONL at any path it can write.
+		if err := validateSessionPath(sessionPath, s.sessionsDir); err != nil {
+			_ = s.send(frame{
+				"type": "response", "id": id, "command": "switch_session",
+				"success": false, "error": err.Error(),
+				"sessionPath": s.activePathValue(),
+			})
+			return
+		}
 		a := s.switchTo(sessionPath)
 		_ = s.send(frame{
 			"type": "response", "id": id, "command": "switch_session",
@@ -1154,7 +1208,7 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 		} else {
 			_ = s.send(frame{
 				"type": "response", "id": id, "command": "get_session_stats",
-				"success": true, "sessionPath": s.activePath, "data": frame{},
+				"success": true, "sessionPath": s.activePathValue(), "data": frame{},
 			})
 		}
 	case "get_available_models", "get_available_thinking_levels":
@@ -1171,15 +1225,16 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 			command = typ
 			empty = frame{"levels": []any{}}
 		}
+		activePath := s.activePathValue()
 		if a := s.activeAgent(); a != nil {
 			_ = a.pig.write(line)
-		} else if s.activePath != "" {
-			if a, err := s.ensureAgent(s.activePath, true); err == nil {
+		} else if activePath != "" {
+			if a, err := s.ensureAgent(activePath, true); err == nil {
 				_ = a.pig.write(line)
 			} else {
 				_ = s.send(frame{
-					"type": "relay_error",
-					"id":   id,
+					"type":    "relay_error",
+					"id":      id,
 					"message": fmt.Sprintf("%s: cannot start pig: %v", command, err),
 				})
 			}
@@ -1193,7 +1248,8 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 		a := s.activeAgent()
 		if a == nil {
 			var err error
-			a, err = s.ensureAgent(s.activePath, s.activePath != "")
+			activePath := s.activePathValue()
+			a, err = s.ensureAgent(activePath, activePath != "")
 			if err != nil {
 				_ = s.send(frame{
 					"type": "response", "id": id, "command": "prompt",
@@ -1248,7 +1304,8 @@ func (s *session) handleAgentFrame(line []byte, typ string, id any, sessionPath 
 		a := s.activeAgent()
 		if a == nil {
 			var err error
-			a, err = s.ensureAgent(s.activePath, s.activePath != "")
+			activePath := s.activePathValue()
+			a, err = s.ensureAgent(activePath, activePath != "")
 			if err != nil {
 				// Dropping the frame silently leaves the app waiting forever.
 				logf("cannot start pig for %s: %v", typ, err)
@@ -1304,10 +1361,27 @@ func (s *session) handleClientLine(line []byte) {
 		_ = s.send(frame{"type": "relay_pong", "id": head.ID})
 	case "relay_restart":
 		a := s.activeAgent()
+		if a != nil && a.isBusy() {
+			// Restarting mid-turn kills pig and leaves a partial assistant
+			// message; the user can stop first, then restart.
+			_ = s.send(frame{
+				"type": "relay_error", "id": head.ID,
+				"message": "cannot restart while a turn is running",
+			})
+			break
+		}
 		if a != nil {
-			path := a.path
+			path := s.agentPath(a)
 			s.stopAgent(a)
-			if na, err := s.ensureAgent(path, path != ""); err == nil && na.pig.cmd.Process != nil {
+			na, err := s.ensureAgent(path, path != "")
+			if err != nil || na == nil || na.pig == nil || na.pig.cmd == nil ||
+				na.pig.cmd.Process == nil {
+				message := "restart failed"
+				if err != nil {
+					message += ": " + err.Error()
+				}
+				_ = s.send(frame{"type": "relay_error", "id": head.ID, "message": message})
+			} else {
 				_ = s.send(frame{"type": "relay_restarted", "pid": na.pig.cmd.Process.Pid})
 			}
 		} else {
@@ -1456,7 +1530,9 @@ func (s *session) handleClientLine(line []byte) {
 	case "relay_providers":
 		s.sendProviders(head.ID)
 	case "relay_provider_save":
-		s.saveProvider(head.ID, head.Entry)
+		// The auto mode fetches /models on save (up to 20 s); the read loop
+		// must keep answering pings and restore chunks meanwhile.
+		go s.saveProvider(head.ID, head.Entry)
 	case "relay_provider_delete":
 		s.deleteProvider(head.ID, head.Entry)
 	case "relay_provider_models":
@@ -1537,11 +1613,19 @@ var editableSettings = map[string]settingsKey{
 	"thinkingBudgets.high":    {kind: "int", min: 0},
 }
 
+// settingsWriteMu serializes every read-modify-write of settings.json. The
+// embedded-extension installer appends `packages` entries right after the
+// relay starts, while the app can send relay_settings at the same time; with
+// no lock (and a fixed .tmp name) one writer silently replaced the other.
+var settingsWriteMu sync.Mutex
+
 // handleSettings reads settings.json, or merges the allow-listed keys from the
 // frame's `set` object and writes it back. Unknown keys are preserved.
 func handleSettings(s *session, id any, set map[string]any) {
+	settingsWriteMu.Lock()
 	root, err := readSettingsFile(s.settingsPath)
 	if err != nil {
+		settingsWriteMu.Unlock()
 		_ = s.send(frame{"type": "relay_settings_error", "id": id, "message": err.Error()})
 		return
 	}
@@ -1558,10 +1642,12 @@ func handleSettings(s *session, id any, set map[string]any) {
 			setPath(root, path, value)
 		}
 		if err := writeSettingsFile(s.settingsPath, root); err != nil {
+			settingsWriteMu.Unlock()
 			_ = s.send(frame{"type": "relay_settings_error", "id": id, "message": err.Error()})
 			return
 		}
 	}
+	settingsWriteMu.Unlock()
 	_ = s.send(frame{
 		"type":     "relay_settings",
 		"id":       id,
@@ -1676,11 +1762,37 @@ func writeSettingsFile(path string, root map[string]interface{}) error {
 			return err
 		}
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
+	// A unique temp name: two writers sharing `settings.json.tmp` used to
+	// rename each other's bytes into place.
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".settings-*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(append(data, '\n')); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	return nil
 }
 
 // coerceSetting accepts the JSON shapes the app sends (numbers arrive as
