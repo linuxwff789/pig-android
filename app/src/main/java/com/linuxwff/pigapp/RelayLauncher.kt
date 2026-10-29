@@ -209,7 +209,7 @@ object RelayLauncher {
     }
 
     private fun relayCommand(port: Int, token: String, cwd: String): String =
-        "exec \"$RELAY_BIN\" --port $port --token $token --cwd ${shellQuote(cwd)}"
+        "exec \"$RELAY_BIN\" --port $port --token ${shellQuote(token)} --cwd ${shellQuote(cwd)}"
 
     private fun shellQuote(value: String): String =
         "'" + value.replace("'", "'\\''") + "'"

@@ -1,8 +1,13 @@
 package com.linuxwff.pigapp
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
+import android.os.Build
+import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ListenableWorker.Result
 import androidx.work.NetworkType
@@ -39,6 +44,10 @@ class WebDavBackupWorker(
         val prefs = context.getSharedPreferences("pig", Context.MODE_PRIVATE)
         val config = WebDavConfig.from(prefs)
         if (!config.ready || config.everyHours <= 0) return@withContext Result.success()
+        // A 65 MB session tree on a slow uplink outlives WorkManager's ~10 min
+        // execution window; a foreground service keeps it from being cancelled
+        // and retried forever.
+        runCatching { setForeground(foregroundInfo()) }
 
         val port = prefs.getInt("port", 8791)
         val token = prefs.getString("token", "").orEmpty()
@@ -113,6 +122,39 @@ class WebDavBackupWorker(
             delay(500)
         }
         return client.connected.value
+    }
+
+    private fun foregroundInfo(): ForegroundInfo {
+        val context = applicationContext
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = context.getSystemService(NotificationManager::class.java)
+            if (manager.getNotificationChannel(FGS_CHANNEL) == null) {
+                manager.createNotificationChannel(
+                    NotificationChannel(
+                        FGS_CHANNEL,
+                        AppViewModel.packString("notification.backupChannel", "WebDAV 备份"),
+                        NotificationManager.IMPORTANCE_LOW,
+                    ),
+                )
+            }
+        }
+        val notification = NotificationCompat.Builder(context, FGS_CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_pig)
+            .setContentTitle(
+                AppViewModel.packString("notification.backupTitle", "正在备份到 WebDAV"),
+            )
+            .setContentText(
+                AppViewModel.packString("notification.backupText", "上传会话与配置，请保持网络连接"),
+            )
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+        return ForegroundInfo(FGS_ID, notification)
+    }
+
+    private companion object {
+        const val FGS_CHANNEL = "pig_backup"
+        const val FGS_ID = 102
     }
 }
 

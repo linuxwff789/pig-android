@@ -144,3 +144,52 @@ func TestWriteSettingsFileConcurrent(t *testing.T) {
 		t.Fatalf("temp files left behind: %v", matches)
 	}
 }
+
+func TestExtractRefusesSymlinkedDirectory(t *testing.T) {
+	home := t.TempDir()
+	outside := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".pig"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(home, ".pig", "agent")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+	archive := filepath.Join(t.TempDir(), "a.tar.gz")
+	writeTgz(t, archive, map[string][]byte{".pig/agent/models.json": []byte("{}")})
+	if _, err := extractArchive(archive, home); err == nil {
+		t.Fatal("expected extraction through a symlinked directory to fail")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "models.json")); !os.IsNotExist(err) {
+		t.Fatalf("file escaped the home tree: %v", err)
+	}
+}
+
+func TestPruneTreeRemovesStaleFilesAndDirectories(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "old", "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "old", "nested", "x.go"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "stale.go"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "keep.go"), []byte("package p"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{"keep.go": []byte("package p")}
+	pruneTree(dir, files, ".embedded-hash")
+	if _, err := os.Stat(filepath.Join(dir, "old")); !os.IsNotExist(err) {
+		t.Fatal("stale subdirectory survived")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "stale.go")); !os.IsNotExist(err) {
+		t.Fatal("stale file survived")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "keep.go")); err != nil {
+		t.Fatal("wanted file was removed")
+	}
+	if !treeMatches(dir, files, ".embedded-hash") {
+		t.Fatal("tree should match after pruning")
+	}
+}

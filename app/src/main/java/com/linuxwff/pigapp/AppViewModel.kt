@@ -83,6 +83,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var packAssets: Map<String, String> = emptyMap()
     private var packAssetHashes: Map<String, String> = emptyMap()
     private val imageCache = mutableStateMapOf<String, ImageBitmap>()
+    private val packImageLru = LinkedHashMap<String, Unit>()
     private val imageLoading = mutableSetOf<String>()
     private val formValues = mutableStateMapOf<String, String>() // "windowId/fieldId" -> value
 
@@ -119,6 +120,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      *  replaces its runtime when `new_session` reaches it, so a `set_model` sent
      *  before that lands on the session being replaced and is lost. */
     private var modelPickedWhileStarting = ""
+    /** Session settings picked while new_session replaces the runtime. */
+    private val pendingSessionSettings = mutableListOf<JSONObject>()
     /** Prompts typed while the new session was still starting, in send order. */
     private val pendingNewSessionPrompts = mutableListOf<JSONObject>()
     /** Composer text per session, so switching away never loses a draft. */
@@ -219,6 +222,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             settingsSize = prefs.getString("settingsSize", "standard") ?: "standard",
         )
         thinkingByModel = loadThinkingLevels()
+        dismissedWindows.putAll(loadDismissedWindows())
         drafts.putAll(loadDrafts())
         widgetSnapshots.putAll(loadWidgetSnapshots())
         // Upgrades from builds without `packPinned` treated any stored id as a
@@ -441,20 +445,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
             ui = result.fold(
                 onSuccess = { done ->
+                    val includes = done.optJSONObject("includes")
+                    // Older relays do not send `includes`; assume the config is
+                    // there rather than claiming it is missing.
+                    val hasModels = includes == null ||
+                        includes.optBoolean("models") || includes.optBoolean("providers")
+                    val suffix = if (hasModels) {
+                        str("backup.exportedConfig", "（含密钥与模型配置）")
+                    } else {
+                        str("backup.exportedNoModels", "（未发现模型/供应商配置）")
+                    }
                     ui.copy(
                         maintenanceBusy = false,
                         maintenanceSent = 0,
                         maintenanceTotal = 0,
                         toast = str(
                             "backup.exported",
-                            "备份完成：{entries} 个文件、{size} → {path}（含密钥与模型配置）",
+                            "备份完成：{entries} 个文件、{size} → {path}{config}",
                         )
                             .replace("{entries}", done.optInt("entries").toString())
                             .replace("{size}", formatSize(done.optLong("bytes")))
                             .replace(
                                 "{path}",
                                 target?.location ?: uri.lastPathSegment ?: uri.toString(),
-                            ),
+                            )
+                            .replace("{config}", suffix),
                     )
                 },
                 onFailure = { error ->
@@ -1607,7 +1622,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (id.isBlank()) {
             ui = ui.copy(activePackId = "")
             if (relayFiles.isNotEmpty()) {
-                applyPack(relayFiles, relayAssets, relayHashes, relayHash, announce = true)
+                applyPackAsync(relayFiles, relayAssets, relayHashes, relayHash, announce = true)
             }
             return
         }
@@ -1618,7 +1633,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         ui = ui.copy(activePackId = id)
-        applyPack(files.first, files.second, files.third, "local:$id", announce = true)
+        applyPackAsync(files.first, files.second, files.third, "local:$id", announce = true)
     }
 
     /** Delete an imported pack; if it is active, switch back to the relay pack first. */
@@ -2672,14 +2687,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setThinkingLevel(level: String) {
         if (level.isBlank()) return
-        val key = ui.model
+        // While new_session is replacing the runtime, ui.model still names the
+        // session being left. Remember the level under the model the fresh
+        // session will actually use.
+        val key = if (awaitingNewSession) {
+            modelPickedWhileStarting.ifBlank { ui.defaultModel.ifBlank { ui.model } }
+        } else {
+            ui.model
+        }
         if (key.isNotBlank() && key != "/") {
             thinkingByModel = thinkingByModel + (key to level)
             prefs.edit()
                 .putString("thinkingByModel", JSONObject(thinkingByModel as Map<*, *>).toString())
                 .apply()
         }
-        client.send(
+        sendSessionSetting(
             JSONObject()
                 .put("id", "think-${nextId++}")
                 .put("type", "set_thinking_level")
@@ -2687,10 +2709,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /**
+     * Session-scoped settings must not reach the runtime that new_session is
+     * about to replace: pig drops them with that process. Hold them until the
+     * fresh runtime answers, then send them in order.
+     */
+    private fun sendSessionSetting(frame: JSONObject) {
+        if (awaitingNewSession) {
+            pendingSessionSettings.add(frame)
+        } else {
+            client.send(frame)
+        }
+    }
+
+    private fun flushSessionSettings() {
+        if (pendingSessionSettings.isEmpty()) return
+        val queued = pendingSessionSettings.toList()
+        pendingSessionSettings.clear()
+        queued.forEach { client.send(it) }
+    }
+
     /** `compaction.enabled`; PiG persists it to settings.json. */
     fun setAutoCompaction(enabled: Boolean) {
         ui = ui.copy(autoCompaction = enabled)
-        client.send(
+        sendSessionSetting(
             JSONObject()
                 .put("id", "autocompact-${nextId++}")
                 .put("type", "set_auto_compaction")
@@ -2708,7 +2750,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Session-scoped retry toggle; PiG does not expose its state back. */
     fun setAutoRetry(enabled: Boolean) {
         ui = ui.copy(autoRetry = enabled)
-        client.send(
+        sendSessionSetting(
             JSONObject()
                 .put("id", "autoretry-${nextId++}")
                 .put("type", "set_auto_retry")
@@ -2726,7 +2768,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setQueueMode(followUp: Boolean, mode: String) {
         if (mode != "all" && mode != "one-at-a-time") return
         ui = if (followUp) ui.copy(followUpMode = mode) else ui.copy(steeringMode = mode)
-        client.send(
+        sendSessionSetting(
             JSONObject()
                 .put("id", "queue-${nextId++}")
                 .put("type", if (followUp) "set_follow_up_mode" else "set_steering_mode")
@@ -3111,7 +3153,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             Regex("\\{\\{form\\.([a-zA-Z0-9_-]+)\\}\\}").findAll(value).forEach { match ->
                 val field = match.groupValues[1]
                 val form = if (windowId != null) {
-                    formValues["$windowId/$field"].orEmpty()
+                    formValues[formKey(windowId, field)].orEmpty()
                 } else {
                     ""
                 }
@@ -3259,8 +3301,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun newSession() {
+        if (awaitingNewSession) {
+            // A second tap used to clear the prompts already typed into the
+            // conversation that is still being created.
+            ui = ui.copy(toast = str("toast.newSessionStarting", "新会话正在启动…"))
+            return
+        }
         // Any history build still in flight belongs to the session being left.
         sessionEpoch++
+        pendingSessionSettings.clear()
         // A get_state reply that still reports this session describes the runtime
         // pig is replacing; the draft and the queued prompt must not follow it.
         newSessionFromFile = ui.sessionFile
@@ -3613,14 +3662,44 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(windows = windows, windowError = result.warnings.firstOrNull())
     }
 
-    fun closeWindow(id: String) {
-        val window = ui.windows.firstOrNull { it.id == id }
-        if (window != null && window.source != "debug") {
+    fun closeWindow(id: String, force: Boolean = false) {
+        val window = ui.windows.firstOrNull { it.id == id } ?: return
+        // Back / sheet swipe honour `dismissible`; an explicit pack action
+        // (builtin:close) passes force and can always close its own window.
+        if (!window.dismissible && !force) return
+        if (window.source != "debug") {
             dismissedWindows[window.source] = window.id
+            trimDismissedWindows()
+            saveDismissedWindows()
         }
         windowPositions.remove(id)
         ui = ui.copy(windows = ui.windows.filterNot { it.id == id })
     }
+
+    private fun trimDismissedWindows() {
+        while (dismissedWindows.size > 200) {
+            val oldest = dismissedWindows.keys.firstOrNull() ?: break
+            dismissedWindows.remove(oldest)
+        }
+    }
+
+    private fun saveDismissedWindows() {
+        prefs.edit()
+            .putString("dismissedWindows", JSONObject(dismissedWindows as Map<*, *>).toString())
+            .apply()
+    }
+
+    private fun loadDismissedWindows(): Map<String, String> = runCatching {
+        val raw = prefs.getString("dismissedWindows", "").orEmpty()
+        if (raw.isBlank()) return emptyMap()
+        val objectValue = JSONObject(raw)
+        buildMap {
+            objectValue.keys().forEach { key ->
+                val value = objectValue.optString(key)
+                if (value.isNotBlank()) put(key, value)
+            }
+        }
+    }.getOrDefault(emptyMap())
 
     fun closeTopWindow() {
         ui.windows.lastOrNull()?.let { closeWindow(it.id) }
@@ -3652,7 +3731,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         when {
-            action == "builtin:close" -> closeWindow(windowId)
+            action == "builtin:close" -> closeWindow(windowId, force = true)
             action.startsWith("builtin:copy:") -> {
                 val value = action.removePrefix("builtin:copy:")
                 val clipboard = getApplication<Application>()
@@ -3879,20 +3958,53 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val image = withContext(Dispatchers.Default) {
                 runCatching {
                     val bytes = Base64.decode(encoded, Base64.DEFAULT)
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                    // A 3000x3000 PNG is ~36 MB decoded; sample it down before
+                    // it reaches the composition cache.
+                    decodeSampledImage(bytes, PACK_IMAGE_MAX_DIM)?.asImageBitmap()
                 }.getOrNull()
             }
             imageLoading.remove(key)
-            if (image != null) imageCache[key] = image
+            if (image != null) {
+                imageCache[key] = image
+                packImageLru[key] = Unit
+                while (packImageLru.size > PACK_IMAGE_CACHE_ENTRIES) {
+                    val oldest = packImageLru.keys.firstOrNull() ?: break
+                    packImageLru.remove(oldest)
+                    if (oldest != key) imageCache.remove(oldest)
+                }
+            }
         }
     }
 
+    private fun decodeSampledImage(bytes: ByteArray, maxDim: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxDim) {
+            sample *= 2
+        }
+        return BitmapFactory.decodeByteArray(
+            bytes,
+            0,
+            bytes.size,
+            BitmapFactory.Options().apply { inSampleSize = sample },
+        )
+    }
+
+    /**
+     * Form state is namespaced by the pack hash: switching packs must not
+     * reuse a value from a field that happens to share the window/field id.
+     */
+    private fun formKey(windowId: String, fieldId: String): String =
+        "${ui.uiPackHash}/$windowId/$fieldId"
+
     fun formValue(windowId: String, fieldId: String, fallback: String): String =
-        formValues["$windowId/$fieldId"] ?: fallback
+        formValues[formKey(windowId, fieldId)] ?: fallback
 
     fun setFormValue(windowId: String, fieldId: String, value: String) {
         if (fieldId.isBlank()) return
-        formValues["$windowId/$fieldId"] = value
+        formValues[formKey(windowId, fieldId)] = value
     }
 
     fun formPayload(windowId: String): String? {
@@ -3902,7 +4014,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (fields.isEmpty()) return null
         val values = JSONObject()
         fields.forEach { node ->
-            val stored = formValues["$windowId/${node.fieldId}"]
+            val stored = formValues[formKey(windowId, node.fieldId)]
             val value = stored ?: when (node.type) {
                 "toggle" -> node.checked.toString()
                 else -> node.initialValue
@@ -3927,7 +4039,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var providerRestartPending = false
 
     /** Notices retired in this process; a history render must not bring them back. */
-    private val resolvedNotices = mutableSetOf<String>()
+    private val resolvedNotices = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     /** Errors written by the app itself (relay/transport), kept per session. */
     private val noticesDir: File
@@ -3991,14 +4103,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         append(ChatMsg(id = "n${nextId++}", role = Role.NOTICE, text = text, isError = true))
         noticesCache = null
         val key = noticeKey() ?: return
-        runCatching {
-            noticesDir.mkdirs()
-            File(noticesDir, "$key.jsonl").appendText(
-                JSONObject()
-                    .put("text", text)
-                    .put("ts", System.currentTimeMillis())
-                    .toString() + "\n",
-            )
+        val record = JSONObject()
+            .put("text", text)
+            .put("ts", System.currentTimeMillis())
+            .toString() + "\n"
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                noticesDir.mkdirs()
+                File(noticesDir, "$key.jsonl").appendText(record)
+            }
         }
     }
 
@@ -4019,15 +4132,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val key = noticeKey() ?: return
         val file = File(noticesDir, "$key.jsonl")
         if (!file.isFile) return
-        runCatching {
-            val kept = file.readLines().filterNot { line ->
-                stale(runCatching { JSONObject(line).optString("text") }.getOrDefault(""))
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val kept = file.readLines().filterNot { line ->
+                    stale(runCatching { JSONObject(line).optString("text") }.getOrDefault(""))
+                }
+                if (kept.isEmpty()) file.delete() else file.writeText(kept.joinToString("\n", postfix = "\n"))
             }
-            if (kept.isEmpty()) file.delete() else file.writeText(kept.joinToString("\n", postfix = "\n"))
         }
     }
 
     /** Per-session cache: a history render must not hit the disk. */
+    @Volatile
     private var noticesCache: Pair<String, List<ChatMsg>>? = null
 
     /** Notices written earlier for the current session, oldest first. */
@@ -4172,12 +4288,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // would wipe the transcript we are showing.
                 needsHistory = true
                 historyHealTried = false
+                // A reconnect must not re-download the 2000-message window the
+                // reader had pulled open before the socket dropped; a cached
+                // transcript restores its own page size below.
+                historyWindow = HISTORY_PAGE
                 restartInFlight = false
                 // A reconnect settles whatever was pending; the new-session
                 // hint must not outlive the connection that showed it. Prompts
                 // typed into that session are delivered rather than lost.
                 awaitingNewSession = false
                 flushPendingPrompts()
+                flushSessionSettings()
                 clearLive()
                 ui = ui.copy(
                     streamingId = null,
@@ -4876,6 +4997,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } else {
                     applyDefaultModel()
                 }
+                // set_model was sent first (same ordered send queue); the
+                // level/toggles now land on the fresh runtime.
+                flushSessionSettings()
             }
             if (command == "new_session") {
                 // A new session supersedes the remembered one; the next
@@ -5228,10 +5352,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val pending = pendingToolPartials.toMap()
                     val liveAtRequest = liveActive
                     val live = if (liveAtRequest) liveBuffer.toString() else null
-                    val notices = readNotices()
                     val redacted = str("chat.thinkingRedacted", "（提供方已隐藏思考内容）")
                     val startedAt = System.nanoTime()
                     viewModelScope.launch {
+                        val notices = withContext(Dispatchers.IO) { readNotices() }
                         val build = withContext(Dispatchers.Default) {
                             buildHistory(history, pending, live, notices, redacted)
                         }
@@ -5423,13 +5547,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (window.id in placed) return@forEach
             if (!window.autoOpen) return@forEach
             if (window.id in onDemand) return@forEach
-            if (dismissedWindows[window.source] == window.id) return@forEach
-            dismissedWindows.remove(window.source)
+            val dismissedId = dismissedWindows[window.source]
+            if (dismissedId == window.id) return@forEach
+            if (dismissedId != null) {
+                dismissedWindows.remove(window.source)
+                saveDismissedWindows()
+            }
             next.add(window)
             placed.add(window.id)
         }
 
-        dismissedWindows.keys.retainAll(windowFiles.keys)
+        // Do not prune tombstones against the files present in this push: the
+        // relay may briefly omit a file while re-seeding, and dropping the
+        // tombstone resurrects a window the user closed. applyPack prunes on
+        // a real pack change instead.
         knownWindows.entries.removeAll { it.value.source !in windowFiles.keys }
         parsed.forEach { knownWindows[it.id] = it }
         val ids = next.map { it.id }.toSet()
@@ -5772,7 +5903,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             ui = ui.copy(activePackId = "")
             prefs.edit().putString("activePackId", "").apply()
         }
-        applyPack(files, assets, hashes, hash, announce = true)
+        // attach() pushes the same pack on every reconnect; re-parsing it and
+        // re-materialising its fonts each time is wasted work.
+        if (hash.isNotBlank() && hash == ui.uiPackHash && ui.uiPackFiles == files.size) return
+        applyPackAsync(files, assets, hashes, hash, announce = true)
     }
 
     /** Decode pack fonts under `assets/` into the app cache and map asset -> file. */
@@ -5802,12 +5936,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Parse and apply a pack (relay push or an imported local pack). */
+    /** Serializes pack applications: a slower older push must not win. */
+    private var packApplyGeneration = 0
+
+    private fun applyPackAsync(
+        files: Map<String, String>,
+        assets: Map<String, String>,
+        hashes: Map<String, String>,
+        hash: String,
+        announce: Boolean,
+    ) {
+        val generation = ++packApplyGeneration
+        viewModelScope.launch {
+            // base64 + SHA-256 + font writes are milliseconds per font but a
+            // pack can carry many; never do that on the frame thread.
+            val fonts = withContext(Dispatchers.Default) { materializeFonts(assets) }
+            if (generation != packApplyGeneration) return@launch
+            applyPack(files, assets, hashes, hash, announce, fonts)
+        }
+    }
+
     private fun applyPack(
         files: Map<String, String>,
         assets: Map<String, String>,
         hashes: Map<String, String>,
         hash: String,
         announce: Boolean,
+        preparedFonts: Map<String, String>? = null,
     ) {
         packAssets = assets
         packAssetHashes = hashes
@@ -5829,7 +5984,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
             return
         }
-        val pack = parsed.copy(fontFiles = materializeFonts(assets))
+        val pack = parsed.copy(fontFiles = preparedFonts ?: materializeFonts(assets))
         basePack = pack
         AppLog.event(
             "pack",
@@ -5845,6 +6000,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (skinId.isNotBlank()) prefs.edit().putString("skinId", skinId).apply()
         val resolvedPack = pack.withSkin(skinId)
         val changed = ui.uiPackHash.isNotEmpty() && hash != ui.uiPackHash
+        if (changed) {
+            dismissedWindows.keys.retainAll(files.keys)
+            trimDismissedWindows()
+            saveDismissedWindows()
+            formValues.keys.toList().forEach { if (!it.startsWith("$hash/")) formValues.remove(it) }
+        }
         // UI pack provides defaults; an explicit user toggle wins.
         val avatarShadow = if (prefs.contains("avatarShadow")) {
             prefs.getBoolean("avatarShadow", false)
@@ -6500,6 +6661,12 @@ private const val HISTORY_CACHE_SESSIONS = 2
 
 /** Long edge of transcript images; 1024 px stays readable and cheap. */
 private const val TRANSCRIPT_IMAGE_MAX_DIM = 1024
+
+/** Long edge of a pack asset decoded into the in-memory cache. */
+private const val PACK_IMAGE_MAX_DIM = 1024
+
+/** How many decoded pack images stay resident. */
+private const val PACK_IMAGE_CACHE_ENTRIES = 48
 
 /** Hard limits for a pack imported from a zip or a folder. */
 private const val PACK_IMPORT_MAX_BYTES = 24L * 1024 * 1024

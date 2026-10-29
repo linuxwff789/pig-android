@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
+import java.net.InetAddress
 import java.net.URI
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
@@ -16,6 +17,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /**
  * Images referenced from Markdown (`![alt](url)`).
@@ -36,11 +39,17 @@ object RemoteImages {
     private const val MAX_BYTES = 8 * 1024 * 1024
     private const val MAX_DIM = 1600
     private const val CACHE_ENTRIES = 12
+    private const val REDIRECTS = 5
+    /** A failed fetch may succeed later (offline -> online); do not poison it. */
+    private const val FAIL_TTL_MS = 5 * 60_000L
+    private const val FAIL_ENTRIES = 200
+    private const val MAX_PARALLEL = 4
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val images = mutableStateMapOf<String, RemoteImage>()
-    private val failed = ConcurrentHashMap.newKeySet<String>()
+    private val failed = ConcurrentHashMap<String, Long>()
     private val loading = ConcurrentHashMap.newKeySet<String>()
+    private val fetchGate = Semaphore(MAX_PARALLEL)
 
     /** Snapshot-state read: calling this from a composable redraws on arrival. */
     fun get(url: String): RemoteImage? = images[url]
@@ -48,31 +57,41 @@ object RemoteImages {
     /** Start (or skip) a background fetch; call from a `LaunchedEffect`. */
     fun request(url: String) {
         if (url.isBlank()) return
-        if (images.containsKey(url) || failed.contains(url)) return
+        if (images.containsKey(url)) return
+        val failedAt = failed[url]
+        if (failedAt != null && System.currentTimeMillis() - failedAt < FAIL_TTL_MS) return
+        if (failedAt != null) failed.remove(url)
         if (loading.add(url)) {
             scope.launch { load(url) }
         }
     }
 
-    private fun load(url: String) {
-        try {
-            val (bytes, mimeType) = fetch(url) ?: run {
-                failed.add(url)
-                return
+    private suspend fun load(url: String) {
+        fetchGate.withPermit {
+            try {
+                val (bytes, mimeType) = fetch(url) ?: run {
+                    markFailed(url)
+                    return@withPermit
+                }
+                val bitmap = decode(bytes)
+                if (bitmap == null) {
+                    markFailed(url)
+                } else {
+                    trim()
+                    images[url] = RemoteImage(bitmap, mimeType)
+                }
+            } catch (e: Exception) {
+                markFailed(url)
+                Log.w("PigImages", "markdown image $url: ${e.message}")
+            } finally {
+                loading.remove(url)
             }
-            val bitmap = decode(bytes)
-            if (bitmap == null) {
-                failed.add(url)
-            } else {
-                trim()
-                images[url] = RemoteImage(bitmap, mimeType)
-            }
-        } catch (e: Exception) {
-            failed.add(url)
-            Log.w("PigImages", "markdown image $url: ${e.message}")
-        } finally {
-            loading.remove(url)
         }
+    }
+
+    private fun markFailed(url: String) {
+        if (failed.size >= FAIL_ENTRIES) failed.clear()
+        failed[url] = System.currentTimeMillis()
     }
 
     private fun trim() {
@@ -142,33 +161,80 @@ object RemoteImages {
         return runCatching { Base64.decode(payload, Base64.DEFAULT) }.getOrNull()
     }
 
-    private fun fetchHttp(url: String): Pair<ByteArray, String>? {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 8_000
-            readTimeout = 12_000
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", "pig-android")
-        }
-        try {
-            if (connection.responseCode !in 200..299) return null
-            val contentType = connection.contentType.orEmpty()
-            if (!contentType.startsWith("image/")) return null
-            val mimeType = contentType.substringBefore(';').ifBlank { guessMime(url) }
-            connection.inputStream.use { stream ->
-                val out = ByteArrayOutputStream()
-                val buffer = ByteArray(16 * 1024)
-                var total = 0
-                while (true) {
-                    val read = stream.read(buffer)
-                    if (read <= 0) break
-                    total += read
-                    if (total > MAX_BYTES) return null
-                    out.write(buffer, 0, read)
-                }
-                return out.toByteArray() to mimeType
+    private fun fetchHttp(start: String): Pair<ByteArray, String>? {
+        var current = runCatching { URL(start) }.getOrNull() ?: return null
+        repeat(REDIRECTS) {
+            // Model output can contain any URL. Requesting loopback/LAN turns a
+            // rendered markdown image into a blind SSRF against local services.
+            if (!isPublicHost(current.host)) return null
+            val connection = (current.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 8_000
+                readTimeout = 12_000
+                // Redirects are followed by hand: the platform would happily
+                // send the app to a private host or downgrade https to http.
+                instanceFollowRedirects = false
+                setRequestProperty("User-Agent", "pig-android")
             }
-        } finally {
-            connection.disconnect()
+            try {
+                val code = connection.responseCode
+                if (code in 300..399) {
+                    val location = connection.getHeaderField("Location") ?: return null
+                    val next = runCatching { URL(current, location) }.getOrNull() ?: return null
+                    if (current.protocol.equals("https", true) &&
+                        !next.protocol.equals("https", true)
+                    ) {
+                        return null
+                    }
+                    if (!next.host.equals(current.host, ignoreCase = true)) return null
+                    current = next
+                    return@repeat
+                }
+                if (code !in 200..299) return null
+                val contentType = connection.contentType.orEmpty()
+                if (!contentType.startsWith("image/")) return null
+                val mimeType = contentType.substringBefore(';').ifBlank { guessMime(current.toString()) }
+                connection.inputStream.use { stream ->
+                    val out = ByteArrayOutputStream()
+                    val buffer = ByteArray(16 * 1024)
+                    var total = 0
+                    while (true) {
+                        val read = stream.read(buffer)
+                        if (read <= 0) break
+                        total += read
+                        if (total > MAX_BYTES) return null
+                        out.write(buffer, 0, read)
+                    }
+                    return out.toByteArray() to mimeType
+                }
+            } finally {
+                connection.disconnect()
+            }
         }
+        return null
+    }
+
+    private fun isPublicHost(host: String): Boolean = runCatching {
+        val addresses = InetAddress.getAllByName(host)
+        addresses.isNotEmpty() && addresses.none { isPrivateAddress(it) }
+    }.getOrDefault(false)
+
+    private fun isPrivateAddress(address: InetAddress): Boolean {
+        if (address.isAnyLocalAddress || address.isLoopbackAddress ||
+            address.isLinkLocalAddress || address.isSiteLocalAddress ||
+            address.isMulticastAddress
+        ) {
+            return true
+        }
+        val bytes = address.address
+        // IPv6 unique-local fc00::/7 (isSiteLocalAddress only covers the
+        // deprecated fec0::/10 prefix).
+        if (bytes.size == 16 && (bytes[0].toInt() and 0xfe) == 0xfc) return true
+        // IPv4 carrier-grade NAT 100.64.0.0/10.
+        if (bytes.size == 4 && (bytes[0].toInt() and 0xff) == 100 &&
+            (bytes[1].toInt() and 0xc0) == 64
+        ) {
+            return true
+        }
+        return false
     }
 }

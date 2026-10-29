@@ -9,7 +9,9 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -124,15 +126,13 @@ func extractEmbeddedPlan(target string) (string, error) {
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		return "", err
 	}
-	existing, _ := os.ReadDir(target)
-	for _, entry := range existing {
-		if entry.IsDir() || entry.Name() == embeddedPlanHash {
-			continue
-		}
-		if _, ok := files[entry.Name()]; !ok {
-			_ = os.Remove(filepath.Join(target, entry.Name()))
-		}
+	// Write the marker before the payload: if the relay is killed mid-sync, the
+	// next start must still treat the directory as relay-managed and repair it
+	// instead of mistaking it for a user checkout and skipping it forever.
+	if err := os.WriteFile(filepath.Join(target, embeddedPlanHash), []byte(hash+"\n"), 0o644); err != nil {
+		return "", err
 	}
+	pruneTree(target, files, embeddedPlanHash)
 	names := make([]string, 0, len(files))
 	for name := range files {
 		names = append(names, name)
@@ -143,63 +143,141 @@ func extractEmbeddedPlan(target string) (string, error) {
 		if current, err := os.ReadFile(path); err == nil && string(current) == string(files[name]) {
 			continue
 		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return "", err
+		}
 		if err := os.WriteFile(path, files[name], 0o644); err != nil {
 			return "", err
 		}
 	}
-	if err := os.WriteFile(filepath.Join(target, embeddedPlanHash), []byte(hash+"\n"), 0o644); err != nil {
-		return "", err
-	}
 	return hash, nil
+}
+
+// wantedDirs lists every directory a file set needs. A stray directory (even
+// empty) is not part of the embedded tree and must be pruned.
+func wantedDirs(files map[string][]byte) map[string]bool {
+	out := map[string]bool{}
+	for name := range files {
+		dir := filepath.ToSlash(filepath.Dir(name))
+		for dir != "." && dir != "" {
+			out[dir] = true
+			dir = filepath.ToSlash(filepath.Dir(dir))
+		}
+	}
+	return out
+}
+
+// pruneTree removes files and directories that are not in files. The marker is
+// left alone.
+func pruneTree(target string, files map[string][]byte, marker string) {
+	dirs := wantedDirs(files)
+	_ = filepath.WalkDir(target, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		rel, relErr := filepath.Rel(target, path)
+		if relErr != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == "." {
+			return nil
+		}
+		if entry.IsDir() {
+			if !dirs[rel] {
+				_ = os.RemoveAll(path)
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if rel == marker {
+			return nil
+		}
+		if _, ok := files[rel]; !ok {
+			_ = os.Remove(path)
+		}
+		return nil
+	})
+}
+
+// treeMatches reports whether target holds exactly files (and no extra files
+// or directories), ignoring marker.
+func treeMatches(target string, files map[string][]byte, marker string) bool {
+	dirs := wantedDirs(files)
+	seen := 0
+	bad := errors.New("mismatch")
+	err := filepath.WalkDir(target, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return bad
+		}
+		rel, relErr := filepath.Rel(target, path)
+		if relErr != nil {
+			return bad
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == "." {
+			return nil
+		}
+		if entry.IsDir() {
+			if !dirs[rel] {
+				return bad
+			}
+			return nil
+		}
+		if rel == marker {
+			return nil
+		}
+		want, ok := files[rel]
+		if !ok {
+			return bad
+		}
+		got, readErr := os.ReadFile(path)
+		if readErr != nil || string(got) != string(want) {
+			return bad
+		}
+		seen++
+		return nil
+	})
+	return err == nil && seen == len(files)
 }
 
 // embeddedPlanMatches reports whether target already holds exactly the embedded
 // file set.
 func embeddedPlanMatches(target string, files map[string][]byte) bool {
-	entries, err := os.ReadDir(target)
-	if err != nil {
-		return false
-	}
-	seen := 0
-	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() == embeddedPlanHash {
-			continue
-		}
-		want, ok := files[entry.Name()]
-		if !ok {
-			return false
-		}
-		got, err := os.ReadFile(filepath.Join(target, entry.Name()))
-		if err != nil || string(got) != string(want) {
-			return false
-		}
-		seen++
-	}
-	return seen == len(files)
+	return treeMatches(target, files, embeddedPlanHash)
 }
 
 // embeddedPlanFiles returns the extracted file set (name -> content, .txt
 // suffix dropped) and a hash over the whole set.
 func embeddedPlanFiles() (map[string][]byte, string, error) {
-	entries, err := embeddedPlan.ReadDir(embeddedPlanDir)
+	files := make(map[string][]byte)
+	names := make([]string, 0)
+	contents := make(map[string][]byte)
+	err := fs.WalkDir(embeddedPlan, embeddedPlanDir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(embeddedPlanDir, path)
+		if err != nil {
+			return err
+		}
+		data, err := embeddedPlan.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		name := strings.TrimSuffix(filepath.ToSlash(rel), ".txt")
+		files[name] = data
+		return nil
+	})
 	if err != nil {
 		return nil, "", err
 	}
-	files := make(map[string][]byte, len(entries))
-	names := make([]string, 0, len(entries))
-	contents := make(map[string][]byte, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		data, err := embeddedPlan.ReadFile(embeddedPlanDir + "/" + entry.Name())
-		if err != nil {
-			return nil, "", err
-		}
-		name := strings.TrimSuffix(entry.Name(), ".txt")
-		files[name] = data
+	for name := range files {
 		names = append(names, name)
-		contents[name] = data
+		contents[name] = files[name]
 	}
 	sort.Strings(names)
 	sum := sha256.New()

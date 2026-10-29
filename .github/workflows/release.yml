@@ -51,6 +51,9 @@ jobs:
       - name: "Plan extension: command policy"
         run: sh scripts/test-plan-policy.sh
 
+      - name: "Embedded extensions: Go syntax"
+        run: sh scripts/check-embedded-go.sh
+
       - name: Unit tests (versions, pure helpers)
         run: ./gradlew :app:testDebugUnitTest --no-daemon
 
@@ -59,6 +62,7 @@ jobs:
           cd relay
           go vet ./...
           go test ./...
+          go test -race ./...
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION_NAME="dev-${GITHUB_SHA::7}"
           else
@@ -87,7 +91,11 @@ jobs:
           else
             VERSION_NAME="${GITHUB_REF_NAME#v}"
           fi
-          VERSION_CODE=$(git rev-list --count HEAD)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION_CODE=$(git rev-list --count HEAD)
+          else
+            VERSION_CODE=$(sh scripts/version-code.sh "$GITHUB_REF_NAME")
+          fi
           echo "versionName=$VERSION_NAME versionCode=$VERSION_CODE"
           chmod +x gradlew
           ./gradlew :app:assembleRelease --no-daemon \

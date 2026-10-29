@@ -265,10 +265,18 @@ func (f backupFilter) write(w io.Writer) (int, error) {
 			// rewritten): keep the archive usable and move on.
 			return nil
 		}
-		_, copyErr := io.Copy(tw, io.LimitReader(src, info.Size()))
+		copied, copyErr := io.Copy(tw, io.LimitReader(src, info.Size()))
 		_ = src.Close()
 		if copyErr != nil {
 			return copyErr
+		}
+		// A session file can shrink between walk and copy (pig rewrites it).
+		// The tar header already announced the old size; padding keeps the
+		// archive valid instead of failing the whole backup at Close().
+		if copied < info.Size() {
+			if _, err := io.CopyN(tw, zeroReader{}, info.Size()-copied); err != nil {
+				return err
+			}
 		}
 		written++
 		return nil
@@ -283,6 +291,17 @@ func (f backupFilter) write(w io.Writer) (int, error) {
 		return written, err
 	}
 	return written, gz.Close()
+}
+
+// zeroReader pads the shortfall of a file that shrank after its tar header
+// was written.
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 0
+	}
+	return len(p), nil
 }
 
 // chunkWriter turns the tar stream into `relay_backup_chunk` frames and hashes
@@ -396,6 +415,10 @@ func (s *session) streamBackup(id any, includeSessions, includeUI bool, cancel *
 		})
 		return
 	}
+	has := func(rel string) bool {
+		_, err := os.Stat(filepath.Join(filter.home, rel))
+		return err == nil
+	}
 	_ = s.send(frame{
 		"type":    "relay_backup_done",
 		"id":      id,
@@ -403,6 +426,14 @@ func (s *session) streamBackup(id any, includeSessions, includeUI bool, cancel *
 		"bytes":   w.total,
 		"entries": written,
 		"sha256":  w.checksum(),
+		// Let the app say what the archive actually contains instead of
+		// assuming every backup has models/providers.
+		"includes": frame{
+			"models":    has(".pig/agent/models.json"),
+			"providers": has(".pig/agent/custom-endpoints.json"),
+			"settings":  has(".pig/agent/settings.json"),
+			"auth":      has(".pig/agent/auth.json"),
+		},
 	})
 }
 
@@ -727,6 +758,30 @@ func extractArchive(path, home string) (int, error) {
 	return extractArchiveCancellable(path, home, nil)
 }
 
+// ensures the nearest existing ancestor of path resolves inside rootReal.
+func ensureRealParent(path, rootReal string) error {
+	dir := filepath.Dir(path)
+	for {
+		if _, err := os.Lstat(dir); err == nil {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(rootReal, real)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("archive path escapes through a symlink: %s", path)
+	}
+	return nil
+}
+
 func extractArchiveCancellable(path, home string, cancelled func() bool) (int, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -740,6 +795,10 @@ func extractArchiveCancellable(path, home string, cancelled func() bool) (int, e
 	defer gz.Close()
 	tr := tar.NewReader(gz)
 	root := filepath.Clean(home)
+	rootReal, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		rootReal = root
+	}
 	entries := 0
 	var extracted int64
 	for {
@@ -759,6 +818,11 @@ func extractArchiveCancellable(path, home string, cancelled func() bool) (int, e
 		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
+			// A pre-existing symlink under ~/.pig must not redirect extraction
+			// outside the home tree (the textual prefix check cannot see it).
+			if err := ensureRealParent(filepath.Join(name, "x"), rootReal); err != nil {
+				return entries, err
+			}
 			if err := os.MkdirAll(name, 0o700); err != nil {
 				return entries, err
 			}
@@ -775,8 +839,14 @@ func extractArchiveCancellable(path, home string, cancelled func() bool) (int, e
 				return entries, fmt.Errorf("archive expands past %d bytes", int64(backupMaxExtracted))
 			}
 			extracted += hdr.Size
+			if err := ensureRealParent(name, rootReal); err != nil {
+				return entries, err
+			}
 			if err := os.MkdirAll(filepath.Dir(name), 0o700); err != nil {
 				return entries, err
+			}
+			if info, err := os.Lstat(name); err == nil && info.Mode()&os.ModeSymlink != 0 {
+				return entries, fmt.Errorf("refusing to write through symlink %s", name)
 			}
 			out, err := os.OpenFile(name, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 			if err != nil {

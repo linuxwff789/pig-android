@@ -139,12 +139,18 @@ func (s *session) installEmbeddedPigkit(agentDir string) {
 			logf("pigkit/%s exists and was not written by the relay; leaving it alone", pkg)
 			continue
 		}
-		hash, err := syncPigkitPackage(dir, pkgs[pkg])
-		if err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			logf("embedded pigkit %s: %v", pkg, err)
 			continue
 		}
+		// Marker first: an interrupted sync must be retried on the next start,
+		// not mistaken for a hand-written package and skipped forever.
+		hash := pigkitHash(pkgs[pkg])
 		if err := os.WriteFile(marker, []byte(hash+"\n"), 0o644); err != nil {
+			logf("embedded pigkit %s: %v", pkg, err)
+			continue
+		}
+		if _, err := syncPigkitPackage(dir, pkgs[pkg]); err != nil {
 			logf("embedded pigkit %s: %v", pkg, err)
 			continue
 		}
@@ -166,15 +172,9 @@ func syncPigkitPackage(dir string, files map[string][]byte) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	existing, _ := os.ReadDir(dir)
-	for _, entry := range existing {
-		if entry.IsDir() || entry.Name() == embeddedPigkitHash {
-			continue
-		}
-		if _, ok := files[entry.Name()]; !ok {
-			_ = os.Remove(filepath.Join(dir, entry.Name()))
-		}
-	}
+	// Recursive: a stale subdirectory left by an older relay must not make
+	// `pig install` compile sources the relay no longer ships.
+	pruneTree(dir, files, embeddedPigkitHash)
 	names := make([]string, 0, len(files))
 	for name := range files {
 		names = append(names, name)

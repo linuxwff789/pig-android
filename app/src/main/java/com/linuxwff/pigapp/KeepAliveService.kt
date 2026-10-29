@@ -8,7 +8,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -21,6 +23,8 @@ import androidx.core.content.ContextCompat
  */
 class KeepAliveService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private val renewWakeLock = Runnable { applyWakeLock(prefsEnabled()) }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -59,7 +63,14 @@ class KeepAliveService : Service() {
             releaseWakeLock()
             return
         }
-        if (wakeLock?.isHeld == true) return
+        // Never hold the CPU indefinitely: a dead relay should not keep the
+        // device awake for the whole service lifetime. Renew while the service
+        // is alive, and let the OS reclaim it if the process is frozen.
+        handler.removeCallbacks(renewWakeLock)
+        if (wakeLock?.isHeld == true) {
+            runCatching { wakeLock?.release() }
+        }
+        wakeLock = null
         runCatching {
             val manager = getSystemService(PowerManager::class.java)
             wakeLock = manager.newWakeLock(
@@ -67,12 +78,14 @@ class KeepAliveService : Service() {
                 "Pig::RelayConnection",
             ).apply {
                 setReferenceCounted(false)
-                acquire()
+                acquire(WAKE_LOCK_MS)
             }
+            handler.postDelayed(renewWakeLock, WAKE_LOCK_MS - 60_000L)
         }
     }
 
     private fun releaseWakeLock() {
+        handler.removeCallbacks(renewWakeLock)
         runCatching {
             if (wakeLock?.isHeld == true) wakeLock?.release()
         }
@@ -127,6 +140,7 @@ class KeepAliveService : Service() {
         private const val ACTION_SET_WAKE_LOCK = "com.linuxwff.pigapp.SET_WAKE_LOCK"
         private const val EXTRA_ENABLED = "enabled"
         private const val PREF_WAKE_LOCK = "wakelock"
+        private const val WAKE_LOCK_MS = 30 * 60_000L
 
         @Volatile
         private var running = false

@@ -67,11 +67,15 @@ jobs:
       - name: "Plan extension: command policy"
         run: sh scripts/test-plan-policy.sh
 
+      - name: "Embedded extensions: Go syntax"
+        run: sh scripts/check-embedded-go.sh
+
       - name: "Relay: vet, test, cross-compile"
         run: |
           cd relay
           go vet ./...
           go test ./...
+          go test -race ./...
           CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build \
             -trimpath -ldflags="-s -w -X main.buildVersion=dev-${GITHUB_SHA::7}" \
             -o "$RUNNER_TEMP/pig-relay-android-arm64" .

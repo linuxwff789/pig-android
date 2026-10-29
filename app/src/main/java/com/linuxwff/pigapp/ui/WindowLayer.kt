@@ -220,10 +220,14 @@ private fun AppWindowView(window: AppWindow, vm: AppViewModel, screenWidth: Floa
     val position = vm.positionOf(window.id)
     val maxX = (screenWidth - window.widthDp - 8f).coerceAtLeast(0f)
     val maxY = (screenHeight - 120f).coerceAtLeast(0f)
+    // A narrower screen after rotation/fold must not leave the window (and its
+    // only drag handle) off-screen until the next drag clamps it.
+    val x = position.x.coerceIn(0f, maxX)
+    val y = position.y.coerceIn(0f, maxY)
 
     Surface(
         modifier = Modifier
-            .offset(x = position.x.dp, y = position.y.dp)
+            .offset(x = x.dp, y = y.dp)
             .width(window.widthDp.dp)
             .then(if (window.heightDp > 0) Modifier.height(window.heightDp.dp) else Modifier),
         shape = RoundedCornerShape(vm.ui.uiPack.theme.cornerRadius.dp),

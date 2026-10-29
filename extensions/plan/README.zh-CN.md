@@ -6,7 +6,7 @@ PiG 的只读规划模式。模型先做调查、写出编号计划，在你放�
 之后它按步骤推进并逐个打勾。
 
 本包是**可选**的。Android App 不依赖它：任何发出
-[计划组件契约](../../docs/plan-widget.zh-CN.md) 的扩展都会得到同样的原生卡片，
+[计划组件契约](https://github.com/linuxwff789/pig-android/blob/main/docs/plan-widget.zh-CN.md) 的扩展都会得到同样的原生卡片，
 因此你可以用这个、用 Pi `plan-mode` 的移植版，或用你自己的。
 
 ## 安装
@@ -71,7 +71,7 @@ pig install ./pig-android/extensions/plan
 
 ## 显示
 
-widget 是遵循 [docs/plan-widget.zh-CN.md](../../docs/plan-widget.zh-CN.md) 的一行 JSON：
+widget 是遵循 [docs/plan-widget.zh-CN.md](https://github.com/linuxwff789/pig-android/blob/main/docs/plan-widget.zh-CN.md) 的一行 JSON：
 
 ```json
 {"plan":{"steps":[{"n":1,"text":"Read agents.go","done":true}]}}

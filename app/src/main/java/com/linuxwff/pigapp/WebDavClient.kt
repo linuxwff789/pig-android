@@ -38,6 +38,11 @@ data class WebDavConfig(
      * default; the dialog spells out what it means.
      */
     val insecureTls: Boolean = false,
+    /**
+     * Allow an `http://` endpoint. Off by default: Basic auth and the archive
+     * would travel in clear text. A local NAS user can opt in explicitly.
+     */
+    val allowHttp: Boolean = false,
 ) {
     val ready: Boolean get() = url.isNotBlank()
 
@@ -59,9 +64,12 @@ data class WebDavConfig(
         private const val EVERY_KEY = "webdav.everyHours"
         private const val DAILY_KEY = "webdav.dailyMinutes"
         private const val INSECURE_KEY = "webdav.insecureTls"
+        private const val ALLOW_HTTP_KEY = "webdav.allowHttp"
 
-        fun from(prefs: SharedPreferences): WebDavConfig = WebDavConfig(
-            url = prefs.getString(URL_KEY, "").orEmpty(),
+        fun from(prefs: SharedPreferences): WebDavConfig {
+            val url = prefs.getString(URL_KEY, "").orEmpty()
+            return WebDavConfig(
+            url = url,
             user = prefs.getString(USER_KEY, "").orEmpty(),
             password = prefs.getString(PASS_KEY, "").orEmpty(),
             dir = prefs.getString(DIR_KEY, DEFAULT_DIR).orEmpty().ifBlank { DEFAULT_DIR },
@@ -71,7 +79,12 @@ data class WebDavConfig(
             everyHours = if (prefs.getInt(EVERY_KEY, 0) <= 0) 0 else 24,
             dailyMinutes = prefs.getInt(DAILY_KEY, DEFAULT_DAILY_MINUTES).coerceIn(0, 24 * 60 - 1),
             insecureTls = prefs.getBoolean(INSECURE_KEY, false),
-        )
+            // Existing http:// setups predate this toggle; grandfather them so
+            // an upgrade does not silently stop their nightly backup. A config
+            // created from now on stores the explicit choice on save.
+            allowHttp = prefs.getBoolean(ALLOW_HTTP_KEY, url.startsWith("http://", true)),
+            )
+        }
 
         fun save(prefs: SharedPreferences, config: WebDavConfig) {
             prefs.edit()
@@ -83,6 +96,7 @@ data class WebDavConfig(
                 .putInt(EVERY_KEY, if (config.everyHours <= 0) 0 else 24)
                 .putInt(DAILY_KEY, config.dailyMinutes.coerceIn(0, 24 * 60 - 1))
                 .putBoolean(INSECURE_KEY, config.insecureTls)
+                .putBoolean(ALLOW_HTTP_KEY, config.allowHttp)
                 .apply()
         }
     }
@@ -238,6 +252,9 @@ object WebDavClient {
         var redirects = 0
         if (!target.startsWith("http://") && !target.startsWith("https://")) {
             error("服务器地址要以 http:// 或 https:// 开头：$target")
+        }
+        if (target.startsWith("http://", true) && !config.allowHttp) {
+            error("明文 HTTP 未开启：在 WebDAV 设置里勾选「允许明文连接」，或改用 https://")
         }
         while (true) {
             val declared = contentType

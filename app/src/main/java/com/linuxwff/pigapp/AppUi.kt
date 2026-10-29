@@ -2,6 +2,14 @@ package com.linuxwff.pigapp
 
 import org.json.JSONObject
 
+// A pack file is capped at 512 KB, but a select with 100k options or a table
+// with 100k rows still fits and would be composed synchronously on the main
+// thread. Parsing is the cheapest place to stop that.
+private const val MAX_OPTIONS = 50
+private const val MAX_TABLE_ROWS = 200
+private const val MAX_TABLE_HEADERS = 20
+private const val MAX_CELL_CHARS = 512
+
 data class WindowPos(val x: Float, val y: Float)
 
 data class UiOption(val label: String, val value: String)
@@ -172,13 +180,13 @@ object AppUiParser {
         val checked = valueRaw is Boolean && valueRaw
         val options = mutableListOf<UiOption>()
         json.optJSONArray("options")?.let { array ->
-            for (index in 0 until array.length()) {
+            for (index in 0 until minOf(array.length(), MAX_OPTIONS)) {
                 val item = array.optJSONObject(index)
                 if (item != null) {
-                    val value = item.optString("value", item.optString("label"))
-                    options.add(UiOption(item.optString("label", value), value))
+                    val value = item.optString("value", item.optString("label")).take(256)
+                    options.add(UiOption(item.optString("label", value).take(256), value))
                 } else {
-                    val text = array.optString(index)
+                    val text = array.optString(index).take(256)
                     if (text.isNotBlank()) options.add(UiOption(text, text))
                 }
             }
@@ -193,13 +201,16 @@ object AppUiParser {
 
         val headers = mutableListOf<String>()
         json.optJSONArray("headers")?.let { array ->
-            for (index in 0 until array.length()) headers.add(array.optString(index))
+            for (index in 0 until minOf(array.length(), MAX_TABLE_HEADERS)) {
+                headers.add(array.optString(index).take(MAX_CELL_CHARS))
+            }
         }
         val rows = mutableListOf<List<String>>()
         json.optJSONArray("rows")?.let { array ->
-            for (index in 0 until array.length()) {
+            for (index in 0 until minOf(array.length(), MAX_TABLE_ROWS)) {
                 val row = array.optJSONArray(index) ?: continue
-                rows.add((0 until row.length()).map { row.optString(it) })
+                val cells = minOf(row.length(), MAX_TABLE_HEADERS)
+                rows.add((0 until cells).map { row.optString(it).take(MAX_CELL_CHARS) })
             }
         }
 

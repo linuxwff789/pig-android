@@ -7,7 +7,7 @@ plan, and cannot change anything until you let it. Then it works through the
 steps and ticks them off.
 
 This package is **optional**. The Android app does not depend on it: any
-extension that emits the [plan widget contract](../../docs/plan-widget.md) gets
+extension that emits the [plan widget contract](https://github.com/linuxwff789/pig-android/blob/main/docs/plan-widget.md) gets
 the same native card, so you can use this one, a port of Pi's `plan-mode`, or
 your own.
 
@@ -91,7 +91,7 @@ when a client attaches, and the app keeps a per-session snapshot as a second
 fallback.
 
 The widget is one JSON line following
-[docs/plan-widget.md](../../docs/plan-widget.md):
+[docs/plan-widget.md](https://github.com/linuxwff789/pig-android/blob/main/docs/plan-widget.md):
 
 ```json
 {"plan":{"steps":[{"n":1,"text":"Read agents.go","done":true}]}}

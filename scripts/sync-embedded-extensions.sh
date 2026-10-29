@@ -31,6 +31,7 @@ for name in commands.go events.go extension.go policy.go steps.go go.mod; do
     cp "$src/$name" "$dst/$name.txt"
 done
 [ -f "$src/README.md" ] && cp "$src/README.md" "$dst/README.md"
+[ -f "$src/README.zh-CN.md" ] && cp "$src/README.zh-CN.md" "$dst/README.zh-CN.md"
 echo "embedded: extensions/plan -> relay/embedded/plan"
 
 src="$root/extensions/pigkit"

@@ -457,7 +457,10 @@ fun PigApp(vm: AppViewModel) {
                                 draft = "/${command.name} "
                             }
                         }
-                        if (ui.pendingMessages > 0 && components.showPendingBanner) {
+                        // A pack may style these, but it must not be able to
+                        // hide the warning that another process owns the
+                        // session or that messages are still queued.
+                        if (ui.pendingMessages > 0) {
                             PendingBanner(
                                 count = ui.pendingMessages,
                                 queued = ui.queuedMessages,
@@ -511,7 +514,7 @@ fun PigApp(vm: AppViewModel) {
                     ) {
                         StatusBar(ui.status, ui.extensionStatuses)
                     }
-                    if (ui.readOnly && components.showReadOnlyBanner) {
+                    if (ui.readOnly) {
                         ReadOnlyBanner()
                     }
                     // listState/autoScroll belong to one conversation; a
@@ -5845,6 +5848,7 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     var hours by remember { mutableStateOf(initial.everyHours) }
     var dailyMinutes by remember { mutableStateOf(initial.dailyMinutes) }
     var insecureTls by remember { mutableStateOf(initial.insecureTls) }
+    var allowHttp by remember { mutableStateOf(initial.allowHttp) }
     var showArchives by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
     val ui = vm.ui
@@ -5857,6 +5861,7 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
         everyHours = hours,
         dailyMinutes = dailyMinutes,
         insecureTls = insecureTls,
+        allowHttp = allowHttp,
     )
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = scheme.primary.copy(alpha = 0.7f),
@@ -6004,14 +6009,23 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                     Switch(checked = insecureTls, onCheckedChange = { insecureTls = it })
                 }
                 if (url.startsWith("http://")) {
-                    Text(
-                        packText(
-                            "webdav.cleartext",
-                            "明文 HTTP：账号密码和备份都会裸传，能上 https 就上 https",
-                        ),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = scheme.error,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                packText("webdav.allowHttp", "允许明文连接"),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                packText(
+                                    "webdav.allowHttpHint",
+                                    "账号密码和备份会裸传；只在可信局域网里给 http:// 服务器用",
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = scheme.error,
+                            )
+                        }
+                        Switch(checked = allowHttp, onCheckedChange = { allowHttp = it })
+                    }
                 }
                 Text(
                     packText(
