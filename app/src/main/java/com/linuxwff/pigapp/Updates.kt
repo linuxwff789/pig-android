@@ -57,9 +57,18 @@ object UpdateChecker {
             return@withContext Result.success(hit)
         }
         runCatching {
-            val info = fromAtom(currentVersion)
-                ?: fromRedirect(currentVersion)
-                ?: fromApi(currentVersion)
+            // The atom feed lists pre-releases, so it is the only source that
+            // can see a preview. The redirect points at the newest *stable*
+            // release and may therefore look up to date while a preview is
+            // out; it is only accepted when it really is newer, and the API
+            // list (previews included) is tried before falling back to it.
+            val atom = fromAtom(currentVersion)
+            val redirect = if (atom == null) fromRedirect(currentVersion) else null
+            val info = atom
+                ?: redirect?.takeIf { it.newer }
+                ?: runCatching { fromApi(currentVersion) }.getOrNull()
+                ?: redirect
+                ?: throw IOException("cannot resolve the newest release")
             cacheKey = currentVersion
             cachedAt = System.currentTimeMillis()
             cached = info
