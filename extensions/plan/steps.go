@@ -7,6 +7,7 @@
 package plan
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -108,4 +109,18 @@ func progress(steps []Step) (done, total int) {
 		}
 	}
 	return done, total
+}
+
+// statusLine is the chip text for the current mode. A finished plan keeps its
+// card (so the work is still visible) but must not leave "16/16" in the status
+// bar forever after plan mode/execution ended.
+func statusLine(enabled, executing bool, steps []Step) string {
+	if enabled {
+		return "⏸ plan"
+	}
+	if executing {
+		done, total := progress(steps)
+		return fmt.Sprintf("📋 %d/%d", done, total)
+	}
+	return ""
 }

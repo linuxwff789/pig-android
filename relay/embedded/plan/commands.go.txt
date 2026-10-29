@@ -60,8 +60,11 @@ func setEnabled(ctx sdk.Context, enabled bool) {
 		st.ToolsBefore = nil // recomputed from the live tool set below
 	}
 	st.Enabled = enabled
+	// Turning plan mode off also stops an execution: otherwise Executing stays
+	// true, the execution prompt keeps being injected and the progress chip
+	// never clears.
+	st.Executing = false
 	if enabled {
-		st.Executing = false
 		st.Steps = nil // a new planning round starts from a clean sheet
 	}
 	mu.Unlock()

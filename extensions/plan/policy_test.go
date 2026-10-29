@@ -70,3 +70,16 @@ func TestExtractNeedsHeader(t *testing.T) {
 		t.Errorf("expected nil without a Plan: header, got %+v", steps)
 	}
 }
+
+func TestStatusLineClearsAfterExecution(t *testing.T) {
+	steps := []Step{{N: 1, Text: "a", Done: true}, {N: 2, Text: "b"}}
+	if got := statusLine(true, false, steps); got != "⏸ plan" {
+		t.Errorf("planning: %q", got)
+	}
+	if got := statusLine(false, true, steps); got != "📋 1/2" {
+		t.Errorf("executing: %q", got)
+	}
+	if got := statusLine(false, false, steps); got != "" {
+		t.Errorf("finished plan left a status chip: %q", got)
+	}
+}

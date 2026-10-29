@@ -214,10 +214,7 @@ func render(ctx sdk.Context) {
 	if raw, err := json.Marshal(payload); err == nil {
 		_ = ctx.SetWidget(widgetKey, []string{string(raw)}, sdk.WidgetOptions{"placement": "aboveEditor"})
 	}
-	done, total := progress(current.Steps)
-	if current.Enabled {
-		ctx.SetStatus(statusKey, "⏸ plan")
-		return
-	}
-	ctx.SetStatus(statusKey, fmt.Sprintf("📋 %d/%d", done, total))
+	// enabled -> planning, executing -> progress, neither -> clear. The card
+	// stays after execution; the status chip must not.
+	ctx.SetStatus(statusKey, statusLine(current.Enabled, current.Executing, current.Steps))
 }
