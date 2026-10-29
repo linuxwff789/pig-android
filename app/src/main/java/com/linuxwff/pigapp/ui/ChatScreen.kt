@@ -266,6 +266,9 @@ fun PigApp(vm: AppViewModel) {
     LaunchedEffect(ui.toast) {
         val toast = ui.toast
         if (toast != null) {
+            // Toast text is not visible after the fact; keep it in the log so
+            // "a message flashed by" can still be diagnosed.
+            AppLog.event("ui", "toast: $toast")
             snackbar.showSnackbar(toast)
             vm.consumeToast()
         }
