@@ -50,8 +50,13 @@ The app is designed to survive screen locks, Doze and process death:
   cards). Switching to a file modified in the last minute asks for confirmation,
   because another pig process may be writing it. The search box filters by name,
   preview, id or cwd; each row's menu renames (RPC `set_session_name` for the
-  live session, a relay-appended `session_info` entry otherwise) or deletes the
-  session file. The active session cannot be deleted.
+  live session, a relay-appended `session_info` entry otherwise), **archives** or
+  deletes the session file. The active session can be neither archived nor
+  deleted.
+- **Archive**: archiving *moves* the file to `~/.pig/agent/sessions-archive/`
+  (same per-project layout), so the drawer stops listing it while a backup still
+  contains it. Settings → 会话归档 lists them with 恢复 (moves the file back) and
+  永久删除 (asks first).
 - Tapping 新会话 opens the empty conversation and a 正在新建对话 banner right
   away; pig builds the session in the background and whatever you type meanwhile
   is queued in the app and sent as soon as it reports the new session. No spare

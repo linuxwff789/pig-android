@@ -203,6 +203,7 @@ fun PigApp(vm: AppViewModel) {
     var showPackManager by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
     var showWebDav by remember { mutableStateOf(false) }
+    var showArchive by remember { mutableStateOf(false) }
     // System photo picker: GetMultipleContents needs no storage permission.
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents(),
@@ -560,6 +561,10 @@ fun PigApp(vm: AppViewModel) {
                     showSettings = false
                     showWebDav = true
                 },
+                onOpenArchive = {
+                    showSettings = false
+                    showArchive = true
+                },
             ) { showSettings = false }
         }
         if (ui.providerManagerOpen) {
@@ -637,6 +642,9 @@ fun PigApp(vm: AppViewModel) {
     ModelPickerDialog(vm)
     if (showWebDav) {
         WebDavDialog(vm) { showWebDav = false }
+    }
+    if (showArchive) {
+        ArchivedSessionsDialog(vm) { showArchive = false }
     }
     if (showQueue) {
         QueueDialog(
@@ -1243,6 +1251,7 @@ private fun SettingsDialog(
     onOpenPacks: () -> Unit,
     onOpenStats: () -> Unit,
     onOpenWebDav: () -> Unit,
+    onOpenArchive: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -1908,6 +1917,25 @@ private fun SettingsDialog(
                     }
                     TextButton(onClick = onOpenStats) {
                         Text(packText("settings.view", "查看"))
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            packText("settings.archive", "会话归档"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            packText(
+                                "settings.archiveHint",
+                                "归档的会话从列表里移走但不删除，可随时恢复或永久删除",
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = onOpenArchive) {
+                        Text(packText("settings.manage", "管理"))
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3262,6 +3290,7 @@ private fun DrawerContent(
                         renameTarget = session
                         renameText = session.name
                     },
+                    onArchive = { vm.archiveSession(session) },
                     onDelete = { deleteTarget = session },
                 )
             }
@@ -3794,6 +3823,7 @@ private fun SessionRow(
     showTime: Boolean = true,
     onClick: () -> Unit,
     onRename: () -> Unit,
+    onArchive: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val title = if (session.unsaved) {
@@ -3881,6 +3911,17 @@ private fun SessionRow(
                     onClick = {
                         menuOpen = false
                         onRename()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(packText("session.archive", "归档")) },
+                    enabled = !current,
+                    leadingIcon = {
+                        Icon(packIcon("folder", "folder"), null, modifier = Modifier.size(16.dp))
+                    },
+                    onClick = {
+                        menuOpen = false
+                        onArchive()
                     },
                 )
                 DropdownMenuItem(
@@ -5620,6 +5661,119 @@ private fun QueueDialog(
             }
         },
     )
+}
+
+/**
+ * Archived sessions: moved out of the drawer, still on disk. Restore puts the
+ * file back; purge deletes it for good (that one asks first).
+ */
+@Composable
+private fun ArchivedSessionsDialog(vm: AppViewModel, onDismiss: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val ui = vm.ui
+    var pendingPurge by remember { mutableStateOf<SessionInfo?>(null) }
+    LaunchedEffect(Unit) { vm.loadArchivedSessions() }
+
+    PackAlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(22.dp),
+        containerColor = scheme.surface,
+        title = { Text(packText("archive.title", "会话归档")) },
+        text = {
+            Column(
+                Modifier
+                    .heightIn(max = 430.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (ui.archivedSessions.isEmpty()) {
+                            packText("archive.empty", "还没有归档的会话")
+                        } else {
+                            packText("archive.count", "共 {n} 个归档")
+                                .replace("{n}", ui.archivedSessions.size.toString())
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { vm.loadArchivedSessions() }) {
+                        Text(packText("archive.refresh", "刷新"))
+                    }
+                }
+                ui.archivedSessions.forEach { session ->
+                    HorizontalDivider(color = scheme.outline.copy(alpha = 0.35f))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                session.name.ifBlank {
+                                    session.preview.ifBlank {
+                                        packText("session.untitled", "未命名会话")
+                                    }
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                buildList {
+                                    if (session.id.isNotBlank()) add(session.id.take(8))
+                                    add(DateUtils.getRelativeTimeSpanString(session.updated).toString())
+                                    if (session.size > 0) add("${session.size / 1024}K")
+                                }.joinToString(" · "),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = scheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(onClick = { vm.restoreArchived(session) }) {
+                            Text(packText("archive.restore", "恢复"))
+                        }
+                        TextButton(onClick = { pendingPurge = session }) {
+                            Text(packText("archive.purge", "永久删除"), color = scheme.error)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(packText("dialog.done", "完成")) }
+        },
+    )
+
+    pendingPurge?.let { session ->
+        PackAlertDialog(
+            onDismissRequest = { pendingPurge = null },
+            shape = RoundedCornerShape(22.dp),
+            containerColor = scheme.surface,
+            title = { Text(packText("archive.purgeTitle", "永久删除这份归档？")) },
+            text = {
+                Text(
+                    packText("archive.purgeHint", "{name}\n\n会话文件会被真正删除，不能恢复。")
+                        .replace(
+                            "{name}",
+                            session.name.ifBlank {
+                                session.preview.ifBlank { session.id.take(8) }
+                            },
+                        ),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.purgeArchived(session)
+                        pendingPurge = null
+                    },
+                ) { Text(packText("archive.purgeConfirm", "永久删除"), color = scheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingPurge = null }) {
+                    Text(packText("dialog.cancel", "取消"))
+                }
+            },
+        )
+    }
 }
 
 /** Periodic WebDAV backup choices, in hours; 0 turns the schedule off. */

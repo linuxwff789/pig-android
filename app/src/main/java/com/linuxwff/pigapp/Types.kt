@@ -527,6 +527,8 @@ data class AppUiState(
 
     /** Connected relay announces `backup` (older releases would answer `unknown relay frame`). */
     val backupRemote: Boolean = false,
+    /** Relay knows the archive frames (1.1.67+). */
+    val archiveRemote: Boolean = false,
     /** Connected relay announces `providers` (native provider manager). */
     val providerRemote: Boolean = false,
     /** At least one `get_available_models` answer arrived for this connection. */
@@ -578,6 +580,9 @@ data class AppUiState(
     /** Result line shown under the WebDAV fields. */
     val webdavMessage: String = "",
     val webdavMessageError: Boolean = false,
+    /** Sessions moved to the archive, newest first. */
+    val archivedSessions: List<SessionInfo> = emptyList(),
+
     /** Archives found on the server, newest first. */
     val webdavBackups: List<WebDavBackup> = emptyList(),
     /** A server is configured, so "sync now" can be offered outside the dialog. */
