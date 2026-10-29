@@ -10,7 +10,7 @@ Install Termux from F-Droid (the Play Store build is obsolete), open it once so
 `pkg` initializes, then:
 
 ``bash
-curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh | sh
+curl -fsSL https://raw.githubusercontent.com/linuxwff789/pig-android/main/scripts/install-termux.sh | sh
 ``
 
 Nothing has to be installed first: Termux's bootstrap already ships `curl` (and
@@ -115,7 +115,7 @@ line before appending, and is safe to repeat. The same thing ships as a script
 in every release if you prefer a readable version:
 
 ``bash
-curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/enable-external-apps.sh | sh
+curl -fsSL https://raw.githubusercontent.com/linuxwff789/pig-android/main/scripts/enable-external-apps.sh | sh
 ``
 
 After that the app's own install button works, with progress and the final exit
@@ -127,7 +127,8 @@ Termux has been opened once, 一键安装 works.
 ``bash
 curl -fsSL https://pi-in-go.dev/install.sh | sh
 curl -fsSL -o "$PREFIX/bin/pig-relay" \
-  https://github.com/linuxwff789/pig-android/releases/latest/download/pig-relay-android-arm64
+  https://github.com/linuxwff789/pig-android/releases/download/v<version>/pig-relay-android-arm64
+  (preview builds included; the installer resolves the newest tag by itself)
 chmod 755 "$PREFIX/bin/pig-relay"
 mkdir -p ~/.pig/android-ui/{theme,layout,windows}
 
@@ -168,7 +169,7 @@ alone — the installer only upgrades, never downgrades.
 | `curl: not found` | `pkg install -y curl`. |
 | `curl: (35) TLS connect error: error:00000000:lib(0)::reason(0)` | A proxy or middlebox killed the handshake. The app tries GitHub and then jsDelivr; retry, or fetch the script yourself: `curl -fsSL --tls-max 1.2 https://cdn.jsdelivr.net/gh/linuxwff789/pig-android@main/scripts/install-termux.sh -o "$PREFIX/tmp/i.sh"`. For the relay binary set `PIG_RELAY_MIRRORS` to a URL prefix (e.g. `https://ghfast.top/`) before running the script. |
 | `github.com` unreachable but the API works | The installer falls back to `api.github.com/.../releases/assets/<id>` (redirects to `objects.githubusercontent.com`, a different host). To fetch the script itself without `github.com`: `curl -fsSL -H 'Accept: application/vnd.github.raw' "https://api.github.com/repos/linuxwff789/pig-android/contents/scripts/install-termux.sh?ref=main" -o "$PREFIX/tmp/i.sh"`. |
-| `403` / `429` from GitHub, or `GitHub 限流` in the app | The update check reads `releases.atom` and the `releases/latest` redirect, not `api.github.com` (unauthenticated: 60 requests/hour per IP, shared on mobile networks). Release assets are ordinary downloads; if one still answers 429, retry later, or run the installer with `PIG_RELAY_MIRRORS=https://ghfast.top/`. When `github.com` is unreachable the installer falls back to the API, where `PIG_GITHUB_TOKEN=<pat>` (no scopes needed for public repos) raises the quota to 5000/hour. |
+| `403` / `429` from GitHub, or `GitHub 限流` in the app | The update check reads `releases.atom` (previews included) and only falls back to `api.github.com` (unauthenticated: 60 requests/hour per IP, shared on mobile networks). Release assets are ordinary downloads; if one still answers 429, retry later, or run the installer with `PIG_RELAY_MIRRORS=https://ghfast.top/`. When `github.com` is unreachable the installer falls back to the API, where `PIG_GITHUB_TOKEN=<pat>` (no scopes needed for public repos) raises the quota to 5000/hour. |
 | 刷新模型列表报 `dial tcp: lookup … on [::1]:53: … connection refused` | Android has no `/etc/resolv.conf` (Termux keeps one under `$PREFIX/etc`); pig resolves through libc but the CGO-free relay did not. 1.1.52+ reads the Termux file and falls back to public resolvers. Restart the relay after upgrading; `PIG_DNS="1.1.1.1 8.8.8.8"` overrides the list. |
 | Stale relay / token after reinstall | `pkill -x pig-relay`, then press retry. The relay exits on a bad token if it never had a client. |
 | App shows no model/windows | Check `ps -A | grep pig`; restart the app. |

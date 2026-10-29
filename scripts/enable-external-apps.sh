@@ -6,7 +6,7 @@
 # This is the short one-liner the Pig app asks the user to paste on a fresh
 # Termux; after it the app's own install button works (and shows progress).
 #
-#   curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/enable-external-apps.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/linuxwff789/pig-android/main/scripts/enable-external-apps.sh | sh
 #
 # Idempotent: it only edits the line, keeps a one-time backup, and reloads the
 # settings so the switch takes effect without restarting Termux.

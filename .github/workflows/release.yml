@@ -109,6 +109,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          # Every tag build is a preview: the project ships often, and the
+          # "latest" slot stays on the last release the user deemed stable.
+          prerelease: true
           body_path: ${{ runner.temp }}/release-body.md
           files: |
             app/build/outputs/apk/release/*.apk

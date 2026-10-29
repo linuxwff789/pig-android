@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/linuxwff789/pig-android/releases/latest"><img src="https://img.shields.io/github/v/release/linuxwff789/pig-android?label=release&color=A78BFA" alt="最新发布"></a>
+  <a href="https://github.com/linuxwff789/pig-android/releases"><img src="https://img.shields.io/github/v/release/linuxwff789/pig-android?include_prereleases&label=preview&color=A78BFA" alt="最新发布"></a>
   <a href="https://github.com/linuxwff789/pig-android/actions/workflows/android.yml"><img src="https://github.com/linuxwff789/pig-android/actions/workflows/android.yml/badge.svg" alt="构建状态"></a>
   <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" alt="Android 8.0+">
   <img src="https://img.shields.io/badge/UI-Kotlin%20%C2%B7%20Compose-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 与 Compose">
@@ -64,7 +64,7 @@ APK 只是前端。先从 [F-Droid 安装 Termux](https://f-droid.org/packages/c
 
 ```bash
 pkg install -y curl
-curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh | sh
+curl -fsSL https://raw.githubusercontent.com/linuxwff789/pig-android/main/scripts/install-termux.sh | sh
 ```
 
 脚本会启用 `allow-external-apps`（保留备份）、用官方安装器装好 `pig`、从最新发布
