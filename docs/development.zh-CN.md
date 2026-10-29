@@ -80,7 +80,16 @@ R8 与资源压缩已开启，因此 APK 约为 1.5 MB，而不是（debug 的�
 
 debug 工作流是 `.github/workflows/android.yml`：JDK 17、Gradle wrapper 8.9、`assembleDebug`、产物上传。debug 构建使用仓库中提交的 `keystore/ci-debug.p12`（别名 `androiddebugkey`，密码 `android`），因此后续 CI 构建可以互相覆盖安装。
 
-发布构建使用 `.github/workflows/release.yml`，由 `v*` tag 或手动触发。密钥库来自 `RELEASE_KEYSTORE_BASE64`、`RELEASE_STORE_PASSWORD`、`RELEASE_KEY_ALIAS` 和 `RELEASE_KEY_PASSWORD` 这几个 Actions secret；版本名是去掉 `v` 的 tag，版本号是提交数。本地备份位于 `~/.pig-android-release/pig-release.p12`（不在仓库中）。打 tag 还会创建一个附带 APK（以及 `pig-relay-android-arm64`、`install-termux.sh`）的 GitHub Release。每个版本可以带自己的说明：`release-notes/<tag>.md` 会排在自动生成的「What's Changed」之前，见 [release-notes/README.md](../release-notes/README.md)。release 密钥与 debug 密钥不同，因此要在已安装 debug 构建的设备上安装 release APK，需要先卸载 debug App 一次。
+发布构建使用 `.github/workflows/release.yml`，由 `v*` tag 或手动触发。密钥库来自 `RELEASE_KEYSTORE_BASE64`、`RELEASE_STORE_PASSWORD`、`RELEASE_KEY_ALIAS` 和 `RELEASE_KEY_PASSWORD` 这几个 Actions secret；版本名是去掉 `v` 的 tag，版本号是提交数。本地备份位于 `~/.pig-android-release/pig-release.p12`（不在仓库中）。打 tag 还会创建一个附带 APK（以及 `pig-relay-android-arm64`、`install-termux.sh`）的 GitHub Release。**默认发的是 Pre-release（预览版）**，只有明确要求时才把某个构建提升为正式版。
+
+版本号是四段：`X.Y.Z.W`
+
+- `X.Y`：产品线（长期不变）
+- `Z`：一批改动的「轮次」，下一轮开始时才 +1
+- `W`：这一轮里的构建序号：`1.1.68.1`、`1.1.68.2`……
+
+所以预览版不会占用「正式版号」。把某个构建提升为正式版时版本号不变（在 GitHub 上取消勾选 *Pre-release*，或运行
+`PIG_GITHUB_TOKEN=... scripts/promote-release.sh v1.1.68.1`），`latest` 随即指向它；之后的预览继续在新一轮里累加 `W`。所有比较逻辑（App 更新检查、relay 与 App 版本对照、`install-termux.sh`）都把缺的段按 0 处理，旧的三段版本号照样能正确排序。每个版本可以带自己的说明：`release-notes/<tag>.md` 会排在自动生成的「What's Changed」之前，见 [release-notes/README.md](../release-notes/README.md)。release 密钥与 debug 密钥不同，因此要在已安装 debug 构建的设备上安装 release APK，需要先卸载 debug App 一次。
 
 ## 运行
 
