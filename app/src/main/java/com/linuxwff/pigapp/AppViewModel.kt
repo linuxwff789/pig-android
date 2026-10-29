@@ -115,6 +115,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var newSessionFromFile = ""
     private var newSessionFromId = ""
     private var newSessionAt = 0L
+    /** Model the user picked while the new session was still starting. pig only
+     *  replaces its runtime when `new_session` reaches it, so a `set_model` sent
+     *  before that lands on the session being replaced and is lost. */
+    private var modelPickedWhileStarting = ""
     /** Prompts typed while the new session was still starting, in send order. */
     private val pendingNewSessionPrompts = mutableListOf<JSONObject>()
     /** Composer text per session, so switching away never loses a draft. */
@@ -2455,6 +2459,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectModel(model: ModelInfo) {
         AppLog.event("model", "switch to ${model.provider}/${model.id}")
+        // A new session is being created: remember the pick so it is re-sent
+        // once the fresh runtime is up instead of dying with the old one.
+        if (awaitingNewSession) modelPickedWhileStarting = "${model.provider}/${model.id}"
         modelSwitchAccepted = false
         // Restore the level this model was last used with. The set_model reply
         // sends it after the switch is confirmed, so it cannot be applied to
@@ -3157,10 +3164,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             cacheReadTokens = 0,
             cacheInputTokens = 0,
         )
+        modelPickedWhileStarting = ""
         client.send(JSONObject().put("type", "new_session"))
-        // New sessions always start on the model pinned in the picker. This is
-        // sent behind new_session, so pig/relay applies it to the fresh session.
-        applyDefaultModel()
+        // New sessions always start on the model pinned in the picker, but
+        // `new_session` only takes effect when pig answers it (it swaps the
+        // runtime in place). Sending set_model here applied it to the session
+        // being replaced, and the fresh runtime came up on the settings default
+        // - which is what applyDefaultModel() now waits for (see handleResponse).
     }
 
     /** Composer key for the session that is being created but has no file yet. */
@@ -4600,6 +4610,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (taggedPath.isNotBlank() && responseCommand in setOf("get_messages", "get_session_stats")) {
             val expected = desiredSessionPath ?: ui.sessionFile
             if (expected.isNotBlank() && taggedPath != expected) return
+            // A new session has no file yet, so a reply tagged with the session
+            // the user just left is the runtime being replaced answering late.
+            if (expected.isBlank() && awaitingNewSession && taggedPath == newSessionFromFile) return
         }
         if (!event.optBoolean("success", true)) {
             val command = event.optString("command")
@@ -4690,6 +4703,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (command == "switch_session" || command == "new_session") {
+            if (command == "new_session" && awaitingNewSession &&
+                event.optJSONObject("data")?.optBoolean("cancelled") != true
+            ) {
+                // pig answers new_session once it has replaced its runtime, so
+                // the model belongs to the fresh session now. Anything sent
+                // before this point was applied to the session being replaced.
+                val picked = modelPickedWhileStarting
+                modelPickedWhileStarting = ""
+                if (picked.isNotBlank()) {
+                    val provider = picked.substringBefore('/')
+                    val id = picked.substringAfter('/', "")
+                    if (provider.isNotBlank() && id.isNotBlank()) selectModelById(provider, id)
+                } else {
+                    applyDefaultModel()
+                }
+            }
             if (command == "new_session") {
                 // A new session supersedes the remembered one; the next
                 // get_state response remembers its file instead.
@@ -4862,8 +4891,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 // Recovery: the relay reports a session with messages but the
                 // transcript is empty (a lost or dropped history reply).
-                if (!historyHealTried && !restorePending && ui.messages.isEmpty() &&
-                    data.optInt("messageCount", -1) > 0 &&
+                // Not while a new session is starting: that reply may still
+                // describe the session being replaced, and its messageCount
+                // would pull the old transcript into the empty conversation.
+                if (!historyHealTried && !restorePending && !awaitingNewSession &&
+                    ui.messages.isEmpty() && data.optInt("messageCount", -1) > 0 &&
                     System.currentTimeMillis() - lastMessagesRequestAt > 2500
                 ) {
                     historyHealTried = true
@@ -5007,6 +5039,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             "get_messages" -> data.optJSONArray("messages")?.let { history ->
+                // A new session is being created and the fresh one has no file
+                // yet: a transcript that names a file (or none) cannot be it.
+                // Keeping it out leaves the conversation the user just opened
+                // empty instead of showing the session they left.
+                if (awaitingNewSession && history.length() > 0 &&
+                    (taggedPath.isBlank() || taggedPath == newSessionFromFile)
+                ) {
+                    return@let
+                }
                 val historyStart = data.optInt("historyStart", 0)
                 val foreignEmpty = history.length() == 0 && ui.messages.isNotEmpty() &&
                     (taggedPath.isBlank() || taggedPath == ui.sessionFile)
