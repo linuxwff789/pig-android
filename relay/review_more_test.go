@@ -246,6 +246,7 @@ func newTestSession(t *testing.T) *session {
 		msgCache:      map[string]msgCacheEntry{},
 		historyLimits: map[string]int{},
 		install:       newInstallGate(),
+		stopped:       make(chan struct{}),
 	}
 	ready := make(chan struct{})
 	close(ready)
