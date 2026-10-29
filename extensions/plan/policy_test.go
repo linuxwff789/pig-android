@@ -83,3 +83,19 @@ func TestStatusLineClearsAfterExecution(t *testing.T) {
 		t.Errorf("finished plan left a status chip: %q", got)
 	}
 }
+
+func TestPlanCardOnlyWhileActive(t *testing.T) {
+	steps := []Step{{N: 1, Text: "a"}}
+	if !planCardVisible(true, false, steps) {
+		t.Error("planning card should be visible")
+	}
+	if !planCardVisible(false, true, steps) {
+		t.Error("executing card should be visible")
+	}
+	if planCardVisible(false, false, steps) {
+		t.Error("finished plan card should be hidden")
+	}
+	if planCardVisible(true, true, nil) {
+		t.Error("empty plan should not draw a card")
+	}
+}

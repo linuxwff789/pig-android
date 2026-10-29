@@ -201,20 +201,15 @@ func persist(ctx sdk.Context) {
 // the permission chip keep working next to them.
 func render(ctx sdk.Context) {
 	current := snapshot()
-	if len(current.Steps) == 0 {
+	if !planCardVisible(current.Enabled, current.Executing, current.Steps) {
 		_ = ctx.SetWidget(widgetKey, []string{}, sdk.WidgetOptions{"placement": "aboveEditor"})
-		if current.Enabled {
-			ctx.SetStatus(statusKey, "⏸ plan")
-		} else {
-			ctx.SetStatus(statusKey, "")
-		}
+		ctx.SetStatus(statusKey, "")
 		return
 	}
 	payload := map[string]any{"plan": map[string]any{"steps": current.Steps}}
 	if raw, err := json.Marshal(payload); err == nil {
 		_ = ctx.SetWidget(widgetKey, []string{string(raw)}, sdk.WidgetOptions{"placement": "aboveEditor"})
 	}
-	// enabled -> planning, executing -> progress, neither -> clear. The card
-	// stays after execution; the status chip must not.
+	// enabled -> planning, executing -> progress, neither -> clear.
 	ctx.SetStatus(statusKey, statusLine(current.Enabled, current.Executing, current.Steps))
 }

@@ -114,6 +114,14 @@ func progress(steps []Step) (done, total int) {
 // statusLine is the chip text for the current mode. A finished plan keeps its
 // card (so the work is still visible) but must not leave "16/16" in the status
 // bar forever after plan mode/execution ended.
+// planCardVisible reports whether the plan still belongs on screen. Once the
+// mode is off and no execution is running, the card has done its job: leaving it
+// above the editor keeps taking space after /plan off or after the last step.
+// The steps stay in the session log, so /todos can still list them.
+func planCardVisible(enabled, executing bool, steps []Step) bool {
+	return len(steps) > 0 && (enabled || executing)
+}
+
 func statusLine(enabled, executing bool, steps []Step) string {
 	if enabled {
 		return "⏸ plan"
