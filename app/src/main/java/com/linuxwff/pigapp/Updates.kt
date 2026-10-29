@@ -68,6 +68,7 @@ object UpdateChecker {
                 ?: redirect?.takeIf { it.newer }
                 ?: runCatching { fromApi(currentVersion) }.getOrNull()
                 ?: redirect
+                ?: throw IOException("cannot resolve the newest release")
             cacheKey = currentVersion
             cachedAt = System.currentTimeMillis()
             cached = info
