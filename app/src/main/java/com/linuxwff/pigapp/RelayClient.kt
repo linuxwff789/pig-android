@@ -57,6 +57,11 @@ class RelayClient(
     @Volatile
     var token: String = token
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    // Frames must reach the socket in the order they were produced
+    // (clear_queue before the re-queued messages, prompt before get_state).
+    // Dispatchers.IO is multi-threaded, so send() used to race itself.
+    private val sendScope =
+        CoroutineScope(Dispatchers.IO.limitedParallelism(1) + SupervisorJob())
     private var socket: Socket? = null
     private var writer: BufferedWriter? = null
     private var job: Job? = null
@@ -83,6 +88,9 @@ class RelayClient(
     private var exportDone: CompletableDeferred<JSONObject>? = null
     private var restoreReady: CompletableDeferred<JSONObject>? = null
     private var restoreDone: CompletableDeferred<JSONObject>? = null
+    /** id of the transfer that owns the fields above; late frames are dropped. */
+    @Volatile
+    private var activeTransferId: String? = null
 
     fun connect() {
         if (job?.isActive == true) return
@@ -104,9 +112,6 @@ class RelayClient(
                     writer = BufferedWriter(OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8))
                     sendNow(JSONObject().put("type", "relay_auth").put("token", token))
                     val reader = BufferedReader(InputStreamReader(s.getInputStream(), Charsets.UTF_8))
-                    _connected.value = true
-                    everConnected = true
-                    attempt = 0
                     while (isActive && gen == generation) {
                         val line = reader.readLine() ?: break
                         if (line.isBlank()) continue
@@ -114,6 +119,13 @@ class RelayClient(
                         if (obj == null) {
                             AppLog.frame("<-?", line)
                             continue
+                        }
+                        // A bad token still gets a TCP connect; only the relay
+                        // hello proves the handshake succeeded.
+                        if (obj.optString("type") == "relay_hello") {
+                            _connected.value = true
+                            everConnected = true
+                            attempt = 0
                         }
                         if (handleTransferFrame(obj)) continue
                         AppLog.frame("<-", obj)
@@ -139,6 +151,10 @@ class RelayClient(
                             socket = null
                             writer = null
                         }
+                        // Waiting for a chunk/done frame that can never arrive
+                        // used to hang for the full 10 min timeout while
+                        // holding transferMutex and maintenanceBusy.
+                        failTransfers("连接已断开")
                     }
                     runCatching { s?.close() }
                 }
@@ -178,18 +194,22 @@ class RelayClient(
     ): JSONObject = transferMutex.withLock {
         val id = "backup-${System.nanoTime()}"
         val done = CompletableDeferred<JSONObject>()
+        activeTransferId = id
         exportDone = done
         exportWrite = { bytes -> out.write(bytes) }
         exportProgress = onProgress
         exportSent = 0
         try {
-            sendNow(
+            if (!sendNow(
                 JSONObject()
                     .put("type", "relay_backup")
                     .put("id", id)
                     .put("sessions", includeSessions)
                     .put("ui", includeUi),
             )
+            ) {
+                error("连接已断开")
+            }
             val result = withTimeout(TRANSFER_TIMEOUT_MS) { done.await() }
             if (result.optString("type") == "relay_backup_error") {
                 error(result.optString("message", "backup failed"))
@@ -204,6 +224,7 @@ class RelayClient(
             exportDone = null
             exportWrite = null
             exportProgress = null
+            if (activeTransferId == id) activeTransferId = null
         }
     }
 
@@ -220,16 +241,20 @@ class RelayClient(
         val id = "restore-${System.nanoTime()}"
         val ready = CompletableDeferred<JSONObject>()
         val done = CompletableDeferred<JSONObject>()
+        activeTransferId = id
         restoreReady = ready
         restoreDone = done
         try {
-            sendNow(
+            if (!sendNow(
                 JSONObject()
                     .put("type", "relay_restore_begin")
                     .put("id", id)
                     .put("name", name)
                     .put("size", size),
             )
+            ) {
+                error("连接已断开")
+            }
             val accepted = withTimeout(READY_TIMEOUT_MS) { ready.await() }
             if (accepted.optString("type") == "relay_restore_error") {
                 error(accepted.optString("message", "restore rejected"))
@@ -243,36 +268,55 @@ class RelayClient(
                 if (read == 0) continue
                 digest.update(buffer, 0, read)
                 val chunk = if (read == buffer.size) buffer else buffer.copyOf(read)
-                sendNow(
+                val queued = sendNow(
                     JSONObject()
                         .put("type", "relay_restore_chunk")
                         .put("id", id)
                         .put("data", Base64.getEncoder().encodeToString(chunk)),
                 )
+                if (!queued) error("连接已断开")
                 sent += read
                 onProgress(sent, size)
             }
             val sha = digest.digest().joinToString("") { "%02x".format(it) }
-            sendNow(
+            if (!sendNow(
                 JSONObject()
                     .put("type", "relay_restore_end")
                     .put("id", id)
                     .put("sha256", sha),
-            )
+            )) {
+                error("连接已断开")
+            }
             val result = withTimeout(TRANSFER_TIMEOUT_MS) { done.await() }
             if (result.optString("type") == "relay_restore_error") {
                 error(result.optString("message", "restore failed"))
             }
             result
+        } catch (e: Exception) {
+            // A failed/timed-out upload leaves the relay's transfer.busy set;
+            // it only clears when the client goes away. Force a reconnect so
+            // the next backup is not refused with "another transfer is running".
+            runCatching { close() }
+            throw e
         } finally {
             restoreReady = null
             restoreDone = null
+            if (activeTransferId == id) activeTransferId = null
         }
     }
 
     /** Intercepts backup/restore frames so they never reach `events`. */
     private fun handleTransferFrame(obj: JSONObject): Boolean {
-        when (obj.optString("type")) {
+        val type = obj.optString("type")
+        if (type.startsWith("relay_backup") || type.startsWith("relay_restore")) {
+            // A transfer that timed out or was cancelled can still have frames
+            // in flight. Appending them to the next archive produced a
+            // truncated file reported as success.
+            val id = obj.optString("id")
+            val mine = activeTransferId
+            if (mine == null || (id.isNotBlank() && id != mine)) return true
+        }
+        when (type) {
             "relay_backup_start" -> return true
             "relay_backup_chunk" -> {
                 val bytes = try {
@@ -316,7 +360,7 @@ class RelayClient(
     val isConnecting: Boolean get() = job?.isActive == true
 
     fun send(obj: JSONObject) {
-        scope.launch { sendNow(obj) }
+        sendScope.launch { sendNow(obj) }
     }
 
     private companion object {
@@ -326,29 +370,37 @@ class RelayClient(
     }
 
     @Synchronized
-    private fun sendNow(obj: JSONObject) {
+    private fun sendNow(obj: JSONObject): Boolean {
         val w = writer
         if (w == null) {
             AppLog.event("relay", "drop (not connected): ${obj.optString("type")}")
-            return
+            return false
         }
         AppLog.frame("->", obj)
-        try {
+        return try {
             w.write(obj.toString())
             w.write("\n")
             w.flush()
+            true
         } catch (e: Exception) {
             Log.w("RelayClient", "send failed", e)
+            false
         }
+    }
+
+    /** Wakes every transfer waiting for a frame that cannot arrive anymore. */
+    private fun failTransfers(reason: String) {
+        val error = IOException(reason)
+        exportDone?.completeExceptionally(error)
+        restoreReady?.completeExceptionally(error)
+        restoreDone?.completeExceptionally(error)
     }
 
     fun close() {
         AppLog.event("relay", "close requested")
         // A transfer waiting for its completion frame must not hang for the
         // full timeout when the socket goes away under it.
-        exportDone?.completeExceptionally(IOException("连接已断开"))
-        restoreReady?.completeExceptionally(IOException("连接已断开"))
-        restoreDone?.completeExceptionally(IOException("连接已断开"))
+        failTransfers("连接已断开")
         generation++
         job?.cancel()
         job = null

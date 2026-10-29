@@ -231,7 +231,7 @@ object UpdateChecker {
             if (left != right) return left > right
         }
         // Same numbers: only treat "1.2.3" as newer than "1.2.3-rc1".
-        return latest.substringBefore('-') != latest && current.substringBefore('-') == current
+        return current.substringBefore('-') != current && latest.substringBefore('-') == latest
     }
 
     private fun parts(version: String): List<Int> =

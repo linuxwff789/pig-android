@@ -135,6 +135,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** `provider/model` -> last thinking level the user picked for it. */
     private var thinkingByModel: Map<String, String> = emptyMap()
     private val pendingRpcSources = mutableMapOf<String, String>()
+    /** Requests that arrived while another dialog was open; answered in order. */
+    private val pendingUiRequests = ArrayDeque<UiRequest>()
     private var currentAssistant: String? = null
     private val toolMsgIds = mutableMapOf<String, String>()
 
@@ -144,6 +146,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var autoReconnectJob: kotlinx.coroutines.Job? = null
     private var lastPongAt = 0L
     private var desiredSessionPath: String? = null
+    /**
+     * Bumped whenever the conversation being shown changes. A get_messages
+     * reply is built off the main thread, so a new session / switch that
+     * happens while it builds must invalidate it - otherwise the old
+     * transcript is painted into the conversation that just opened.
+     */
+    private var sessionEpoch = 0L
+    /** Epoch at the time of the latest get_messages request. */
+    private var lastMessagesEpoch = 0L
     private var restorePending = false
     private var restoreChecked = false
     private val liveBuffer = StringBuilder()
@@ -252,7 +263,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 if (lastPongAt > 0 && now - lastPongAt > 12_000) {
                     lastPongAt = 0
                     client.close()
-                    if (foreground) startAutoReconnect()
+                    if (foreground) {
+                        startAutoReconnect()
+                    } else if (ui.keepAlive) {
+                        // The keep-alive service exists to hold this connection
+                        // while the app is away; not reconnecting here left the
+                        // session silently dead and dropped its notifications.
+                        client.connect()
+                    }
                     continue
                 }
                 client.send(JSONObject().put("type", "relay_ping").put("id", "ping-${nextId++}"))
@@ -400,12 +418,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) {
                     ctx.contentResolver.openOutputStream(uri)?.use { out ->
                         client.exportBackup(out, includeSessions, includeUi) { sent ->
-                            // One state write per chunk would redraw the sheet
-                            // hundreds of times; four per second is plenty.
+                            // Called from the relay reader thread. Compose state
+                            // must be published on Main, or this read-modify-
+                            // write reverts what the main thread wrote meanwhile.
+                            // Four updates per second is plenty.
                             val now = System.currentTimeMillis()
                             if (now - lastUi > 400) {
                                 lastUi = now
-                                ui = ui.copy(maintenanceSent = sent)
+                                viewModelScope.launch { ui = ui.copy(maintenanceSent = sent) }
                             }
                         }
                     } ?: error("打不开输出流")
@@ -471,11 +491,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * Restores an archive from any stream. [open] is called on the IO thread so
      * a WebDAV download and a file picker share the same path.
+     *
+     * Returns false when the restore was refused before it started.
      */
-    fun startRestore(name: String, size: () -> Long, open: () -> java.io.InputStream) {
+    fun startRestore(name: String, size: () -> Long, open: () -> java.io.InputStream): Boolean {
         if (ui.maintenanceBusy) {
             ui = ui.copy(toast = str("backup.busy", "已有备份任务在进行"))
-            return
+            return false
         }
         if (!client.connected.value || !ui.backupRemote) {
             ui = ui.copy(
@@ -484,7 +506,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     "需要新版 relay 才能导出备份：重装 Termux 组件后重启 relay",
                 ),
             )
-            return
+            return false
         }
         AppLog.event("backup", "restore start $name")
         ui = ui.copy(
@@ -500,13 +522,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val bytes = runCatching { size() }.getOrDefault(-1L)
                     open().use { stream ->
                         client.restoreBackup(stream, name, bytes) { sent, total ->
+                            // Runs on Dispatchers.IO; publish on Main (see the
+                            // export callback above).
                             val now = System.currentTimeMillis()
                             if (now - lastUi > 400) {
                                 lastUi = now
-                                ui = ui.copy(
-                                    maintenanceSent = sent,
-                                    maintenanceTotal = total,
-                                )
+                                viewModelScope.launch {
+                                    ui = ui.copy(
+                                        maintenanceSent = sent,
+                                        maintenanceTotal = total,
+                                    )
+                                }
                             }
                         }
                     }
@@ -557,9 +583,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         toast = str("backup.importFailed", "恢复失败：{error}")
                             .replace("{error}", error.message ?: error.toString()),
                     )
+                    // RelayClient closes the socket on a failed restore so the
+                    // relay abandons its busy transfer; bring the transcript
+                    // connection back instead of leaving the app offline.
+                    if (!client.connected.value) reconnect()
                 },
             )
         }
+        return true
     }
 
     // ---- WebDAV backup ---------------------------------------------------
@@ -752,6 +783,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             webdavMessage = str("webdav.downloading", "正在下载 {name}…").replace("{name}", name),
             webdavMessageError = false,
         )
+        // The name comes from the server's PROPFIND listing. Reject anything
+        // that could escape cacheDir after URL-decoding.
+        if (name.contains('/') || name.contains('\\') || name.contains("..")) {
+            ui = ui.copy(
+                webdavBusy = false,
+                webdavMessage = "备份文件名不合法",
+                webdavMessageError = true,
+            )
+            return
+        }
         viewModelScope.launch {
             val ctx = getApplication<Application>()
             val file = File(ctx.cacheDir, name)
@@ -764,7 +805,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             ui = ui.copy(webdavBusy = false, webdavMessage = "")
             result.fold(
                 onSuccess = { size ->
-                    startRestore(name = name, size = { size }, open = { file.inputStream() })
+                    val started = startRestore(
+                        name = name,
+                        size = { size },
+                        // startRestore reads the stream on IO and closes it when
+                        // done; deleting the download here keeps cacheDir from
+                        // growing by a full backup per restore.
+                        open = {
+                            object : java.io.FilterInputStream(file.inputStream()) {
+                                override fun close() {
+                                    try {
+                                        super.close()
+                                    } finally {
+                                        file.delete()
+                                    }
+                                }
+                            }
+                        },
+                    )
+                    if (!started) file.delete()
                 },
                 onFailure = { error ->
                     ui = ui.copy(
@@ -1251,6 +1310,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             ui = ui.copy(
                 connected = false,
                 installRunning = false,
+                // A refused RUN_COMMAND never produces the kind-specific
+                // outcome below, so an in-flight backup/uninstall would keep
+                // this flag (and its banner) forever.
+                maintenanceBusy = false,
+                maintenanceSent = 0,
+                maintenanceTotal = 0,
                 termuxBlocked = true,
                 setup = true,
                 error = str(
@@ -1598,9 +1663,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun importPackZip(uri: Uri) {
         val ctx = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
+            // A pack is a theme; it has no business expanding to gigabytes. A
+            // small deflate bomb or a zip with a million entries would fill
+            // /data before installPack ever runs. The staging directory is
+            // removed on every path, including a rejected import.
+            val staging = File(ctx.cacheDir, "pack-import-${System.nanoTime()}")
             val result = runCatching {
-                val staging = File(ctx.cacheDir, "pack-import-${System.nanoTime()}")
                 staging.mkdirs()
+                var entries = 0
+                var total = 0L
                 ctx.contentResolver.openInputStream(uri)?.use { input ->
                     ZipInputStream(input.buffered()).use { zip ->
                         var entry = zip.nextEntry
@@ -1609,9 +1680,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             if (!entry.isDirectory && name.isNotBlank() &&
                                 !name.startsWith("/") && !name.split('/').contains("..")
                             ) {
+                                entries++
+                                if (entries > PACK_IMPORT_MAX_ENTRIES) {
+                                    error("压缩包条目太多（上限 $PACK_IMPORT_MAX_ENTRIES）")
+                                }
                                 val target = File(staging, name)
                                 target.parentFile?.mkdirs()
-                                target.outputStream().use { zip.copyTo(it) }
+                                target.outputStream().use { out ->
+                                    val buffer = ByteArray(64 * 1024)
+                                    var fileBytes = 0L
+                                    while (true) {
+                                        val read = zip.read(buffer)
+                                        if (read < 0) break
+                                        fileBytes += read
+                                        total += read
+                                        if (fileBytes > PACK_IMPORT_MAX_FILE) {
+                                            error("压缩包里有单个文件过大")
+                                        }
+                                        if (total > PACK_IMPORT_MAX_BYTES) {
+                                            error("压缩包解压后过大（上限 ${PACK_IMPORT_MAX_BYTES / 1024 / 1024} MB）")
+                                        }
+                                        out.write(buffer, 0, read)
+                                    }
+                                }
                             }
                             zip.closeEntry()
                             entry = zip.nextEntry
@@ -1631,6 +1722,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 require(File(root, "manifest.json").isFile) { "压缩包里没有 manifest.json" }
                 installPack(root)
             }
+            staging.deleteRecursively()
             withContext(Dispatchers.Main) {
                 result.onSuccess { id ->
                     refreshLocalPacks()
@@ -1652,8 +1744,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun importPackTree(uri: Uri) {
         val ctx = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
+            val staging = File(ctx.cacheDir, "pack-import-${System.nanoTime()}")
             val result = runCatching {
-                val staging = File(ctx.cacheDir, "pack-import-${System.nanoTime()}")
                 staging.mkdirs()
                 copyDocumentTree(ctx, uri, staging)
                 var root = staging
@@ -1662,6 +1754,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 require(File(root, "manifest.json").isFile) { "目录里没有 manifest.json" }
                 installPack(root)
             }
+            staging.deleteRecursively()
             withContext(Dispatchers.Main) {
                 result.onSuccess { id ->
                     refreshLocalPacks()
@@ -1765,12 +1858,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return Triple(files, assets, hashes)
     }
 
-    /** Recursively copy a SAF document tree into `target`. */
+    /**
+     * A SAF display name is supplied by whichever DocumentsProvider answered,
+     * not by us. `../..` in it used to walk out of the staging directory, and
+     * a deep or self-referencing provider tree recursed without a limit.
+     */
+    private fun safeImportName(raw: String): Boolean {
+        val name = raw.trim()
+        return name.isNotEmpty() && name != "." && name != ".." &&
+            !name.contains('/') && !name.contains('\\') && !name.contains('\u0000')
+    }
+
+    /** Recursively copy a SAF document tree into `target`, with hard limits. */
     private fun copyDocumentTree(ctx: Context, treeUri: Uri, target: File) {
         val resolver = ctx.contentResolver
         val rootId = DocumentsContract.getTreeDocumentId(treeUri)
         val rootUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId)
-        fun walk(docUri: Uri, dir: File) {
+        var entries = 0
+        var total = 0L
+        fun walk(docUri: Uri, dir: File, depth: Int) {
+            if (depth > PACK_IMPORT_MAX_DEPTH) error("目录层级过深（上限 $PACK_IMPORT_MAX_DEPTH 层）")
             val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, DocumentsContract.getDocumentId(docUri))
             resolver.query(
                 childrenUri,
@@ -1786,23 +1893,46 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 while (cursor.moveToNext()) {
                     val id = cursor.getString(0)
                     val name = cursor.getString(1) ?: continue
+                    if (!safeImportName(name)) continue
                     val mime = cursor.getString(2).orEmpty()
                     val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, id)
                     if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
                         val sub = File(dir, name)
                         sub.mkdirs()
-                        walk(childUri, sub)
+                        walk(childUri, sub, depth + 1)
                     } else {
-                        runCatching {
+                        entries++
+                        if (entries > PACK_IMPORT_MAX_ENTRIES) {
+                            error("目录里的文件太多（上限 $PACK_IMPORT_MAX_ENTRIES）")
+                        }
+                        try {
                             resolver.openInputStream(childUri)?.use { input ->
-                                File(dir, name).outputStream().use { input.copyTo(it) }
+                                File(dir, name).outputStream().use { out ->
+                                    val buffer = ByteArray(64 * 1024)
+                                    var fileBytes = 0L
+                                    while (true) {
+                                        val read = input.read(buffer)
+                                        if (read < 0) break
+                                        fileBytes += read
+                                        total += read
+                                        if (fileBytes > PACK_IMPORT_MAX_FILE) {
+                                            error("目录里有单个文件过大")
+                                        }
+                                        if (total > PACK_IMPORT_MAX_BYTES) {
+                                            error("目录内容过大（上限 ${PACK_IMPORT_MAX_BYTES / 1024 / 1024} MB）")
+                                        }
+                                        out.write(buffer, 0, read)
+                                    }
+                                }
                             }
+                        } catch (error: java.io.IOException) {
+                            // A provider may refuse one child; keep the rest.
                         }
                     }
                 }
             }
         }
-        walk(rootUri, target)
+        walk(rootUri, target, 0)
     }
 
     /** Switch to a `skins.json` entry; null/unknown ids are ignored. */
@@ -2099,15 +2229,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      *
      * Picked images travel as RPC `images` blocks; PiG accepts them on
      * `prompt`, `steer` and `follow_up` alike.
+     *
+     * Returns true when the prompt was accepted (sent or held for a starting
+     * session).
      */
-    fun sendPrompt(raw: String, steer: Boolean = true) {
+    fun sendPrompt(raw: String, steer: Boolean = true): Boolean {
         val text = raw.trim()
         AppLog.event("prompt", text.take(400))
         val attachments = ui.attachments
-        if (text.isEmpty() && attachments.isEmpty()) return
+        if (text.isEmpty() && attachments.isEmpty()) return false
         if (text.startsWith("/")) {
             runSlashCommand(text)
-            return
+            return true
         }
         // A fresh backend has no providers/models. Do not turn that into a red
         // "pig error": point at the setup banner instead.
@@ -2119,7 +2252,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     "还没有可用模型：先添加供应商或导入备份",
                 ),
             )
-            return
+            return false
         }
         // First prompt in a fresh app process with no session yet: honour the
         // pinned default model before the turn starts. A restored transcript
@@ -2185,24 +2318,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             client.send(command)
         }
         if (wasBusy) requestState()
+        return true
     }
 
-    fun abort() = client.send(JSONObject().put("type", "abort"))
+    fun abort() {
+        // Stop is immediate for the UI even if the frame is dropped or the
+        // reply is late; otherwise the spinner can outlive the stop button.
+        ui = ui.copy(busy = false, status = "", streamingId = null, pendingMessages = 0)
+        client.send(JSONObject().put("id", "abort-${nextId++}").put("type", "abort"))
+    }
 
     /**
      * Remove one queued message. pig only offers `clear_queue` (everything), so
      * the survivors are re-sent in order with `steer` / `follow_up`, which queue
      * them again without echoing them into the transcript.
      */
-    fun removeQueued(target: QueuedMessage) {
+    fun removeQueued(target: QueuedMessage): Boolean {
         val rest = ui.queuedMessages.toMutableList()
-        if (!rest.remove(target)) return
+        if (!rest.remove(target)) return false
         rewriteQueue(rest)
         // The prompt was appended optimistically when it was queued; pig never
         // processed it, so its bubble has to go too (taking a message back to
         // edit it otherwise leaves the old text above the new one).
         if (target.msgId.isNotBlank()) remove(target.msgId)
         ui = ui.copy(queuedMessages = rest, pendingMessages = rest.size)
+        return true
     }
 
     /** Drop every queued steering and follow-up message. */
@@ -2849,6 +2989,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         "set_session_name",
     )
 
+    /**
+     * Builds an RPC frame from pack-supplied params. `type` and `id` are
+     * reserved: a pack could otherwise declare an allow-listed RPC and sneak
+     * `{"type":"relay_session_purge"}` in through `params`, which would let an
+     * imported or relay-pushed pack run any relay command without confirmation.
+     */
+    private fun packRpcRequest(id: String, rpc: String, params: JSONObject?): JSONObject {
+        val request = JSONObject()
+        params?.let {
+            val keys = it.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                if (key == "type" || key == "id") continue
+                request.put(key, it.opt(key))
+            }
+        }
+        return request.put("id", id).put("type", rpc)
+    }
+
     /** Ask the sources declared in `layout.dataSources` that subscribe to [trigger]. */
     private fun refreshDataSources(trigger: String) {
         if (!client.connected.value) return
@@ -2856,15 +3015,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (trigger in source.refresh && source.rpc in readRpcs) {
                 val id = "src-${nextId++}"
                 pendingRpcSources[id] = name
-                val request = JSONObject().put("id", id).put("type", source.rpc)
-                source.params?.let { params ->
-                    val keys = params.keys()
-                    while (keys.hasNext()) {
-                        val key = keys.next()
-                        request.put(key, params.opt(key))
-                    }
-                }
-                client.send(request)
+                client.send(packRpcRequest(id, source.rpc, source.params))
             }
         }
     }
@@ -2939,15 +3090,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             else -> {
-                val request = JSONObject()
-                    .put("id", "pack-${nextId++}")
-                    .put("type", action.rpc)
-                val keys = params.keys()
-                while (keys.hasNext()) {
-                    val key = keys.next()
-                    request.put(key, params.opt(key))
-                }
-                client.send(request)
+                client.send(packRpcRequest("pack-${nextId++}", action.rpc, params))
                 requestState()
                 requestStats()
             }
@@ -3032,6 +3175,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val id = "msgs-${nextId++}"
         lastMessagesRequestId = id
         lastMessagesRequestAt = System.currentTimeMillis()
+        lastMessagesEpoch = sessionEpoch
         ui = ui.copy(historyLoading = true)
         client.send(
             JSONObject()
@@ -3079,6 +3223,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun doSwitch(path: String) {
         if (path == ui.sessionFile) return
+        sessionEpoch++
         markVisited(path)
         desiredSessionPath = path
         restorePending = false
@@ -3111,6 +3256,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun newSession() {
+        // Any history build still in flight belongs to the session being left.
+        sessionEpoch++
         // A get_state reply that still reports this session describes the runtime
         // pig is replacing; the draft and the queued prompt must not follow it.
         newSessionFromFile = ui.sessionFile
@@ -3649,7 +3796,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             else -> response.put("value", value ?: "")
         }
         client.send(response)
-        ui = ui.copy(pending = null)
+        val next = pendingUiRequests.removeFirstOrNull()
+        ui = ui.copy(pending = next, pendingHidden = next == null && ui.pendingHidden)
     }
 
     fun handleDebugEvent(text: String) {
@@ -4443,11 +4591,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // pig replies with text only; keep the bubble id of the message
                 // we queued under that text so it can still be taken back.
                 val previous = ui.queuedMessages
+                // Two identical texts are legal (send the same thing twice);
+                // without consumed each copy adopts the same bubble id and the
+                // second one can no longer be removed from the transcript.
+                val consumed = mutableSetOf<String>()
                 fun adopt(kind: String, text: String): QueuedMessage {
                     val known = previous.firstOrNull {
-                        it.msgId.isNotBlank() && (it.text == text || it.text.trim() == text.trim())
+                        it.msgId.isNotBlank() && it.msgId !in consumed &&
+                            (it.text == text || it.text.trim() == text.trim())
                     }
                     return if (known != null) {
+                        consumed.add(known.msgId)
                         QueuedMessage(kind, text, known.msgId)
                     } else {
                         QueuedMessage(kind, text)
@@ -4615,6 +4769,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (expected.isBlank() && awaitingNewSession && taggedPath == newSessionFromFile) return
         }
         if (!event.optBoolean("success", true)) {
+            pendingRpcSources.remove(responseId)
             val command = event.optString("command")
             if (command == "get_messages") {
                 // Don't leave the "reading history" spinner up over a failure.
@@ -4729,6 +4884,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // The old transcript stays on screen (with the "starting" banner)
             // until get_state describes the session that replaced it; switching
             // history is a file read, so it can be cleared right away.
+            sessionEpoch++
             val switchingToFile = command == "switch_session"
             historyWindow = HISTORY_PAGE
             // Paint the transcript built last time immediately; the fresh copy
@@ -4773,7 +4929,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             refreshDataSources("session_switch")
             return
         }
-        val data = event.optJSONObject("data") ?: return
+        val data = event.optJSONObject("data") ?: run {
+            pendingRpcSources.remove(responseId)
+            return
+        }
         storeRpcData(command, pendingRpcSources.remove(responseId), data)
         when (command) {
             "get_state" -> {
@@ -4804,6 +4963,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     ui.sessionId.isNotBlank() &&
                     sessionId != ui.sessionId
                 if (switched && !liveActive) {
+                    sessionEpoch++
                     currentAssistant = null
                     // pig switched sessions on its own (a command inside the
                     // session): the transcript below is cleared, so fetch the
@@ -4861,6 +5021,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         } else {
                             restorePending = true
                             desiredSessionPath = saved
+                            sessionEpoch++
                             ui = ui.copy(status = "restoring")
                             client.send(
                                 JSONObject()
@@ -5059,6 +5220,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     needsHistory = false
                     historyHealTried = true
                     val requestId = responseId
+                    val epochAtRequest = lastMessagesEpoch
                     val windowAtRequest = historyWindow
                     val pending = pendingToolPartials.toMap()
                     val liveAtRequest = liveActive
@@ -5080,6 +5242,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         if (requestId.isNotBlank() && requestId != lastMessagesRequestId) {
                             return@launch
                         }
+                        // The user opened/created another session while this
+                        // transcript was building: it belongs to the old one.
+                        if (epochAtRequest != sessionEpoch) return@launch
                         // A turn started while the history was building: its
                         // messages are not in `build`, so replacing the list
                         // would drop them.
@@ -6027,20 +6192,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         ),
                     )
                 }
-                ui = ui.copy(
-                    pending = UiRequest(
-                        id = event.optString("id"),
-                        method = method,
-                        title = event.optString("title", ""),
-                        message = event.optString("message", "").takeIf { it.isNotBlank() },
-                        options = options,
-                        placeholder = event.optString("placeholder", "").takeIf { it.isNotBlank() },
-                        prefill = event.optString("prefill", ""),
-                    ),
-                    // A new request always surfaces, even after the user hid
-                    // the previous one by tapping the chat.
-                    pendingHidden = false,
+                val request = UiRequest(
+                    id = event.optString("id"),
+                    method = method,
+                    title = event.optString("title", ""),
+                    message = event.optString("message", "").takeIf { it.isNotBlank() },
+                    options = options,
+                    placeholder = event.optString("placeholder", "").takeIf { it.isNotBlank() },
+                    prefill = event.optString("prefill", ""),
                 )
+                if (ui.pending != null) {
+                    // One slot used to overwrite the older request, whose id
+                    // was then never answered and the tool call stalled until
+                    // its timeout.
+                    pendingUiRequests.addLast(request)
+                } else {
+                    ui = ui.copy(
+                        pending = request,
+                        // A new request always surfaces, even after the user hid
+                        // the previous one by tapping the chat.
+                        pendingHidden = false,
+                    )
+                }
             }
             "notify" -> {
                 val message = event.optString("message", "")
@@ -6302,6 +6475,12 @@ private const val HISTORY_CACHE_SESSIONS = 2
 
 /** Long edge of transcript images; 1024 px stays readable and cheap. */
 private const val TRANSCRIPT_IMAGE_MAX_DIM = 1024
+
+/** Hard limits for a pack imported from a zip or a folder. */
+private const val PACK_IMPORT_MAX_BYTES = 24L * 1024 * 1024
+private const val PACK_IMPORT_MAX_FILE = 4L * 1024 * 1024
+private const val PACK_IMPORT_MAX_ENTRIES = 4000
+private const val PACK_IMPORT_MAX_DEPTH = 24
 
 /** Long edge of images sent to a model (Claude's documented limit). */
 private const val UPLOAD_IMAGE_MAX_DIM = 1568

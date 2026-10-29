@@ -111,7 +111,10 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -252,8 +255,9 @@ fun PigApp(vm: AppViewModel) {
 
     val sendDraft: (Boolean) -> Unit = { steer ->
         if (draft.isNotBlank() || ui.attachments.isNotEmpty()) {
-            vm.sendPrompt(draft, steer = steer)
-            draft = ""
+            // sendPrompt refuses when there is no model; clearing anyway lost
+            // a long typed message and persisted the empty draft.
+            if (vm.sendPrompt(draft, steer = steer)) draft = ""
         }
     }
     val submit: () -> Unit = { sendDraft(ui.busy) }
@@ -510,6 +514,9 @@ fun PigApp(vm: AppViewModel) {
                     if (ui.readOnly && components.showReadOnlyBanner) {
                         ReadOnlyBanner()
                     }
+                    // listState/autoScroll belong to one conversation; a
+                    // switch must open the new one at its newest message.
+                    key(ui.sessionFile) {
                     MessageList(
                         messages = ui.messages,
                         busy = ui.busy,
@@ -539,6 +546,7 @@ fun PigApp(vm: AppViewModel) {
                         onLoadOlder = vm::loadOlderHistory,
                         onRetryHistory = vm::reloadHistory,
                     )
+                    }
                 }
             }
         }
@@ -653,13 +661,16 @@ fun PigApp(vm: AppViewModel) {
             onEdit = { message ->
                 // Taking it back is the only way to change a queued message:
                 // pig has no edit-in-queue RPC, and once consumed it is part of
-                // the session.
-                vm.removeQueued(message)
-                draft = message.text
-                vm.setDraft(draftKey, message.text)
-                showQueue = false
+                // the session. Keep whatever the composer already held instead
+                // of overwriting it, and stay open if the queue row is gone.
+                if (vm.removeQueued(message)) {
+                    val restored = if (draft.isBlank()) message.text else draft + "\n\n" + message.text
+                    draft = restored
+                    vm.setDraft(draftKey, restored)
+                    showQueue = false
+                }
             },
-            onRemove = vm::removeQueued,
+            onRemove = { vm.removeQueued(it) },
             onClear = vm::clearQueued,
             onDismiss = { showQueue = false },
         )
@@ -2166,9 +2177,12 @@ private fun SettingsDialog(
                     )
                 }
 
-                if (ui.uiPack.layout.showPackManager &&
+                // A pack may hide the settings entry for styling, but it must
+                // never be able to lock the user out of the manager: there is
+                // then no in-app way to switch back to another pack.
+                val packManagerInSettings = ui.uiPack.layout.showPackManager &&
                     ui.uiPack.layout.packManagerPlacement in setOf("settings", "both")
-                ) {
+                if (packManagerInSettings) {
                     HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -2205,6 +2219,28 @@ private fun SettingsDialog(
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = scheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                } else {
+                    HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
+                    OutlinedButton(
+                        onClick = onOpenPacks,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(
+                            (ui.uiPack.theme.cornerRadius / 2).coerceAtLeast(8).dp,
+                        ),
+                    ) {
+                        Icon(
+                            packIcon("folder", "folder"),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            packText("pack.manageFallback", "UI pack 管理"),
+                            modifier = Modifier.weight(1f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -4037,10 +4073,12 @@ private fun ToolGroupCard(
     val name = tools.first().toolName ?: "tool"
     val running = tools.any { it.running }
     val errors = tools.count { it.isError }
-    var expanded by remember(tools.first().id) { mutableStateOf(false) }
+    // LazyColumn disposes rows that leave the viewport; plain remember would
+    // collapse the card the reader just opened as soon as they scroll away.
+    var expanded by rememberSaveable(tools.first().id) { mutableStateOf(false) }
     // Expanding a 130-call run must not build 130 cards (each parses its args
     // and result) on the frame that handles the tap.
-    var showAll by remember(tools.first().id) { mutableStateOf(false) }
+    var showAll by rememberSaveable(tools.first().id) { mutableStateOf(false) }
     val groupRadius = if (appearance.groupRadius >= 0) appearance.groupRadius else cornerRadius
     val shape = RoundedCornerShape(groupRadius.dp)
     val groupStyle = appearance.styleFor(name)
@@ -4235,9 +4273,10 @@ private fun MessageList(
     // upward drag disables it; reaching the bottom again re-enables it.
     LaunchedEffect(listState) {
         launch {
-            snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
-                if (scrolling && !programmaticScroll) autoScroll = false
-            }
+            snapshotFlow { listState.isScrollInProgress && !programmaticScroll }
+                .collect { scrolling ->
+                    if (scrolling) autoScroll = false
+                }
         }
         launch {
             snapshotFlow { listState.canScrollForward }.collect { canForward ->
@@ -4258,7 +4297,11 @@ private fun MessageList(
             programmaticScroll = true
             try {
                 runCatching {
-                    listState.scrollToItem((listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
+                    // offset 0 aligns the item's *top* with the viewport; a
+                    // long answer would then pin the head of the message and
+                    // the newest tokens stayed below the fold.
+                    val last = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
+                    listState.scrollToItem(last, Int.MAX_VALUE)
                 }
             } finally {
                 programmaticScroll = false
@@ -4331,8 +4374,15 @@ private fun MessageList(
         return
     }
 
-    val displayItems = remember(messages, toolGroups) {
-        buildChatListItems(messages, toolGroups)
+    val displayItems = remember(messages, toolGroups, showTyping) {
+        buildChatListItems(messages, toolGroups).filterNot { item ->
+            // The empty assistant placeholder and TypingRow are the same turn;
+            // rendering both showed "…" plus animated dots.
+            showTyping && item is ChatListItem.Single &&
+                item.message.role == Role.ASSISTANT &&
+                item.message.text.isBlank() && item.message.thinking.isBlank() &&
+                item.message.images.isEmpty()
+        }
     }
 
     Box(modifier.fillMaxWidth()) {
@@ -4434,6 +4484,7 @@ private fun MessageList(
                         try {
                             listState.animateScrollToItem(
                                 (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0),
+                                Int.MAX_VALUE,
                             )
                         } finally {
                             programmaticScroll = false
@@ -4747,7 +4798,7 @@ private fun MessageRow(
                     bottomStart = (cornerRadius + 4).dp,
                 )
             }
-            var selecting by remember(message.id) { mutableStateOf(false) }
+            var selecting by rememberSaveable(message.id) { mutableStateOf(false) }
             val bubble: @Composable () -> Unit = {
                 Box(
                     Modifier
@@ -4857,7 +4908,7 @@ private fun MessageRow(
                 Spacer(Modifier.width(9.dp))
             }
             Column(Modifier.weight(1f)) {
-                var selecting by remember(message.id) { mutableStateOf(false) }
+                var selecting by rememberSaveable(message.id) { mutableStateOf(false) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         assistantLabel,
@@ -5311,6 +5362,7 @@ private fun ToolCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ToolModeChip(
     label: String,
@@ -5333,12 +5385,10 @@ private fun ToolModeChip(
             .background(
                 if (selected) scheme.primary.copy(alpha = appearance.chipAlpha) else Color.Transparent,
             )
-            .pointerInput(onClick, onLongClick) {
-                detectTapGestures(
-                    onTap = { onClick() },
-                    onLongPress = { onLongClick() },
-                )
-            }
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
             .padding(horizontal = 7.dp, vertical = 3.dp),
     )
 }
@@ -6248,6 +6298,7 @@ private fun ProviderSetupBanner(vm: AppViewModel, onOpenSettings: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Composer(
     value: String,
@@ -6528,12 +6579,10 @@ private fun Composer(
                                         Modifier.background(brandBrush())
                                     },
                                 )
-                                .pointerInput(onSteer, onFollowUp) {
-                                    detectTapGestures(
-                                        onTap = { onSteer() },
-                                        onLongPress = { onFollowUp() },
-                                    )
-                                },
+                                .combinedClickable(
+                                    onClick = onSteer,
+                                    onLongClick = onFollowUp,
+                                ),
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(

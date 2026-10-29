@@ -266,11 +266,20 @@ object WebDavClient {
                 val location = response.header("Location")
                 response.close()
                 if (location.isNullOrBlank()) error("重定向缺少 Location")
-                target = if (location.startsWith("http")) {
-                    location
-                } else {
-                    URL(URL(target), location).toString()
+                val current = URL(target)
+                val next = if (location.startsWith("http")) URL(location) else URL(current, location)
+                // The Authorization header below is rebuilt on every loop, so a
+                // redirect used to hand the NAS password to whatever host the
+                // server named (and accepted https -> http downgrades).
+                if (!next.host.equals(current.host, ignoreCase = true)) {
+                    error("拒绝跨主机重定向：${current.host} -> ${next.host}")
                 }
+                if (current.protocol.equals("https", true) &&
+                    !next.protocol.equals("https", true)
+                ) {
+                    error("拒绝把 HTTPS 重定向到明文 HTTP")
+                }
+                target = next.toString()
                 redirects++
                 continue
             }

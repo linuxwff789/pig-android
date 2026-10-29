@@ -83,7 +83,28 @@ object AppLog {
                 val count = frame.optJSONObject("data")?.optJSONArray("messages")?.length() ?: -1
                 write(direction, "response get_messages id=${frame.optString("id")} n=$count")
             }
-            else -> write(direction, redact(frame.toString()).take(FRAME_CHARS))
+            // A prompt can carry several screenshots as base64 (~2 MB each).
+            // Stringifying the whole frame just to keep 2400 characters was a
+            // 15 MB allocation per send on a memory-tight device.
+            type == "prompt" || type == "steer" || type == "follow_up" -> {
+                val text = frame.optString("message")
+                val images = frame.optJSONArray("images")?.length() ?: 0
+                write(
+                    direction,
+                    "$type id=${frame.optString("id")} chars=${text.length} images=$images " +
+                        redact(text.take(400)).take(200),
+                )
+            }
+            else -> {
+                // Truncate first: redacting a multi-megabyte string only to cut
+                // it afterwards copied it three more times through the regexes.
+                val raw = if (frame.has("data") || frame.has("images")) {
+                    frame.toString().take(FRAME_CHARS * 4)
+                } else {
+                    frame.toString()
+                }
+                write(direction, redact(raw).take(FRAME_CHARS))
+            }
         }
     }
 
