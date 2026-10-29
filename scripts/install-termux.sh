@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/sh
 # Install the Pig backend into Termux: pig + pig-relay + UI pack dirs.
 #
-#   curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/linuxwff789/pig-android/main/scripts/install-termux.sh | sh
 #
 # Pass a release tag to install the relay released with that app version:
 #
@@ -113,7 +113,8 @@ fetch_relay_api() {
     if [ -n "$version" ]; then
         _api_release="$_api_base/tags/v$version"
     else
-        _api_release="$_api_base/latest"
+        # Per_page=1 lists pre-releases too, /latest does not.
+        _api_release="$_api_base?per_page=1"
     fi
     _api_json="$PREFIX/tmp/.pig-release.$$.json"
     # An unauthenticated API call is capped at 60/hour per IP and mobile
@@ -352,6 +353,21 @@ have=$(relay_version)
 # already-installed relay is kept forever, and an old relay carries an old (or
 # missing) set of embedded extensions - the app then has no /provider-ui even
 # though the install "succeeded".
+if [ -z "$version" ]; then
+    # Newest release *including pre-releases*: this project publishes previews,
+    # and /releases/latest skips them (it would pin the install to an old tag).
+    _newest=$(curl -fsSL --connect-timeout 15 \
+        "https://api.github.com/repos/linuxwff789/pig-android/releases?per_page=1" 2>/dev/null |
+        sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -1)
+    case "$_newest" in
+        *[!0-9a-zA-Z.-]*) _newest="" ;;
+    esac
+    if [ -n "$_newest" ]; then
+        version="$_newest"
+        base="$REPO/releases/download/v$version"
+        say "newest release is v$version"
+    fi
+fi
 if [ -z "$version" ]; then
     resolved=$(curl -fsSL --connect-timeout 15 -o /dev/null -w '%{url_effective}' \
         "$REPO/releases/latest" 2>/dev/null || true)

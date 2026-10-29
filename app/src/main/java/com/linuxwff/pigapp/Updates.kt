@@ -2,6 +2,7 @@ package com.linuxwff.pigapp
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -32,8 +33,9 @@ object UpdateChecker {
     private const val REPO = "linuxwff789/pig-android"
     private const val ATOM = "https://github.com/$REPO/releases.atom"
     private const val LATEST_PAGE = "https://github.com/$REPO/releases/latest"
-    private const val LATEST_API = "https://api.github.com/repos/$REPO/releases/latest"
-    const val RELEASES_URL = "https://github.com/$REPO/releases/latest"
+    // /releases/latest skips pre-releases; the list endpoint includes them.
+    private const val LATEST_API = "https://api.github.com/repos/$REPO/releases?per_page=1"
+    const val RELEASES_URL = "https://github.com/$REPO/releases"
     const val INSTALL_COMMAND =
         "curl -fsSL https://github.com/$REPO/releases/latest/download/install-termux.sh | sh"
 
@@ -97,7 +99,9 @@ object UpdateChecker {
         try {
             val code = connection.responseCode
             if (code != 200) throw httpError(code, connection)
-            val release = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            val release = JSONArray(body).optJSONObject(0)
+                ?: throw IOException("no releases")
             val tag = release.optString("tag_name").ifBlank { "" }
             return build(
                 currentVersion,

@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/linuxwff789/pig-android/releases/latest"><img src="https://img.shields.io/github/v/release/linuxwff789/pig-android?label=release&color=A78BFA" alt="latest release"></a>
+  <a href="https://github.com/linuxwff789/pig-android/releases"><img src="https://img.shields.io/github/v/release/linuxwff789/pig-android?include_prereleases&label=preview&color=A78BFA" alt="latest release"></a>
   <a href="https://github.com/linuxwff789/pig-android/actions/workflows/android.yml"><img src="https://github.com/linuxwff789/pig-android/actions/workflows/android.yml/badge.svg" alt="build"></a>
   <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" alt="Android 8.0+">
   <img src="https://img.shields.io/badge/UI-Kotlin%20%C2%B7%20Compose-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin and Compose">
@@ -68,7 +68,7 @@ build is obsolete), open it once so `pkg` initializes, then run:
 
 ```bash
 pkg install -y curl
-curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh | sh
+curl -fsSL https://raw.githubusercontent.com/linuxwff789/pig-android/main/scripts/install-termux.sh | sh
 ```
 
 The script enables `allow-external-apps` (keeping a backup), installs `pig` with

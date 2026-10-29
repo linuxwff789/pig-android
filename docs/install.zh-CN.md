@@ -9,7 +9,7 @@ Android App 是前端。`pig` 和 `pig-relay` 运行在 Termux 里。
 从 F-Droid 安装 Termux（Play Store 版本已过时），打开一次让 `pkg` 完成初始化，然后：
 
 ```bash
-curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/install-termux.sh | sh
+curl -fsSL https://raw.githubusercontent.com/linuxwff789/pig-android/main/scripts/install-termux.sh | sh
 ```
 
 不需要先装任何东西：Termux 的 bootstrap 自带 `curl`（脚本里也会再检查一次）。
@@ -80,7 +80,7 @@ mkdir -p ~/.termux; f=~/.termux/termux.properties; sed -i '/allow-external-apps/
 纯 shell，离线也能跑；会先删掉旧的/被注释的 `allow-external-apps` 行再追加，重复执行安全。喜欢可读版本的话，每个 release 里也有同名脚本：
 
 ```bash
-curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/enable-external-apps.sh | sh
+curl -fsSL https://raw.githubusercontent.com/linuxwff789/pig-android/main/scripts/enable-external-apps.sh | sh
 ```
 
 回到 App 点「一键安装」就会走有进度的那条路。开关打开并且 Termux 被打开过一次后，一键安装即可使用。
@@ -90,7 +90,8 @@ curl -fsSL https://github.com/linuxwff789/pig-android/releases/latest/download/e
 ```bash
 curl -fsSL https://pi-in-go.dev/install.sh | sh
 curl -fsSL -o "$PREFIX/bin/pig-relay" \
-  https://github.com/linuxwff789/pig-android/releases/latest/download/pig-relay-android-arm64
+  https://github.com/linuxwff789/pig-android/releases/download/v<version>/pig-relay-android-arm64
+  （预览版也算；脚本自己会找最新 tag）
 chmod 755 "$PREFIX/bin/pig-relay"
 mkdir -p ~/.pig/android-ui/{theme,layout,windows}
 
@@ -128,7 +129,7 @@ App ── TCP 127.0.0.1:8791 ──▶ pig-relay ── stdio ──▶ pig --m
 | `curl: not found` | `pkg install -y curl`。 |
 | `curl: (35) TLS connect error: error:00000000:lib(0)::reason(0)` | 代理/中间盒掐断了握手。App 会先试 GitHub 再试 jsDelivr；也可以自己下脚本：`curl -fsSL --tls-max 1.2 https://cdn.jsdelivr.net/gh/linuxwff789/pig-android@main/scripts/install-termux.sh -o "$PREFIX/tmp/i.sh"`。relay 二进制可设 `PIG_RELAY_MIRRORS`（URL 前缀，如 `https://ghfast.top/`）再跑脚本。 |
 | `github.com` 连不上但 API 正常 | 安装脚本会退回 `api.github.com/.../releases/assets/<id>`（它再跳到 `objects.githubusercontent.com`，又是另一个主机）。脚本本身可以绕开 `github.com`：`curl -fsSL -H 'Accept: application/vnd.github.raw' "https://api.github.com/repos/linuxwff789/pig-android/contents/scripts/install-termux.sh?ref=main" -o "$PREFIX/tmp/i.sh"`。 |
-| GitHub 返回 `403` / `429`，或 App 里提示「GitHub 限流」 | 更新检查已改走 `releases.atom` 和 `releases/latest` 的跳转，不再调用 `api.github.com`（未认证时按 IP 限制 60 次/小时，移动网络下多人共享一个出口 IP）。release 资产本身是普通下载；若仍返回 429，稍后再试，或带 `PIG_RELAY_MIRRORS=https://ghfast.top/` 运行安装脚本。`github.com` 连不上时脚本会退回 API，此时 `PIG_GITHUB_TOKEN=<pat>`（公开仓库无需任何 scope）可把额度提到 5000 次/小时。 |
+| GitHub 返回 `403` / `429`，或 App 里提示「GitHub 限流」 | 更新检查走 `releases.atom`（包含预览版），只在必要时回退到 `api.github.com`（未认证时按 IP 限制 60 次/小时，移动网络下多人共享一个出口 IP）。release 资产本身是普通下载；若仍返回 429，稍后再试，或带 `PIG_RELAY_MIRRORS=https://ghfast.top/` 运行安装脚本。`github.com` 连不上时脚本会退回 API，此时 `PIG_GITHUB_TOKEN=<pat>`（公开仓库无需任何 scope）可把额度提到 5000 次/小时。 |
 | 刷新模型列表报 `dial tcp: lookup … on [::1]:53: … connection refused` | Android 没有 `/etc/resolv.conf`（Termux 的在 `$PREFIX/etc` 下）；pig 通过 libc 解析，而 CGO-free 的 relay 读不到。1.1.52+ 会读 Termux 的 resolv.conf，并回退到公共 DNS；升级后重启 relay 即可，`PIG_DNS="1.1.1.1 8.8.8.8"` 可覆盖服务器列表。 |
 | 重装后残留的 relay / token | `pkill -x pig-relay`，然后按重试。如果 relay 从未有过客户端，它会在 token 错误时退出。 |
 | App 不显示模型/窗口 | 检查 `ps -A | grep pig`；重启 App。 |
