@@ -46,9 +46,12 @@ android {
         }
 
         release {
-            // A store key comes from PIG_RELEASE_STORE_FILE. Without one, sign
-            // with the CI key so the artifact installs over a debug build and
-            // can be performance-tested; distribution uses the real key.
+            // A store key comes from PIG_RELEASE_STORE_FILE. CI performance
+            // builds may opt into the committed debug key with
+            // -PallowCiSigning=true; a distribution build without a real key
+            // must fail instead of silently shipping a publicly-signable APK.
+            // The check runs at task-graph time so debug/unit-test builds still
+            // configure normally without a release key.
             signingConfig = signingConfigs.findByName("release")
                 ?: signingConfigs.getByName("ci")
             isMinifyEnabled = true
@@ -71,6 +74,21 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    val hasReleaseKey = signingConfigs.findByName("release") != null
+    val allowCiSigning = providers.gradleProperty("allowCiSigning").orNull == "true"
+    gradle.taskGraph.whenReady {
+        val releaseRequested = allTasks.any {
+            it.name == "assembleRelease" || it.name == "bundleRelease" ||
+                it.name == "packageRelease"
+        }
+        if (releaseRequested && !hasReleaseKey && !allowCiSigning) {
+            throw GradleException(
+                "PIG_RELEASE_STORE_FILE is not set; refusing to sign a release with the " +
+                    "committed CI key (pass -PallowCiSigning=true for a local performance build)",
+            )
+        }
     }
 
     packaging {
@@ -96,5 +114,6 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     // WebDAV needs PROPFIND/MKCOL, which HttpURLConnection rejects outright.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    testImplementation("junit:junit:4.13.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

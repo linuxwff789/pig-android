@@ -8,9 +8,14 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,6 +44,15 @@ jobs:
 
       - name: "UI packs: no generated windows committed"
         run: sh scripts/check-ui-packs.sh
+
+      - name: "Docs: EN/ZH twins, switchers, links"
+        run: python3 scripts/check-docs-i18n.py
+
+      - name: "Plan extension: command policy"
+        run: sh scripts/test-plan-policy.sh
+
+      - name: Unit tests (versions, pure helpers)
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
 
       - name: Build relay (android/arm64)
         run: |
@@ -79,16 +93,37 @@ jobs:
           ./gradlew :app:assembleRelease --no-daemon \
             -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"
 
+      - name: Verify APK signer and version
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK"
+          BADGING=$("$BUILD_TOOLS/aapt2" dump badging "$APK")
+          echo "$BADGING" | grep -E "^package:"
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            WANT="${GITHUB_REF_NAME#v}"
+            echo "$BADGING" | grep -q "versionName='$WANT'" || {
+              echo "APK versionName does not match tag $WANT" >&2
+              exit 1
+            }
+          fi
+          sha256sum "$APK" > "$APK.sha256"
+          sha256sum pig-relay-android-arm64 > pig-relay-android-arm64.sha256
+
       - uses: actions/upload-artifact@v4
         with:
           name: pig-release-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/release/*.apk.sha256
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:
           name: pig-relay-android-arm64
-          path: pig-relay-android-arm64
+          path: |
+            pig-relay-android-arm64
+            pig-relay-android-arm64.sha256
           if-no-files-found: error
 
       # A curated summary per release: release-notes/<tag>.md is prepended to
@@ -115,7 +150,9 @@ jobs:
           body_path: ${{ runner.temp }}/release-body.md
           files: |
             app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/release/*.apk.sha256
             pig-relay-android-arm64
+            pig-relay-android-arm64.sha256
             scripts/install-termux.sh
             scripts/enable-external-apps.sh
           generate_release_notes: true

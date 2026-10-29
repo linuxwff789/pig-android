@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+# A second push to a PR cancels the first; a hung Gradle/Go run must not burn
+# the default six hours.
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   docs:
     runs-on: ubuntu-latest
@@ -28,6 +34,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -55,6 +62,11 @@ jobs:
 
       # The relay ships with every release; catch a broken build (or a failing
       # history/page test) on the PR instead of at tag time.
+      # extensions/plan cannot resolve the PiG SDK in CI; run the pure policy
+      # tests in their own module so that safety test is not dead code.
+      - name: "Plan extension: command policy"
+        run: sh scripts/test-plan-policy.sh
+
       - name: "Relay: vet, test, cross-compile"
         run: |
           cd relay
@@ -83,6 +95,9 @@ jobs:
           tail -40 "$RUNNER_TEMP/gradle.log"
           exit "$status"
 
+      - name: Unit tests (versions, pure helpers)
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
+
       - uses: actions/upload-artifact@v4
         with:
           name: pig-debug-apk
@@ -91,7 +106,8 @@ jobs:
 
       - name: Build release APK
         run: |
-          ./gradlew :app:assembleRelease -PversionCode=100 -PversionName=1.0.0 --no-daemon --stacktrace
+          ./gradlew :app:assembleRelease -PversionCode=100 -PversionName=1.0.0 \
+            -PallowCiSigning=true --no-daemon --stacktrace
 
       - uses: actions/upload-artifact@v4
         with:

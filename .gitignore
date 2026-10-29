@@ -13,3 +13,10 @@ relay/pig-relay
 # python bytecode
 __pycache__/
 *.pyc
+
+# Signing keys must never be committed (the CI debug key lives in keystore/
+# and is addressed explicitly in build.gradle.kts).
+*.p12
+*.jks
+*.keystore
+keystore/

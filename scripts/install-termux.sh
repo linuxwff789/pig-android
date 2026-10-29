@@ -103,6 +103,12 @@ fetch() {
     curl_get "$1" "$2"
 }
 
+# A sidecar file that may legitimately be absent (older releases, mirrors).
+# One quiet attempt: the retrying fetch() would print three scary errors.
+fetch_optional() {
+    curl -fsSL --connect-timeout 10 -o "$2" "$1" 2>/dev/null
+}
+
 # github.com can be unreachable while the API host is fine (same repository,
 # same asset): the asset endpoint answers with a redirect to
 # objects.githubusercontent.com, a different host again. Used when the plain
@@ -399,9 +405,19 @@ else
         urls="$urls ${prefix}${RELAY_URL}"
     done
     ok=0
+    expected_sha=""
     for url in $urls; do
         [ "$url" = "$RELAY_URL" ] || say "trying mirror: $url"
-        fetch "$url" "$tmp" && { ok=1; break; }
+        if fetch "$url" "$tmp"; then
+            ok=1
+            # Best effort: older releases and some mirrors do not carry the
+            # checksum. When it is there, a mismatch is fatal.
+            if fetch_optional "$url.sha256" "$tmp.sha256"; then
+                expected_sha=$(awk '{print $1; exit}' "$tmp.sha256" 2>/dev/null)
+            fi
+            rm -f "$tmp.sha256"
+            break
+        fi
     done
     if [ "$ok" = 0 ] && fetch_relay_api "$tmp"; then
         ok=1
@@ -410,6 +426,10 @@ else
         say "could not download $RELAY_URL"
         say "hint: download it another way and place it at $RELAY (chmod 700),"
         say "      or set PIG_RELAY_MIRRORS to a prefix like https://ghfast.top/"
+    elif [ -n "$expected_sha" ] && command -v sha256sum >/dev/null 2>&1 &&
+        [ "$(sha256sum "$tmp" | awk '{print $1}')" != "$expected_sha" ]; then
+        say "pig-relay checksum mismatch; not installing"
+        rm -f "$tmp"
     elif [ "$(head -c 4 "$tmp")" != "$(printf '\177ELF')" ]; then
         # A captive portal or an error page answers 200 with HTML; never
         # replace a working relay with that.
