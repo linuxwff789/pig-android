@@ -3,6 +3,7 @@ package com.linuxwff.pigapp
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
@@ -149,7 +150,19 @@ class WebDavBackupWorker(
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
-        return ForegroundInfo(FGS_ID, notification)
+        // WorkManager 2.9 passes foregroundServiceType=0 for the two-argument
+        // constructor. Android 14+ rejects that with
+        // InvalidForegroundServiceTypeException ("type none ... prohibited")
+        // even when the manifest declares dataSync.
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                FGS_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+            )
+        } else {
+            ForegroundInfo(FGS_ID, notification)
+        }
     }
 
     private companion object {
