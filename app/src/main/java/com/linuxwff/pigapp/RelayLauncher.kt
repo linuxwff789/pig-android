@@ -28,7 +28,8 @@ object RelayLauncher {
      * release itself, previews included.
      */
     private const val INSTALL_SCRIPT = "$RAW/scripts/install-termux.sh"
-    private val RELEASE_VERSION = Regex("""\d+\.\d+\.\d+""")
+    /** Any dot-separated numeric version: 1.1.67 and 1.1.68.2 are both tags. */
+    private val RELEASE_VERSION = Regex("""\d+(\.\d+)+""")
 
     /** The release this app was built from, or null for a debug/CI build: those
      *  carry a version that has no release, so they use the latest one. */

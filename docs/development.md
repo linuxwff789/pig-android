@@ -109,7 +109,23 @@ Actions secrets; the version name is the tag without `v` and the version code
 is the commit count. The local backup lives at
 `~/.pig-android-release/pig-release.p12` (not in the repo). A tag also creates a
 GitHub Release with the APK attached (plus `pig-relay-android-arm64` and
-`install-termux.sh`). A release can carry its own summary: `release-notes/<tag>.md`
+`install-termux.sh`). Every tag is published as a **pre-release** by default; a
+release is only promoted to a normal one when explicitly asked for.
+
+Version numbers have four parts, `X.Y.Z.W`:
+
+- `X.Y` — product line (stable for a long while)
+- `Z` — one batch of changes ("round"); it only moves when the next round starts
+- `W` — the build inside that round: `1.1.68.1`, `1.1.68.2`, …
+
+So previews never consume a "release number". Promoting a build to a normal
+release keeps its number (uncheck *Pre-release* on GitHub, or run
+`PIG_GITHUB_TOKEN=... scripts/promote-release.sh v1.1.68.1`); `latest` then
+points at it, and the next preview continues the `W` counter of a new `Z`.
+All comparators (app update check, relay-vs-app nag, `install-termux.sh`) treat
+missing parts as zero, so old three-part versions still order correctly.
+
+A release can carry its own summary: `release-notes/<tag>.md`
 is prepended to the generated "What's Changed" list, see
 [release-notes/README.md](../release-notes/README.md). The release key differs from the debug
 key, so installing a release APK over an installed debug build requires
