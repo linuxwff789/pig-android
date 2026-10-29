@@ -3771,6 +3771,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun toastRelayError(source: String, message: String) {
         if (message.isBlank()) return
+        // Relay versions before 1.1.63 logged a deliberate stop (session
+        // switch, deleted session, idle park) as an error exit. The process
+        // ending is the point, not a failure.
+        if (message.contains("pig stopped") ||
+            message.contains("code=143") ||
+            message.contains("signal: terminated")
+        ) {
+            return
+        }
         val now = System.currentTimeMillis()
         if (message == lastRelayToastText || now - lastRelayToastAt < 3_000) return
         lastRelayToastAt = now

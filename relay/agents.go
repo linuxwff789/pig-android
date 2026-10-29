@@ -503,7 +503,13 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 				"reason": a.lastStderr(),
 			})
 		}
-		logf("pig exited: code=%d err=%v path=%q", code, err, a.path)
+		if a.pig.stopping.Load() {
+			// "exited" makes logLevel() classify the line as an error, and the
+			// app toasts every relay error; a deliberate stop is not one.
+			logf("pig stopped: code=%d path=%q", code, a.path)
+		} else {
+			logf("pig exited: code=%d err=%v path=%q", code, err, a.path)
+		}
 	}()
 
 	return a, nil

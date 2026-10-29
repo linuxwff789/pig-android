@@ -66,6 +66,10 @@ type pigProcess struct {
 	stdin io.WriteCloser
 	mu    sync.Mutex
 	dead  chan struct{}
+	// Set when the relay itself asked the process to stop (session switch,
+	// deleted session, idle park). Such an exit is expected and must not be
+	// reported as a failure to the client.
+	stopping atomic.Bool
 }
 
 func (p *pigProcess) write(line []byte) error {
@@ -81,6 +85,7 @@ func (p *pigProcess) write(line []byte) error {
 }
 
 func (p *pigProcess) stop() {
+	p.stopping.Store(true)
 	p.mu.Lock()
 	if p.stdin != nil {
 		_ = p.stdin.Close()
