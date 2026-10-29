@@ -66,9 +66,11 @@ installed and simply never run `/plan`.
   off, so it never lingers).
 - When the model answers with a `Plan:` section, extracts the numbered steps
   and shows a dialog: **执行计划 / 留在计划模式 / 细化计划**.
-- During execution the model marks progress with `[DONE:n]`; `turn_end` turns
-  those into checked steps. When every step is done the mode ends but the card
-  stays, so you can see what happened.
+- During execution the model calls `plan_done` (step=n) after each step, or
+  writes `[DONE:n]` in its text; both are applied as soon as they arrive
+  (streamed text included), so the card ticks while the run continues. When
+  every step is done the mode ends but the card stays, so you can see what
+  happened.
 
 ## Where the state lives
 

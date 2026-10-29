@@ -36,7 +36,10 @@ func executionPrompt(steps []Step) string {
 	if remaining == 0 {
 		b.WriteString("（全部完成）\n")
 	}
-	b.WriteString("\n按顺序执行，每完成一步就在回复里带上 [DONE:n]（n 是步骤编号）。")
+	b.WriteString("\n按顺序执行。每完成一步，立刻调用 plan_done（step=n）把这一步标记为完成；" +
+		"没有这个工具时，就在回复里单独输出一行 [DONE:n]。")
+	b.WriteString("\n不要等全部做完才一次性补标记：进度卡片要能随着你的工作实时更新。" +
+		"即使下一步只是工具调用，也请先标记当前步骤再继续。")
 	return b.String()
 }
 
@@ -113,17 +116,14 @@ func onToolCall(ctx sdk.Context, data map[string]any) (any, error) {
 	return nil, nil
 }
 
-func onTurnEnd(ctx sdk.Context, data map[string]any) (any, error) {
-	if !snapshot().Executing {
-		return nil, nil
-	}
-	numbers := doneSteps(sdk.MessageText(data))
+// markDone applies [DONE:n] numbers to the plan. Rendering happens as soon as
+// one step changes, not at turn end: a model that writes its markers while the
+// answer streams must tick the card immediately.
+func markDone(ctx sdk.Context, numbers []int) (changed bool, done, total int, finishedAll bool) {
 	if len(numbers) == 0 {
-		return nil, nil
+		return false, 0, 0, false
 	}
-	finishedAll := false
 	mu.Lock()
-	changed := false
 	for _, number := range numbers {
 		for i := range st.Steps {
 			if st.Steps[i].N == number && !st.Steps[i].Done {
@@ -132,22 +132,24 @@ func onTurnEnd(ctx sdk.Context, data map[string]any) (any, error) {
 			}
 		}
 	}
-	if changed && len(st.Steps) > 0 {
+	total = len(st.Steps)
+	if changed && total > 0 {
 		finishedAll = true
+		done = 0
 		for _, step := range st.Steps {
-			if !step.Done {
+			if step.Done {
+				done++
+			} else {
 				finishedAll = false
-				break
 			}
 		}
 		if finishedAll {
 			st.Executing = false
 		}
 	}
-	total := len(st.Steps)
 	mu.Unlock()
 	if !changed {
-		return nil, nil
+		return false, 0, total, false
 	}
 	persist(ctx)
 	render(ctx)
@@ -155,6 +157,69 @@ func onTurnEnd(ctx sdk.Context, data map[string]any) (any, error) {
 		applyTools(ctx)
 		ctx.Notify(fmt.Sprintf("计划已完成（%d 步）。/plan clear 清空清单。", total), "info")
 	}
+	return changed, done, total, finishedAll
+}
+
+func onTurnEnd(ctx sdk.Context, data map[string]any) (any, error) {
+	if !snapshot().Executing {
+		return nil, nil
+	}
+	markDone(ctx, doneSteps(sdk.MessageText(data)))
+	return nil, nil
+}
+
+// onMessageEnd catches markers in a tool-call assistant message before the tool
+// runs (turn_end would only arrive after it). This is what makes "step done,
+// now start the next one" visible while the next tool is still working.
+func onMessageEnd(ctx sdk.Context, data map[string]any) (any, error) {
+	if !snapshot().Executing {
+		return nil, nil
+	}
+	msg, _ := data["message"].(map[string]any)
+	if role, _ := msg["role"].(string); role != "assistant" {
+		return nil, nil
+	}
+	markDone(ctx, doneSteps(sdk.MessageText(data)))
+	return nil, nil
+}
+
+// onMessageUpdate scans the streaming text for [DONE:n]. A marker can be split
+// across deltas, so a short tail is kept and re-scanned; markDone ignores
+// numbers it has already applied.
+func onMessageUpdate(ctx sdk.Context, data map[string]any) (any, error) {
+	if !snapshot().Executing {
+		return nil, nil
+	}
+	event, _ := data["assistantMessageEvent"].(map[string]any)
+	if event == nil {
+		return nil, nil
+	}
+	if typ, _ := event["type"].(string); typ != "text_delta" {
+		return nil, nil
+	}
+	delta, _ := event["delta"].(string)
+	if delta == "" {
+		return nil, nil
+	}
+	mu.Lock()
+	tail := st.streamTail + delta
+	if len(tail) > 64 {
+		tail = tail[len(tail)-64:]
+	}
+	st.streamTail = tail
+	mu.Unlock()
+	markDone(ctx, doneSteps(tail))
+	return nil, nil
+}
+
+func onMessageStart(_ sdk.Context, data map[string]any) (any, error) {
+	msg, _ := data["message"].(map[string]any)
+	if role, _ := msg["role"].(string); role != "assistant" {
+		return nil, nil
+	}
+	mu.Lock()
+	st.streamTail = ""
+	mu.Unlock()
 	return nil, nil
 }
 

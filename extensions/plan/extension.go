@@ -14,6 +14,7 @@ package plan
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync"
 
 	sdk "github.com/MichaelKinsy/PiG/extensions/sdk"
@@ -33,6 +34,9 @@ type state struct {
 	// process-local: after a restart the live set is captured again, so the
 	// saved copy would only go stale.
 	ToolsBefore []string `json:"-"`
+	// streamTail is the last chunk of streamed assistant text. [DONE:n] can be
+	// split across deltas and is too short to keep the whole message around.
+	streamTail string `json:"-"`
 }
 
 var (
@@ -63,8 +67,58 @@ func Extension() *sdk.Extension {
 	ext.OnEvent(sdk.EventAgentStart, onAgentStart)
 	ext.OnEvent(sdk.EventBeforeAgentStart, onBeforeAgentStart)
 	ext.OnEvent(sdk.EventToolCall, onToolCall)
+	ext.OnEvent(sdk.EventMessageStart, onMessageStart)
+	ext.OnEvent(sdk.EventMessageUpdate, onMessageUpdate)
+	ext.OnEvent(sdk.EventMessageEnd, onMessageEnd)
 	ext.OnEvent(sdk.EventTurnEnd, onTurnEnd)
 	ext.OnEvent(sdk.EventAgentEnd, onAgentEnd)
+	ext.RegisterTool(sdk.ToolDefinition{
+		Name:  "plan_done",
+		Label: "Plan Step Done",
+		Description: "把当前执行计划中的一步标记为完成（仅在执行计划时使用）。" +
+			"每完成一步立刻调用，不要攒到最后。",
+		PromptGuidelines: []string{
+			"执行计划时，每完成一步立刻调用 plan_done（step=n）；这样进度卡片会实时更新。",
+		},
+		Parameters: sdk.Schema{
+			"type": "object",
+			"properties": map[string]any{
+				"step": map[string]any{
+					"type":        "number",
+					"description": "步骤编号（计划列表里的 1、2、3…）",
+				},
+			},
+			"required": []string{"step"},
+		},
+		Execute: func(ctx sdk.Context, params map[string]any) (any, error) {
+			if !snapshot().Executing {
+				return "当前不在执行计划，忽略。", nil
+			}
+			number := 0
+			switch value := params["step"].(type) {
+			case float64:
+				number = int(value)
+			case int:
+				number = value
+			case int64:
+				number = int(value)
+			case string:
+				number, _ = strconv.Atoi(value)
+			}
+			if number <= 0 {
+				return "step 必须是正整数。", nil
+			}
+			changed, done, total, finished := markDone(ctx, []int{number})
+			switch {
+			case changed && finished:
+				return fmt.Sprintf("第 %d 步已标记完成，计划全部完成（%d/%d）。", number, done, total), nil
+			case changed:
+				return fmt.Sprintf("第 %d 步已标记完成（%d/%d）。", number, done, total), nil
+			default:
+				return fmt.Sprintf("第 %d 步不在未完成列表里（可能已经完成）。", number), nil
+			}
+		},
+	})
 	ext.OnEvent(sdk.EventSessionShutdown, func(_ sdk.Context, _ map[string]any) (any, error) {
 		mu.Lock()
 		st = state{}
