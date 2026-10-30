@@ -63,6 +63,9 @@ data class ChatMsg(
     val images: List<ChatImage> = emptyList(),
     /** Image blocks dropped by the size/count caps. */
     val imagesOmitted: Int = 0,
+    /** Session-file timestamp (epoch ms); 0 when unknown/live. Used to place
+     *  app-recorded notices back among the turns that produced them. */
+    val at: Long = 0L,
 )
 
 /** Cumulative counters from `get_session_stats` (whole session file). */

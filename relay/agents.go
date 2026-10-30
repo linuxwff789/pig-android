@@ -988,8 +988,10 @@ func (s *session) syntheticMessages(id any) frame {
 	}
 }
 
-// historyLimit is how many messages get_messages returns.
-const historyLimit = 2000
+// historyLimit is the most messages get_messages will return from disk (and
+// the cap on a cached transcript). The app asks for the session total when the
+// reader reaches the top; a 4000-message session used to stop at 2000.
+const historyLimit = 20000
 
 // historyAlignSlack bounds how far a page may move back to reach the user
 // message that opened its first turn.

@@ -36,6 +36,7 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.text.SimpleDateFormat
+import java.time.Instant
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
@@ -106,6 +107,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * the session: the first page is small, pulling at the top doubles it.
      */
     private var historyWindow = HISTORY_PAGE
+    /** Messages the relay says the whole session has; lets one pull at the top
+     *  ask for the rest instead of doubling through many round trips. */
+    private var historyTotal = 0
     private var lastCommandsAt = 0L
     private var modelSwitchAccepted = false
     /** A `new_session` is in flight; the banner stays until it is ready. */
@@ -3217,7 +3221,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun loadOlderHistory() {
         if (ui.historyLoading || !ui.historyHasOlder) return
         if (historyWindow >= HISTORY_MAX) return
-        historyWindow = (historyWindow * 2).coerceAtMost(HISTORY_MAX)
+        val before = historyWindow
+        // Jump straight to the known total: a 4000-message session otherwise
+        // needed seven trips to the top (40, 80, 160, ...), and the old 2000
+        // cap left the oldest turns permanently unreachable.
+        val target = if (historyTotal > historyWindow) historyTotal else historyWindow * 2
+        historyWindow = target.coerceAtMost(HISTORY_MAX)
+        if (historyWindow == before) return
         ui = ui.copy(historyLoadingOlder = true)
         requestMessages()
     }
@@ -3310,6 +3320,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         needsHistory = false
         historyHealTried = false
         historyWindow = HISTORY_PAGE
+        historyTotal = 0
         // Open the new conversation right away so the user can start typing;
         // pig creates the session in the background and the queued prompt runs
         // as soon as it is ready. The banner explains the wait.
@@ -4080,7 +4091,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun appendNotice(text: String) {
         if (text.isBlank()) return
         AppLog.event("notice", text)
-        append(ChatMsg(id = "n${nextId++}", role = Role.NOTICE, text = text, isError = true))
+        append(
+            ChatMsg(
+                id = "n${nextId++}",
+                role = Role.NOTICE,
+                text = text,
+                isError = true,
+                at = System.currentTimeMillis(),
+            ),
+        )
         noticesCache = null
         val key = noticeKey() ?: return
         val record = JSONObject()
@@ -4146,6 +4165,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             role = Role.NOTICE,
                             text = text,
                             isError = true,
+                            at = item.optLong("ts"),
                         )
                     }
                 }.toList()
@@ -4272,6 +4292,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // reader had pulled open before the socket dropped; a cached
                 // transcript restores its own page size below.
                 historyWindow = HISTORY_PAGE
+                historyTotal = 0
                 restartInFlight = false
                 // A reconnect settles whatever was pending; the new-session
                 // hint must not outlive the connection that showed it. Prompts
@@ -4994,6 +5015,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             sessionEpoch++
             val switchingToFile = command == "switch_session"
             historyWindow = HISTORY_PAGE
+            historyTotal = 0
             // Paint the transcript built last time immediately; the fresh copy
             // is requested right below and replaces it in place (stable ids, so
             // nothing visibly changes).
@@ -5084,6 +5106,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         // old request even if one is still marked loading.
                         sessionEpoch++
                         historyWindow = HISTORY_PAGE
+                        historyTotal = 0
                         requestMessages()
                     }
                 }
@@ -5324,6 +5347,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     return@let
                 }
                 val historyStart = data.optInt("historyStart", 0)
+                historyTotal = maxOf(data.optInt("historyTotal", 0), history.length())
                 val foreignEmpty = history.length() == 0 && ui.messages.isNotEmpty() &&
                     (taggedPath.isBlank() || taggedPath == ui.sessionFile)
                 if (foreignEmpty) {
@@ -5354,11 +5378,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         // A newer get_messages (session switch, heal) may have
                         // been issued while this one was building.
                         if (requestId.isNotBlank() && requestId != lastMessagesRequestId) {
+                            AppLog.event("vm", "history superseded by a newer request")
                             return@launch
                         }
                         // The user opened/created another session while this
                         // transcript was building: it belongs to the old one.
-                        if (epochAtRequest != sessionEpoch) return@launch
+                        if (epochAtRequest != sessionEpoch) {
+                            AppLog.event(
+                                "vm",
+                                "history dropped: epoch $epochAtRequest -> $sessionEpoch",
+                            )
+                            return@launch
+                        }
                         // A turn started while the history was building: its
                         // messages are not in `build`, so replacing the list
                         // would drop them.
@@ -5610,7 +5641,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         notices: List<ChatMsg>,
         redactedLabel: String,
     ): HistoryBuild {
-        val out = mutableListOf<ChatMsg>()
+        var out = mutableListOf<ChatMsg>()
         val toolIds = mutableMapOf<String, String>()
         val toolMsgIds = HashMap<String, String>()
         val consumed = HashMap<String, String>()
@@ -5644,6 +5675,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // prepends items, and stable keys keep tool cards expanded and
             // screenshots cached when a window grows.
             val stamp = message.optString("timestamp").ifBlank { "i$index" }
+            val at = parseMessageTime(stamp)
             var slot = 0
             fun itemId(): String = "h$stamp-${slot++}"
             when (message.optString("role")) {
@@ -5658,6 +5690,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 text = text,
                                 images = decoded.images,
                                 imagesOmitted = decoded.omitted,
+                                at = at,
                             ),
                         )
                     }
@@ -5675,6 +5708,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 thinking = thinking,
                                 images = decoded.images,
                                 imagesOmitted = decoded.omitted,
+                                at = at,
                             ),
                         )
                     }
@@ -5682,7 +5716,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     // errorMessage; without this they vanish on reload.
                     val failure = failureText(message)
                     if (failure.isNotBlank()) {
-                        out.add(ChatMsg(itemId(), Role.NOTICE, text = failure, isError = true))
+                        out.add(ChatMsg(itemId(), Role.NOTICE, text = failure, isError = true, at = at))
                     }
                     val blocks = message.optJSONArray("content") ?: continue
                     for (blockIndex in 0 until blocks.length()) {
@@ -5711,6 +5745,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 toolArgs = block.optJSONObject("arguments")?.toString() ?: "",
                                 toolResult = partial ?: "",
                                 running = partial != null,
+                                at = at,
                             ),
                         )
                     }
@@ -5743,6 +5778,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 isError = message.optBoolean("isError", false),
                                 images = decoded.images,
                                 imagesOmitted = decoded.omitted,
+                                at = at,
                             ),
                         )
                     }
@@ -5762,14 +5798,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 assistantId = out.last().id
             } else {
                 val id = "h${counter++}"
-                out.add(ChatMsg(id = id, role = Role.ASSISTANT, text = live))
+                out.add(
+                    ChatMsg(
+                        id = id,
+                        role = Role.ASSISTANT,
+                        text = live,
+                        at = System.currentTimeMillis(),
+                    ),
+                )
                 assistantId = id
             }
         }
         // App-recorded failures (relay/transport) are not in pig's file, so
-        // replay them from the per-session log; nothing above is duplicated.
-        val known = out.filter { it.role == Role.NOTICE }.mapTo(HashSet()) { it.text }
-        out += notices.filterNot { it.text in known }
+        // replay them from the per-session log *at their timestamp*: appending
+        // them all put every old error under the newest turn.
+        out = mergeNotices(out, notices).toMutableList()
         return HistoryBuild(out, toolMsgIds, consumed, assistantId, liveText)
     }
 
@@ -6619,6 +6662,37 @@ private const val HISTORY_IMAGE_PIXEL_BUDGET = 6_000_000L
 /** Decoded screenshots kept across rebuilds and page growth (~24 MB). */
 private const val HISTORY_IMAGE_CACHE_PIXELS = 6_000_000
 
+/** Message timestamps are ISO-8601 ("...Z"); 0 keeps a damaged line sortable. */
+internal fun parseMessageTime(stamp: String): Long =
+    if (stamp.isBlank()) 0L else runCatching { Instant.parse(stamp).toEpochMilli() }.getOrDefault(0L)
+
+/**
+ * Merge app-recorded notices into a transcript by timestamp. Notices without a
+ * usable `at` go at the end (old records), and a text already present in the
+ * history (pig's own errorMessage) is not duplicated. Pure so the ordering can
+ * be tested without a ViewModel.
+ */
+internal fun mergeNotices(items: List<ChatMsg>, notices: List<ChatMsg>): List<ChatMsg> {
+    if (notices.isEmpty()) return items
+    val known = items.filter { it.role == Role.NOTICE }.mapTo(HashSet()) { it.text }
+    val pending = notices
+        .filterNot { it.text in known }
+        .sortedBy { if (it.at > 0) it.at else Long.MAX_VALUE }
+    if (pending.isEmpty()) return items
+    val out = ArrayList<ChatMsg>(items.size + pending.size)
+    var next = 0
+    for (item in items) {
+        while (next < pending.size && pending[next].at > 0 && item.at > 0 &&
+            pending[next].at <= item.at
+        ) {
+            out.add(pending[next++])
+        }
+        out.add(item)
+    }
+    while (next < pending.size) out.add(pending[next++])
+    return out
+}
+
 /**
  * True when a get_state reply only confirms the switch this client asked for.
  * The switch response already issued the history request; treating the reply as
@@ -6669,7 +6743,7 @@ private const val WIDGET_SNAPSHOT_SESSIONS = 20
 private const val WIDGET_SNAPSHOT_TTL_MS = 7L * 24 * 60 * 60 * 1000
 
 /** Relay's cap on one history reply. */
-private const val HISTORY_MAX = 2000
+private const val HISTORY_MAX = 20000
 
 /** Sessions whose built transcript stays in memory (≈24 MB of images each). */
 private const val HISTORY_CACHE_SESSIONS = 2
