@@ -5070,12 +5070,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     ui.sessionId.isNotBlank() &&
                     sessionId != ui.sessionId
                 if (switched && !liveActive) {
-                    sessionEpoch++
                     currentAssistant = null
-                    // pig switched sessions on its own (a command inside the
-                    // session): the transcript below is cleared, so fetch the
-                    // new one instead of leaving an empty screen behind.
-                    if (!ui.historyLoading) {
+                    // A get_state reply that reports the file we just asked to
+                    // switch to is only confirming that switch; the history
+                    // request sent by its response is already in flight. Bumping
+                    // the epoch here used to invalidate that request, and the
+                    // build was dropped without clearing historyLoading — the
+                    // spinner stayed until the user pressed retry.
+                    val confirmingSwitch = isSwitchConfirmation(desiredSessionPath, reportedFile)
+                    if (!confirmingSwitch) {
+                        // pig switched sessions on its own (a command inside the
+                        // session): fetch the new transcript, and supersede any
+                        // old request even if one is still marked loading.
+                        sessionEpoch++
                         historyWindow = HISTORY_PAGE
                         requestMessages()
                     }
@@ -6611,6 +6618,15 @@ private const val HISTORY_IMAGE_PIXEL_BUDGET = 6_000_000L
 
 /** Decoded screenshots kept across rebuilds and page growth (~24 MB). */
 private const val HISTORY_IMAGE_CACHE_PIXELS = 6_000_000
+
+/**
+ * True when a get_state reply only confirms the switch this client asked for.
+ * The switch response already issued the history request; treating the reply as
+ * a spontaneous switch would bump the epoch and strand that request.
+ */
+internal fun isSwitchConfirmation(desiredSessionPath: String?, reportedFile: String): Boolean =
+    !desiredSessionPath.isNullOrBlank() && reportedFile.isNotBlank() &&
+        desiredSessionPath == reportedFile
 
 /** Numeric comparison of dot-separated version names; null when either is not numeric. */
 internal fun compareVersionNames(left: String, right: String): Int? {
