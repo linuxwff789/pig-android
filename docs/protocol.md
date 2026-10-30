@@ -95,6 +95,8 @@ attached for that session, or by trimming pig's reply — and adds two fields to
 | `historyStart` | index of the first returned message in the whole transcript; `0` means nothing older is left |
 | `historyTotal` | how many messages the relay had for that session |
 
+The app opens with 200 messages and asks for 200 more each time the reader reaches the top, clamped to `historyTotal`; it never requests the whole transcript in one page.
+
 The window is moved back to the `user` message that opened its first turn (at
 most 24 messages) so a page never begins with a `toolResult` whose `toolCall`
 lives on the previous page. A `get_messages` without `limit` is answered whole,

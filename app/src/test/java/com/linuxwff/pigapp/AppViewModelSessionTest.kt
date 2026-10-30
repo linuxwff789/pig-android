@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -48,16 +49,35 @@ class AppViewModelSessionTest {
                 .put("live", false))
 
     private fun history(id: String, file: String): JSONObject =
-        JSONObject()
+        historyPage(id, file, start = 0, total = 0, text = "")
+
+    private fun historyPage(
+        id: String,
+        file: String,
+        start: Int,
+        total: Int,
+        text: String,
+    ): JSONObject {
+        val messages = JSONArray()
+        if (text.isNotBlank()) {
+            messages.put(JSONObject()
+                .put("role", "user")
+                .put("timestamp", "2026-10-30T00:00:00Z")
+                .put("content", JSONArray().put(JSONObject()
+                    .put("type", "text")
+                    .put("text", text))))
+        }
+        return JSONObject()
             .put("type", "response")
             .put("id", id)
             .put("command", "get_messages")
             .put("success", true)
             .put("sessionPath", file)
             .put("data", JSONObject()
-                .put("messages", JSONArray())
-                .put("historyStart", 0)
-                .put("historyTotal", 0))
+                .put("messages", messages)
+                .put("historyStart", start)
+                .put("historyTotal", total))
+    }
 
     @Test
     fun switchConfirmationDoesNotStrandTheHistoryRequest() {
@@ -124,5 +144,42 @@ class AppViewModelSessionTest {
             }
         }
         assertTrue(vm.ui.status.isEmpty() || vm.ui.status == "restoring")
+    }
+
+    @Test
+    fun olderHistoryPullsTwoHundredAtATime() {
+        val relay = FakeRelay()
+        val vm = AppViewModel(app, relay)
+        relay.emit(state("", "/a.jsonl", "A", 1000))
+        idleUntil { vm.ui.sessionFile == "/a.jsonl" }
+        vm.reloadHistory()
+        idleUntil { relay.last("get_messages") != null }
+
+        var request = relay.last("get_messages")!!
+        assertTrue(request.optInt("limit") == 200)
+        relay.emit(historyPage(request.optString("id"), "/a.jsonl", 800, 1000, "m200"))
+        idleUntil { !vm.ui.historyLoading }
+
+        val limits = mutableListOf(200)
+        for (expected in listOf(400, 600, 800, 1000)) {
+            vm.loadOlderHistory()
+            idleUntil {
+                val last = relay.last("get_messages")
+                last != null && last.optString("id") != request.optString("id")
+            }
+            request = relay.last("get_messages")!!
+            limits += request.optInt("limit")
+            assertEquals(expected, request.optInt("limit"))
+            val start = (1000 - expected).coerceAtLeast(0)
+            relay.emit(historyPage(request.optString("id"), "/a.jsonl", start, 1000, "m$expected"))
+            idleUntil { !vm.ui.historyLoading }
+        }
+        assertEquals(listOf(200, 400, 600, 800, 1000), limits)
+        assertFalse(vm.ui.historyHasOlder)
+
+        // At the start of the transcript there is nothing more to request.
+        vm.loadOlderHistory()
+        idleUntil { true }
+        assertEquals(request.optString("id"), relay.last("get_messages")!!.optString("id"))
     }
 }

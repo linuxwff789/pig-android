@@ -82,6 +82,8 @@ Termux 安装脚本运行时会把进度写到 `~/.pig/install-status.json`：
 | `historyStart` | 整个对话记录中第一条返回消息的索引；`0` 表示没有更早的消息了 |
 | `historyTotal` | relay 为该会话保存的消息总数 |
 
+App 首次只取 200 条，之后每上滑到顶部再取 200 条，并由 `historyTotal` 收尾；不会一次请求整个会话。
+
 窗口会向前回退到开启其第一轮的 `user` 消息（最多 24 条消息），这样一页绝不会以 `toolResult` 开头而其 `toolCall` 落在上一页。不带 `limit` 的 `get_messages` 会整份应答，因此旧客户端不受影响；磁盘回退同样返回整个会话，App 可以加载全部轮次。
 
 ## relay → 客户端

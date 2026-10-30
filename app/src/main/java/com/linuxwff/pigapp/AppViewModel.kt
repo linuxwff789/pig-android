@@ -6762,7 +6762,7 @@ internal fun compareVersionNames(left: String, right: String): Int? {
     return 0
 }
 
-/** Messages in the first history page; pulling at the top doubles it. */
+/** Messages in the first history page; each pull at the top adds one more. */
 private const val HISTORY_PAGE = 200
 /** Older messages added by one pull at the top. */
 private const val HISTORY_PAGE_STEP = 200
