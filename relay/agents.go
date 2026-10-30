@@ -459,7 +459,7 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 			payload := append([]byte(nil), line...)
 			a.trackFrame(s, payload)
 			if s.isActive(a) {
-				_ = s.sendRaw(s.fitHistory(s.tagResponse(a, payload)))
+				_ = s.sendRaw(s.fitHistory(s.tagResponse(a, payload), s.agentPath(a)))
 			}
 		}
 		if err := scanner.Err(); err != nil {
@@ -1008,6 +1008,29 @@ func clipHistory(messages []json.RawMessage, limit int) ([]json.RawMessage, int)
 	return messages[start:], start
 }
 
+// mergeHistory keeps the whole disk transcript and appends the messages pig
+// has that are newer than the file (typically the partial assistant message of
+// a running turn). Byte equality is enough: both sides carry pig's raw JSON.
+func mergeHistory(disk, tail []json.RawMessage) []json.RawMessage {
+	seen := make(map[string]bool, len(disk))
+	out := make([]json.RawMessage, 0, len(disk)+len(tail))
+	for _, message := range disk {
+		key := string(message)
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, message)
+		}
+	}
+	for _, message := range tail {
+		key := string(message)
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, message)
+		}
+	}
+	return out
+}
+
 func messageRole(raw json.RawMessage) string {
 	var head struct {
 		Role string `json:"role"`
@@ -1041,7 +1064,7 @@ func (s *session) takeHistoryLimit(id any) (int, bool) {
 // for. pig answers with the whole transcript, screenshots included, so a
 // 4000-message session would otherwise cross the socket as one ~18 MB line and
 // be parsed in full on the phone.
-func (s *session) fitHistory(payload []byte) []byte {
+func (s *session) fitHistory(payload []byte, paths ...string) []byte {
 	if !bytes.Contains(payload, []byte(`"command":"get_messages"`)) {
 		return payload
 	}
@@ -1067,10 +1090,27 @@ func (s *session) fitHistory(payload []byte) []byte {
 	if !ok || limit <= 0 {
 		return payload
 	}
-	if !env.Success || len(env.Data.Messages) == 0 {
+	if !env.Success {
 		return payload
 	}
-	window, start := clipHistory(env.Data.Messages, limit)
+	messages := env.Data.Messages
+	// pig's runtime may only hold the last context window after compaction,
+	// while the session file still has every turn. Merge the disk transcript
+	// under pig's tail so pulling history during a turn is not capped at what
+	// the model currently remembers.
+	path := s.activePathValue()
+	if len(paths) > 0 {
+		path = paths[0]
+	}
+	if path != "" {
+		if disk := s.cachedMessages(path); len(disk) > len(messages) {
+			messages = mergeHistory(disk, messages)
+		}
+	}
+	if len(messages) == 0 {
+		return payload
+	}
+	window, start := clipHistory(messages, limit)
 	out, err := json.Marshal(struct {
 		Type        string          `json:"type"`
 		ID          json.RawMessage `json:"id"`
@@ -1094,7 +1134,7 @@ func (s *session) fitHistory(payload []byte) []byte {
 			Messages     []json.RawMessage `json:"messages"`
 			HistoryStart int               `json:"historyStart"`
 			HistoryTotal int               `json:"historyTotal"`
-		}{window, start, len(env.Data.Messages)},
+		}{window, start, len(messages)},
 	})
 	if err != nil {
 		return payload
