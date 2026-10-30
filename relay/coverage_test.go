@@ -738,6 +738,9 @@ func TestMainHelper(t *testing.T) {
 func helperProcess(t *testing.T, mode string, env ...string) (string, error) {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=TestMainHelper", "-test.v=false")
+	if dir := os.Getenv("PIG_GOCOVERDIR"); dir != "" {
+		cmd.Args = append(cmd.Args, "-test.gocoverdir="+dir)
+	}
 	cmd.Env = append(os.Environ(), append([]string{"RELAY_MAIN_MODE=" + mode}, env...)...)
 	out, err := cmd.CombinedOutput()
 	return string(out), err

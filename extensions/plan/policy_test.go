@@ -99,3 +99,12 @@ func TestPlanCardOnlyWhileActive(t *testing.T) {
 		t.Error("empty plan should not draw a card")
 	}
 }
+
+func TestPlanWidgetOnlyForRpc(t *testing.T) {
+	if !planWidgetHost("rpc") {
+		t.Error("Android app must get the checklist")
+	}
+	if planWidgetHost("interactive") || planWidgetHost("print") {
+		t.Error("TUI/print must not get the JSON widget")
+	}
+}

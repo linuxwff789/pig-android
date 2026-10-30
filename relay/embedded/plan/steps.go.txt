@@ -122,6 +122,10 @@ func planCardVisible(enabled, executing bool, steps []Step) bool {
 	return len(steps) > 0 && (enabled || executing)
 }
 
+// planWidgetHost reports whether the host can render the JSON checklist. The
+// TUI treats widget lines as text, so it gets only the status chip.
+func planWidgetHost(mode string) bool { return mode == "rpc" }
+
 func statusLine(enabled, executing bool, steps []Step) string {
 	if enabled {
 		return "⏸ plan"

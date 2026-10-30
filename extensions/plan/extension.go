@@ -204,7 +204,7 @@ func render(ctx sdk.Context) {
 	// The widget payload is JSON the Android app turns into a native checklist.
 	// A TUI lays []string out literally, so the same frame becomes one huge
 	// wrapped line; there the status chip is the whole plan UI.
-	widgetHost := ctx.Mode() == "rpc"
+	widgetHost := planWidgetHost(ctx.Mode())
 	if !planCardVisible(current.Enabled, current.Executing, current.Steps) {
 		if widgetHost {
 			_ = ctx.SetWidget(widgetKey, []string{}, sdk.WidgetOptions{"placement": "aboveEditor"})
