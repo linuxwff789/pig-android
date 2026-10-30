@@ -879,10 +879,9 @@ func readSessionMessages(path string) []json.RawMessage {
 	if path == "" {
 		return []json.RawMessage{}
 	}
+	// Return the whole session. The app asks for the total once the reader
+	// reaches the top; a fixed cap made the oldest turns unreachable.
 	out, _ := scanMessages(path, 0)
-	if len(out) > historyLimit {
-		out = out[len(out)-historyLimit:]
-	}
 	return out
 }
 
@@ -987,11 +986,6 @@ func (s *session) syntheticMessages(id any) frame {
 		},
 	}
 }
-
-// historyLimit is the most messages get_messages will return from disk (and
-// the cap on a cached transcript). The app asks for the session total when the
-// reader reaches the top; a 4000-message session used to stop at 2000.
-const historyLimit = 20000
 
 // historyAlignSlack bounds how far a page may move back to reach the user
 // message that opened its first turn.
@@ -1136,9 +1130,6 @@ func (s *session) cachedMessages(path string) []json.RawMessage {
 		messages = make([]json.RawMessage, 0, len(entry.messages)+16)
 		messages = append(messages, entry.messages...)
 		messages = append(messages, readMessagesFrom(path, entry.size)...)
-		if len(messages) > historyLimit {
-			messages = messages[len(messages)-historyLimit:]
-		}
 	} else {
 		messages = readSessionMessages(path)
 	}

@@ -3220,14 +3220,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Pull the next older page; the transcript stays a suffix of the session. */
     fun loadOlderHistory() {
         if (ui.historyLoading || !ui.historyHasOlder) return
-        if (historyWindow >= HISTORY_MAX) return
-        val before = historyWindow
         // Jump straight to the known total: a 4000-message session otherwise
-        // needed seven trips to the top (40, 80, 160, ...), and the old 2000
-        // cap left the oldest turns permanently unreachable.
-        val target = if (historyTotal > historyWindow) historyTotal else historyWindow * 2
-        historyWindow = target.coerceAtMost(HISTORY_MAX)
-        if (historyWindow == before) return
+        // needed seven trips to the top (40, 80, 160, ...). There is no
+        // artificial cap; memory/transport is the only bound.
+        val target = if (historyTotal > historyWindow) {
+            historyTotal
+        } else if (historyWindow > Int.MAX_VALUE / 2) {
+            Int.MAX_VALUE
+        } else {
+            historyWindow * 2
+        }
+        if (target <= historyWindow) return
+        historyWindow = target
         ui = ui.copy(historyLoadingOlder = true)
         requestMessages()
     }
@@ -6743,7 +6747,6 @@ private const val WIDGET_SNAPSHOT_SESSIONS = 20
 private const val WIDGET_SNAPSHOT_TTL_MS = 7L * 24 * 60 * 60 * 1000
 
 /** Relay's cap on one history reply. */
-private const val HISTORY_MAX = 20000
 
 /** Sessions whose built transcript stays in memory (≈24 MB of images each). */
 private const val HISTORY_CACHE_SESSIONS = 2
