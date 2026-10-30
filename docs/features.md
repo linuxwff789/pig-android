@@ -249,7 +249,7 @@ relay forwards them untouched. The app renders them in both directions:
   by the renderer (12-entry memory cache, 8 MiB / 1600 px caps).
 
 History rebuilds decode images off the main thread (1024 px long edge, ~24 MB
-pixel budget per session) so a 2000-message transcript with screenshots stays
+pixel budget per session) so a long transcript with screenshots stays
 navigable. Oversized blocks — over ~6 MiB of image bytes, more than eight per
 message, or beyond the budget — are skipped and shown as `N 张图片未显示`.
 Switching sessions discards decoded bitmaps with the transcript.

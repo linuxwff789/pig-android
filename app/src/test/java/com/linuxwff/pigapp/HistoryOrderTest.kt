@@ -41,4 +41,24 @@ class HistoryOrderTest {
         assertEquals(0L, parseMessageTime("not a timestamp"))
         assertEquals(1_789_948_800_000L, parseMessageTime("2026-09-21T00:00:00Z"))
     }
+    @Test
+    fun pagedWindowHidesNoticesFromEarlierTurns() {
+        val notices = listOf(
+            ChatMsg("old", Role.NOTICE, "old", isError = true, at = 100),
+            ChatMsg("same", Role.NOTICE, "same", isError = true, at = 200),
+            ChatMsg("new", Role.NOTICE, "new", isError = true, at = 300),
+        )
+        assertEquals(
+            listOf("same", "new"),
+            noticesForWindow(notices, historyStart = 10, firstMessageAt = 200).map { it.id },
+        )
+        assertEquals(notices, noticesForWindow(notices, historyStart = 0, firstMessageAt = 200))
+    }
+    @Test
+    fun olderPageTargetUsesTotalWithoutOverflow() {
+        assertEquals(4369, olderHistoryTarget(40, 4369))
+        assertEquals(80, olderHistoryTarget(40, 0))
+        assertEquals(Int.MAX_VALUE, olderHistoryTarget(Int.MAX_VALUE - 10, 0))
+        assertEquals(Int.MAX_VALUE, olderHistoryTarget(40, Int.MAX_VALUE))
+    }
 }

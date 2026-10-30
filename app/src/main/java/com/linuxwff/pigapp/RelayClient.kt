@@ -48,14 +48,14 @@ class RelayClient(
      * would kick the app, which reconnects and kicks the worker, forever.
      */
     private val autoReconnect: Boolean = true,
-) {
+) : RelayConnection {
     /**
      * Shared secret for `relay_auth`. Mutable because an app-data restore can
      * leave the in-memory copy behind the one stored in prefs; the ViewModel
      * swaps it and reconnects instead of showing a dead relay.
      */
     @Volatile
-    var token: String = token
+    override var token: String = token
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     // Frames must reach the socket in the order they were produced
     // (clear_queue before the re-queued messages, prompt before get_state).
@@ -71,10 +71,10 @@ class RelayClient(
     // SharedFlow without replay dropped the relay hello/pack when the
     // collector started a few milliseconds late.
     private val eventChannel = Channel<JSONObject>(Channel.UNLIMITED)
-    val events: Flow<JSONObject> = eventChannel.receiveAsFlow()
+    override val events: Flow<JSONObject> = eventChannel.receiveAsFlow()
 
     private val _connected = MutableStateFlow(false)
-    val connected: StateFlow<Boolean> = _connected.asStateFlow()
+    override val connected: StateFlow<Boolean> = _connected.asStateFlow()
 
     // ---- Backup/restore transfers ----------------------------------------
     // The relay streams a gzipped tar as base64 chunks. They are intercepted
@@ -92,7 +92,7 @@ class RelayClient(
     @Volatile
     private var activeTransferId: String? = null
 
-    fun connect() {
+    override fun connect() {
         if (job?.isActive == true) return
         AppLog.event("relay", "connecting to $host:$port")
         val gen = ++generation
@@ -186,7 +186,7 @@ class RelayClient(
      * Streams a backup of `~/.pig` into [out]. Returns the relay's
      * `relay_backup_done` frame (name, checksum, entries).
      */
-    suspend fun exportBackup(
+    override suspend fun exportBackup(
         out: OutputStream,
         includeSessions: Boolean,
         includeUi: Boolean,
@@ -232,7 +232,7 @@ class RelayClient(
      * Uploads [input] as a restore archive. [size] may be -1 when the content
      * resolver does not know it; the relay then only enforces the hard limit.
      */
-    suspend fun restoreBackup(
+    override suspend fun restoreBackup(
         input: InputStream,
         name: String,
         size: Long,
@@ -357,9 +357,9 @@ class RelayClient(
         return false
     }
 
-    val isConnecting: Boolean get() = job?.isActive == true
+    override val isConnecting: Boolean get() = job?.isActive == true
 
-    fun send(obj: JSONObject) {
+    override fun send(obj: JSONObject) {
         sendScope.launch { sendNow(obj) }
     }
 
@@ -396,7 +396,7 @@ class RelayClient(
         restoreDone?.completeExceptionally(error)
     }
 
-    fun close() {
+    override fun close() {
         AppLog.event("relay", "close requested")
         // A transfer waiting for its completion frame must not hang for the
         // full timeout when the socket goes away under it.

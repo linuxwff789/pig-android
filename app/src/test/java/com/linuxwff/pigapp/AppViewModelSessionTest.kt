@@ -1,0 +1,165 @@
+package com.linuxwff.pigapp
+
+import android.app.Application
+import android.os.Looper
+import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
+import org.json.JSONArray
+import org.json.JSONObject
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+import java.io.InputStream
+import java.io.OutputStream
+
+private class FakeRelay : RelayConnection {
+    override var token: String = "test"
+    private val channel = Channel<JSONObject>(Channel.UNLIMITED)
+    override val events: Flow<JSONObject> = channel.receiveAsFlow()
+    private val state = MutableStateFlow(false)
+    override val connected: StateFlow<Boolean> = state
+    override val isConnecting: Boolean = false
+    val sent = mutableListOf<JSONObject>()
+
+    override fun connect() {
+        state.value = true
+    }
+    override fun send(obj: JSONObject) {
+        sent += obj
+    }
+    override fun close() {
+        state.value = false
+    }
+    override suspend fun exportBackup(
+        out: OutputStream,
+        includeSessions: Boolean,
+        includeUi: Boolean,
+        onProgress: (Long) -> Unit,
+    ): JSONObject = JSONObject()
+    override suspend fun restoreBackup(
+        input: InputStream,
+        name: String,
+        size: Long,
+        onProgress: (Long, Long) -> Unit,
+    ): JSONObject = JSONObject()
+
+    fun emit(obj: JSONObject) {
+        channel.trySend(obj)
+    }
+    fun last(type: String): JSONObject? = sent.lastOrNull { it.optString("type") == type }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class AppViewModelSessionTest {
+    private val app: Application = ApplicationProvider.getApplicationContext()
+
+    private fun idleUntil(predicate: () -> Boolean) {
+        repeat(300) {
+            shadowOf(Looper.getMainLooper()).idle()
+            if (predicate()) return
+            Thread.sleep(10)
+        }
+        assertTrue("condition not reached", predicate())
+    }
+
+    private fun state(id: String, file: String, session: String, count: Int): JSONObject =
+        JSONObject()
+            .put("type", "response")
+            .put("id", id)
+            .put("command", "get_state")
+            .put("success", true)
+            .put("data", JSONObject()
+                .put("sessionFile", file)
+                .put("sessionId", session)
+                .put("messageCount", count)
+                .put("isStreaming", false)
+                .put("live", false))
+
+    private fun history(id: String, file: String): JSONObject =
+        JSONObject()
+            .put("type", "response")
+            .put("id", id)
+            .put("command", "get_messages")
+            .put("success", true)
+            .put("sessionPath", file)
+            .put("data", JSONObject()
+                .put("messages", JSONArray())
+                .put("historyStart", 0)
+                .put("historyTotal", 0))
+
+    @Test
+    fun switchConfirmationDoesNotStrandTheHistoryRequest() {
+        val relay = FakeRelay()
+        val vm = AppViewModel(app, relay)
+
+        // The constructor collects frames; no connect needed to drive state.
+        relay.emit(state("", "/a.jsonl", "A", 1))
+        idleUntil { vm.ui.sessionFile == "/a.jsonl" }
+
+        vm.switchSession("/b.jsonl")
+        val switch = relay.last("switch_session")!!
+        relay.emit(JSONObject()
+            .put("type", "response")
+            .put("id", switch.optString("id"))
+            .put("command", "switch_session")
+            .put("success", true))
+        idleUntil { vm.ui.historyLoading }
+
+        val targetState = relay.last("get_state")!!.optString("id")
+        val targetMsgs = relay.last("get_messages")!!.optString("id")
+        relay.emit(state(targetState, "/b.jsonl", "B", 0))
+        idleUntil { vm.ui.sessionFile == "/b.jsonl" }
+        relay.emit(history(targetMsgs, "/b.jsonl"))
+
+        idleUntil { !vm.ui.historyLoading }
+        assertFalse(vm.ui.historyLoading)
+    }
+
+    @Test
+    fun newSessionSettlesOnTheFreshFile() {
+        val relay = FakeRelay()
+        val vm = AppViewModel(app, relay)
+        relay.emit(state("", "/a.jsonl", "A", 1))
+        idleUntil { vm.ui.sessionFile == "/a.jsonl" }
+
+        vm.newSession()
+        val request = relay.last("new_session")!!
+        relay.emit(JSONObject()
+            .put("type", "response")
+            .put("id", request.optString("id"))
+            .put("command", "new_session")
+            .put("success", true))
+        val afterNew = relay.last("get_state")?.optString("id").orEmpty()
+        relay.emit(state(afterNew, "/b.jsonl", "B", 0))
+
+        idleUntil { vm.ui.sessionFile == "/b.jsonl" }
+        assertFalse(vm.ui.historyLoading)
+    }
+
+    @Test
+    fun restoreRequestsTheRememberedSession() {
+        app.getSharedPreferences("pig", android.content.Context.MODE_PRIVATE).edit()
+            .putString("lastSessionFile", "/saved.jsonl")
+            .commit()
+        val relay = FakeRelay()
+        val vm = AppViewModel(app, relay)
+        relay.emit(state("", "/old.jsonl", "old", 1))
+
+        idleUntil {
+            relay.sent.any {
+                it.optString("type") == "switch_session" &&
+                    it.optString("sessionPath") == "/saved.jsonl"
+            }
+        }
+        assertTrue(vm.ui.status.isEmpty() || vm.ui.status == "restoring")
+    }
+}

@@ -876,8 +876,8 @@ pack 可以读取 PiG RPC 数据，并执行一小组安全的 RPC 动作。App 
 ### `stats` 绑定
 
 与 `context` 类似，`stats` 由 App 计算，因此 pack 无需声明数据源就能显示会话总计。
-它来自最后一次 `get_session_stats` 回复，覆盖 **整个会话文件**（不只是 App 加载的
-2000 条消息）。
+它来自最后一次 `get_session_stats` 回复，覆盖 **整个会话文件**（不只是 App 当前
+已加载的历史窗口）。
 
 | path | 类型 | 含义 |
 | --- | --- | --- |

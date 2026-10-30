@@ -905,8 +905,8 @@ over the computed object.
 
 Like `context`, `stats` is computed by the app so packs can show session totals
 without declaring a data source. It comes from the last `get_session_stats`
-reply, which covers the **whole session file** (not just the 2000 messages the
-app loads).
+reply, which covers the **whole session file** (not just the history window the
+app currently has loaded).
 
 | path | type | meaning |
 | --- | --- | --- |

@@ -91,6 +91,18 @@ android {
         }
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
+    // Robolectric's Conscrypt native library has no Android/Termux build. CI
+    // (x86_64 Linux) still runs these tests; skip them on the device itself.
+    tasks.withType<Test>().configureEach {
+        if (System.getProperty("java.home").contains("com.termux")) {
+            filter { excludeTestsMatching("com.linuxwff.pigapp.AppViewModelSessionTest") }
+        }
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -118,5 +130,7 @@ dependencies {
     // The Android org.json stub throws in local unit tests; use the real
     // implementation so pack/plan parsers can be tested on the JVM.
     testImplementation("org.json:json:20240303")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core-ktx:1.6.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

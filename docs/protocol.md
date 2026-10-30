@@ -98,7 +98,8 @@ attached for that session, or by trimming pig's reply — and adds two fields to
 The window is moved back to the `user` message that opened its first turn (at
 most 24 messages) so a page never begins with a `toolResult` whose `toolCall`
 lives on the previous page. A `get_messages` without `limit` is answered whole,
-so older clients are unaffected; the disk fallback still caps at 2000 messages.
+so older clients are unaffected; the disk fallback also returns the whole
+session, so the app can load every turn.
 
 ## Relay → client
 

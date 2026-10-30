@@ -1216,7 +1216,7 @@ private fun StatsDialog(
                 Text(
                     packText(
                         "stats.hint",
-                        "数字来自 pig 的会话统计，覆盖整个会话文件，不受历史只加载最近 2000 条的限制。",
+                        "数字来自 pig 的会话统计，覆盖整个会话文件，不受当前已加载历史窗口的限制。",
                     ),
                     style = MaterialTheme.typography.labelSmall,
                     color = scheme.onSurfaceVariant,

@@ -42,7 +42,10 @@ import java.util.Locale
 import java.util.UUID
 import java.util.zip.ZipInputStream
 
-class AppViewModel(app: Application) : AndroidViewModel(app) {
+class AppViewModel @JvmOverloads constructor(
+    app: Application,
+    injectedClient: RelayConnection? = null,
+) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("pig", Context.MODE_PRIVATE)
     private val notifications by lazy { SessionNotifications(getApplication()) }
 
@@ -68,7 +71,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
     val cwd: String = prefs.getString("cwd", null) ?: "/data/data/com.termux/files/home"
 
-    private val client = RelayClient("127.0.0.1", port, token)
+    private val client: RelayConnection = injectedClient ?: RelayClient("127.0.0.1", port, token)
 
     var ui by mutableStateOf(AppUiState())
         private set
@@ -3223,13 +3226,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // Jump straight to the known total: a 4000-message session otherwise
         // needed seven trips to the top (40, 80, 160, ...). There is no
         // artificial cap; memory/transport is the only bound.
-        val target = if (historyTotal > historyWindow) {
-            historyTotal
-        } else if (historyWindow > Int.MAX_VALUE / 2) {
-            Int.MAX_VALUE
-        } else {
-            historyWindow * 2
-        }
+        val target = olderHistoryTarget(historyWindow, historyTotal)
         if (target <= historyWindow) return
         historyWindow = target
         ui = ui.copy(historyLoadingOlder = true)
@@ -4292,7 +4289,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // would wipe the transcript we are showing.
                 needsHistory = true
                 historyHealTried = false
-                // A reconnect must not re-download the 2000-message window the
+                // A reconnect must not re-download the history window the
                 // reader had pulled open before the socket dropped; a cached
                 // transcript restores its own page size below.
                 historyWindow = HISTORY_PAGE
@@ -5372,7 +5369,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     viewModelScope.launch {
                         val notices = withContext(Dispatchers.IO) { readNotices() }
                         val build = withContext(Dispatchers.Default) {
-                            buildHistory(history, pending, live, notices, redacted)
+                            buildHistory(
+                                history,
+                                pending,
+                                live,
+                                notices,
+                                redacted,
+                                historyStart,
+                            )
                         }
                         Log.i(
                             "PigPerf",
@@ -5634,9 +5638,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     /**
-     * Pure builder for [renderHistory]. Runs off the main thread: a 2000-message
-     * session is ~8 MB of JSON and walking it on the frame thread is what made
-     * session switches stutter.
+     * Pure builder for [renderHistory]. Runs off the main thread: a long
+     * session is tens of MB of JSON and walking it on the frame thread is what
+     * made session switches stutter.
      */
     private fun buildHistory(
         messages: org.json.JSONArray,
@@ -5644,13 +5648,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         live: String?,
         notices: List<ChatMsg>,
         redactedLabel: String,
+        historyStart: Int = 0,
     ): HistoryBuild {
         var out = mutableListOf<ChatMsg>()
+        val firstMessageAt = if (messages.length() > 0) {
+            parseMessageTime(messages.optJSONObject(0)?.optString("timestamp").orEmpty())
+        } else {
+            0L
+        }
         val toolIds = mutableMapOf<String, String>()
         val toolMsgIds = HashMap<String, String>()
         val consumed = HashMap<String, String>()
         // id -> position in `out`, so a toolResult does not scan the whole
-        // transcript. A 2000-message session has ~1800 of them.
+        // transcript. A long session has thousands of them.
         val indexById = HashMap<String, Int>()
         val lastInputRole = if (messages.length() > 0) {
             messages.optJSONObject(messages.length() - 1)?.optString("role")
@@ -5816,7 +5826,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // App-recorded failures (relay/transport) are not in pig's file, so
         // replay them from the per-session log *at their timestamp*: appending
         // them all put every old error under the newest turn.
-        out = mergeNotices(out, notices).toMutableList()
+        out = mergeNotices(
+            out,
+            noticesForWindow(notices, historyStart, firstMessageAt),
+        ).toMutableList()
         return HistoryBuild(out, toolMsgIds, consumed, assistantId, liveText)
     }
 
@@ -6666,9 +6679,30 @@ private const val HISTORY_IMAGE_PIXEL_BUDGET = 6_000_000L
 /** Decoded screenshots kept across rebuilds and page growth (~24 MB). */
 private const val HISTORY_IMAGE_CACHE_PIXELS = 6_000_000
 
+/** Next page size: the reported total when known, otherwise double (bounded by Int). */
+internal fun olderHistoryTarget(window: Int, total: Int): Int = when {
+    total > window -> total
+    window > Int.MAX_VALUE / 2 -> Int.MAX_VALUE
+    else -> window * 2
+}
+
 /** Message timestamps are ISO-8601 ("...Z"); 0 keeps a damaged line sortable. */
 internal fun parseMessageTime(stamp: String): Long =
     if (stamp.isBlank()) 0L else runCatching { Instant.parse(stamp).toEpochMilli() }.getOrDefault(0L)
+
+/**
+ * A paged reply starts mid-session. Notices from turns before the first
+ * visible message must not be painted above it; they reappear once the reader
+ * pulls those turns in. A full transcript (historyStart == 0) keeps them all.
+ */
+internal fun noticesForWindow(
+    notices: List<ChatMsg>,
+    historyStart: Int,
+    firstMessageAt: Long,
+): List<ChatMsg> {
+    if (historyStart <= 0 || firstMessageAt <= 0) return notices
+    return notices.filter { it.at >= firstMessageAt }
+}
 
 /**
  * Merge app-recorded notices into a transcript by timestamp. Notices without a
