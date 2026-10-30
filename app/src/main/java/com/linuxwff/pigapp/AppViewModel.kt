@@ -110,8 +110,8 @@ class AppViewModel @JvmOverloads constructor(
      * the session: the first page is small, pulling at the top doubles it.
      */
     private var historyWindow = HISTORY_PAGE
-    /** Messages the relay says the whole session has; lets one pull at the top
-     *  ask for the rest instead of doubling through many round trips. */
+    /** Messages the relay says the whole session has; clamps the next page at
+     *  the end so a 200-message pull never asks past the transcript. */
     private var historyTotal = 0
     private var lastCommandsAt = 0L
     private var modelSwitchAccepted = false
@@ -3214,8 +3214,8 @@ class AppViewModel @JvmOverloads constructor(
                 .put("id", id)
                 .put("type", "get_messages")
                 // The relay answers with the newest `limit` messages plus
-                // historyStart/historyTotal, so a 16 MB transcript arrives as
-                // the one or two screens the reader actually needs.
+                // historyStart/historyTotal; the reader pulls another page
+                // each time it reaches the top.
                 .put("limit", historyWindow),
         )
     }
@@ -3223,9 +3223,9 @@ class AppViewModel @JvmOverloads constructor(
     /** Pull the next older page; the transcript stays a suffix of the session. */
     fun loadOlderHistory() {
         if (ui.historyLoading || !ui.historyHasOlder) return
-        // Jump straight to the known total: a 4000-message session otherwise
-        // needed seven trips to the top (40, 80, 160, ...). There is no
-        // artificial cap; memory/transport is the only bound.
+        // One page per pull: 200 older messages, not the whole session at
+        // once. The relay returns a suffix of that size and the existing list
+        // grows in place.
         val target = olderHistoryTarget(historyWindow, historyTotal)
         if (target <= historyWindow) return
         historyWindow = target
@@ -6679,11 +6679,14 @@ private const val HISTORY_IMAGE_PIXEL_BUDGET = 6_000_000L
 /** Decoded screenshots kept across rebuilds and page growth (~24 MB). */
 private const val HISTORY_IMAGE_CACHE_PIXELS = 6_000_000
 
-/** Next page size: the reported total when known, otherwise double (bounded by Int). */
-internal fun olderHistoryTarget(window: Int, total: Int): Int = when {
-    total > window -> total
-    window > Int.MAX_VALUE / 2 -> Int.MAX_VALUE
-    else -> window * 2
+/** Next page size: exactly one more page, clamped to the known total. */
+internal fun olderHistoryTarget(window: Int, total: Int): Int {
+    val next = if (window > Int.MAX_VALUE - HISTORY_PAGE_STEP) {
+        Int.MAX_VALUE
+    } else {
+        window + HISTORY_PAGE_STEP
+    }
+    return if (total in 1 until next) total else next
 }
 
 /** Message timestamps are ISO-8601 ("...Z"); 0 keeps a damaged line sortable. */
@@ -6760,7 +6763,9 @@ internal fun compareVersionNames(left: String, right: String): Int? {
 }
 
 /** Messages in the first history page; pulling at the top doubles it. */
-private const val HISTORY_PAGE = 40
+private const val HISTORY_PAGE = 200
+/** Older messages added by one pull at the top. */
+private const val HISTORY_PAGE_STEP = 200
 
 /** How long a new session may take to replace its runtime before the app treats
  *  whatever the backend reports as the new conversation (~10 s in practice). */

@@ -56,9 +56,10 @@ class HistoryOrderTest {
     }
     @Test
     fun olderPageTargetUsesTotalWithoutOverflow() {
-        assertEquals(4369, olderHistoryTarget(40, 4369))
-        assertEquals(80, olderHistoryTarget(40, 0))
+        assertEquals(400, olderHistoryTarget(200, 4369))
+        assertEquals(400, olderHistoryTarget(200, 0))
+        assertEquals(150, olderHistoryTarget(0, 150))
         assertEquals(Int.MAX_VALUE, olderHistoryTarget(Int.MAX_VALUE - 10, 0))
-        assertEquals(Int.MAX_VALUE, olderHistoryTarget(40, Int.MAX_VALUE))
+        assertEquals(240, olderHistoryTarget(40, Int.MAX_VALUE))
     }
 }
