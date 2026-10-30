@@ -99,7 +99,10 @@ android {
     // (x86_64 Linux) still runs these tests; skip them on the device itself.
     tasks.withType<Test>().configureEach {
         if (System.getProperty("java.home").contains("com.termux")) {
-            filter { excludeTestsMatching("com.linuxwff.pigapp.AppViewModelSessionTest") }
+            filter {
+                excludeTestsMatching("com.linuxwff.pigapp.AppViewModelSessionTest")
+                excludeTestsMatching("com.linuxwff.pigapp.PigAppSmokeTest")
+            }
         }
     }
 
@@ -132,5 +135,7 @@ dependencies {
     testImplementation("org.json:json:20240303")
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("androidx.test:core-ktx:1.6.1")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
