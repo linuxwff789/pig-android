@@ -56,6 +56,8 @@ data class ChatMsg(
     val toolArgs: String = "",
     val toolResult: String = "",
     val toolDetails: String = "",
+    /** Wall time the tool took, from pig's `durationMs` (0 when unknown). */
+    val toolDurationMs: Long = 0L,
     val running: Boolean = false,
     val isError: Boolean = false,
     val expanded: Boolean = true,

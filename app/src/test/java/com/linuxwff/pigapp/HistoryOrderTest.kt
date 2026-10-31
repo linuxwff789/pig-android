@@ -59,6 +59,15 @@ class HistoryOrderTest {
     }
 
     @Test
+    fun toolDurationLabelIsCompact() {
+        assertEquals("", formatToolDuration(0))
+        assertEquals("132ms", formatToolDuration(132))
+        assertEquals("1.2s", formatToolDuration(1_234))
+        assertEquals("1m 05s", formatToolDuration(65_000))
+        assertEquals("1h 02m", formatToolDuration(3_720_000))
+    }
+
+    @Test
     fun pagedWindowHidesNoticesFromEarlierTurns() {
         val notices = listOf(
             ChatMsg("old", Role.NOTICE, "old", isError = true, at = 100),

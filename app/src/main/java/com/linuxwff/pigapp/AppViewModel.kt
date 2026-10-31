@@ -5780,11 +5780,14 @@ class AppViewModel @JvmOverloads constructor(
                     val meta = JSONObject()
                     message.optJSONObject("details")?.let { meta.put("details", it) }
                     message.optJSONObject("structuredContent")?.let { meta.put("structured", it) }
+                    // pig records how long the call took next to the result.
+                    val durationMs = message.optLong("durationMs", 0L)
                     if (position >= 0) {
                         out[position] = out[position].copy(
                             running = false,
                             toolResult = text,
                             toolDetails = meta.toString(),
+                            toolDurationMs = durationMs,
                             isError = message.optBoolean("isError", false),
                             images = decoded.images,
                             imagesOmitted = decoded.omitted,
@@ -5797,6 +5800,7 @@ class AppViewModel @JvmOverloads constructor(
                                 role = Role.TOOL,
                                 toolName = message.optString("toolName", "tool"),
                                 toolResult = text,
+                                toolDurationMs = durationMs,
                                 isError = message.optBoolean("isError", false),
                                 images = decoded.images,
                                 imagesOmitted = decoded.omitted,
@@ -6400,6 +6404,8 @@ class AppViewModel @JvmOverloads constructor(
                 running = false,
                 toolResult = result.ifBlank { it.toolResult },
                 toolDetails = meta.toString(),
+                toolDurationMs = event.optLong("durationMs", 0L).takeIf { ms -> ms > 0 }
+                    ?: it.toolDurationMs,
                 isError = event.optBoolean("isError", false),
             )
         }
@@ -6736,6 +6742,23 @@ internal fun formatChatTime(
         stamp.toLocalDate() == current.toLocalDate() -> stamp.format(CHAT_TIME_ONLY)
         stamp.year == current.year -> stamp.format(CHAT_TIME_WITH_DATE)
         else -> stamp.format(CHAT_TIME_WITH_YEAR)
+    }
+}
+
+/** Compact runtime label for a tool card: `320ms`, `1.2s`, `1m 05s`, `1h 02m`. */
+internal fun formatToolDuration(ms: Long): String {
+    if (ms <= 0) return ""
+    return when {
+        ms < 1_000L -> "${ms}ms"
+        ms < 60_000L -> String.format(Locale.US, "%.1fs", ms / 1000.0)
+        ms < 3_600_000L -> {
+            val seconds = ms / 1000L
+            "${seconds / 60}m ${seconds % 60}s"
+        }
+        else -> {
+            val minutes = ms / 60_000L
+            "${minutes / 60}h ${minutes % 60}m"
+        }
     }
 }
 

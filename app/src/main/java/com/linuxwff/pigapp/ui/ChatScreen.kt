@@ -182,6 +182,7 @@ import com.linuxwff.pigapp.UiSkin
 import com.linuxwff.pigapp.UiToolCardAppearance
 import com.linuxwff.pigapp.WebDavClient
 import com.linuxwff.pigapp.formatChatTime
+import com.linuxwff.pigapp.formatToolDuration
 import com.linuxwff.pigapp.WebDavConfig
 import com.linuxwff.pigapp.resolve
 import com.linuxwff.pigapp.toolPresentation
@@ -4073,6 +4074,7 @@ private fun ToolGroupCard(
     thinking: String,
     toolMode: String,
     cornerRadius: Int,
+    showTimestamps: Boolean,
     onToolModeAll: (String) -> Unit,
     /**
      * The reader opened a card: stop auto-following the transcript. An opened
@@ -4215,7 +4217,7 @@ private fun ToolGroupCard(
                 val limit = if (showAll) tools.size else GROUP_PAGE
                 tools.take(limit).forEachIndexed { index, tool ->
                     if (index > 0) Spacer(Modifier.height(6.dp))
-                    ToolCard(tool, toolMode, cornerRadius, onToolModeAll, onUserRead)
+                    ToolCard(tool, toolMode, cornerRadius, showTimestamps, onToolModeAll, onUserRead)
                 }
                 if (!showAll && tools.size > limit) {
                     TextButton(onClick = { showAll = true }) {
@@ -4445,6 +4447,7 @@ private fun MessageList(
                         thinking = item.thinking,
                         toolMode = toolMode,
                         cornerRadius = cornerRadius,
+                        showTimestamps = showTimestamps,
                         onToolModeAll = onToolModeAll,
                         onUserRead = { autoScroll = false },
                     )
@@ -5100,7 +5103,7 @@ private fun MessageRow(
         }
 
         Role.TOOL -> Column(Modifier.fillMaxWidth().padding(start = 33.dp)) {
-            ToolCard(message, toolMode, cornerRadius, onToolModeAll, onUserRead)
+            ToolCard(message, toolMode, cornerRadius, showTimestamps, onToolModeAll, onUserRead)
         }
 
         Role.NOTICE -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -5140,11 +5143,24 @@ private fun toolCardWidth(appearance: UiToolCardAppearance): Modifier =
         Modifier.fillMaxWidth()
     }
 
+/** `14:03 · 1.2s`: when the call ran and how long it took (either may be absent). */
+private fun toolTiming(message: ChatMsg, showTimestamps: Boolean): String {
+    val parts = ArrayList<String>(2)
+    if (showTimestamps) {
+        val time = formatChatTime(message.at)
+        if (time.isNotBlank()) parts.add(time)
+    }
+    val duration = formatToolDuration(message.toolDurationMs)
+    if (duration.isNotBlank()) parts.add(duration)
+    return parts.joinToString(" · ")
+}
+
 @Composable
 private fun ToolCard(
     message: ChatMsg,
     mode: String,
     cornerRadius: Int,
+    showTimestamps: Boolean,
     onToolModeAll: (String) -> Unit,
     onUserRead: () -> Unit = {},
 ) {
@@ -5158,6 +5174,8 @@ private fun ToolCard(
         )
     }
     val toolStrings = LocalUiPack.current.strings
+    // Wall-clock start (pig's call timestamp) and pig's measured runtime.
+    val timing = toolTiming(message, showTimestamps)
     val view = remember(
         message.toolName,
         message.toolArgs,
@@ -5263,6 +5281,15 @@ private fun ToolCard(
                     )
                     message.isError -> InfoPill(text = packText("tool.failed", "失败"), color = scheme.error)
                 }
+                if (timing.isNotBlank()) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        timing,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
                 Spacer(Modifier.width(6.dp))
                 Text(
                     packText("tool.expand", "展开"),
@@ -5323,6 +5350,15 @@ private fun ToolCard(
                         strokeWidth = 2.dp,
                     )
                     message.isError -> InfoPill(text = packText("tool.failed", "失败"), color = scheme.error)
+                }
+                if (timing.isNotBlank()) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        timing,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
                 }
             }
             Row(
