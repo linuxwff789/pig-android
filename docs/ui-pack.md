@@ -59,6 +59,31 @@ pack; that is not a user choice, so `activePackId` stays empty and the first
 push takes over. Picking any pack in the manager sets `packPinned`, and from
 then on relay pushes are ignored until the user selects the relay row again.
 
+## In-app editor
+
+**Settings → UI pack 管理 → Edit current pack** opens a visual editor. It reads
+the pack that is currently in effect (relay, bundled or imported) and turns the
+roughly 300 scalar keys in `theme/colors.json`, `theme/typography.json`,
+`components.json` and `layout/chat.json` into typed controls:
+
+- colours: HSV picker with alpha and hex, accepting `#RRGGBB` / `#AARRGGBB`;
+- colour tokens: a dropdown of `primary` / `surfaceVariant` / `none` …;
+- numbers: slider plus an exact-value dialog, clamped like the parser;
+- switches, enums, fonts and text.
+
+The search box filters by Chinese label, key name and description; **已改**
+shows only edited keys, and the info button reveals what each key does. **Live
+preview** is on by default and applies the draft within ~200 ms; turn it off to
+keep the current look until you save.
+
+Structural values (`header.body`, `header.rows`, `chat.toolCard.byTool`,
+`dataSources`, `bindings`, `actions`, `strings.json`, `icons.json`,
+`nav.json`, `skins.json`, `windows/*.json`) are edited as raw JSON with
+validation. **Save** creates a new `files/ui-packs/<id>/` and switches to it, so
+the source pack is untouched; **Export** writes a ZIP you can drop into
+`~/.pig/android-ui/` for the relay. Binary assets (fonts, images) are not edited
+here and are copied through on save.
+
 ## manifest.json
 
 ```json

@@ -43,6 +43,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 class AppViewModel @JvmOverloads constructor(
     app: Application,
@@ -1809,6 +1810,170 @@ class AppViewModel @JvmOverloads constructor(
             .replace(Regex("[^a-z0-9\\u4e00-\\u9fa5._-]+"), "-")
             .trim('-', '.', '_')
         return cleaned.ifBlank { "pack-${System.currentTimeMillis()}" }.take(48)
+    }
+
+    // ------------------------------------------------------------------
+    // In-app UI pack editor
+    // ------------------------------------------------------------------
+
+    /** Raw files of the pack currently in effect; the editor edits a draft copy. */
+    fun packEditorSource(): PackEditorSource {
+        val id = ui.activePackId
+        val (files, assets) = if (id.isBlank()) {
+            relayFiles to relayAssets
+        } else {
+            loadPackFiles(id)?.let { it.first to it.second }
+                ?: (emptyMap<String, String>() to emptyMap<String, String>())
+        }
+        val name = if (id.isBlank()) {
+            ui.relayPackName.ifBlank { "Pig default" }
+        } else {
+            ui.localPacks.firstOrNull { it.id == id }?.name
+                ?: ui.uiPack.name.ifBlank { "UI pack" }
+        }
+        return PackEditorSource(id, name, files, assets)
+    }
+
+    /**
+     * Apply an in-memory draft so the user sees edits live. Nothing is
+     * persisted and the active pack id does not change; [restoreActivePack]
+     * puts the real pack back when the editor closes without saving.
+     */
+    fun previewPackFiles(files: Map<String, String>) {
+        if (files["manifest.json"].isNullOrBlank()) return
+        val parsed = UiPackParser.parse(files).pack ?: return
+        val skin = ui.skinId.takeIf { id -> parsed.skins.any { it.id == id } }
+            ?: parsed.defaultSkin.takeIf { id -> parsed.skins.any { it.id == id } }
+            ?: parsed.skins.firstOrNull()?.id.orEmpty()
+        ui = ui.copy(
+            uiPack = parsed.copy(fontFiles = basePack?.fontFiles.orEmpty()).withSkin(skin),
+            skinId = skin,
+        )
+    }
+
+    /** Re-apply the pack that was active before the editor started previewing. */
+    fun restoreActivePack() {
+        val id = ui.activePackId
+        if (id.isBlank()) {
+            if (relayFiles["manifest.json"].isNullOrBlank()) {
+                ui = ui.copy(uiPack = UiPack(), uiPackHash = "", skinId = "")
+            } else {
+                applyPackAsync(relayFiles, relayAssets, relayHashes, relayHash, announce = false)
+            }
+            return
+        }
+        val (files, assets, hashes) = loadPackFiles(id) ?: return
+        applyPackAsync(files, assets, hashes, "local:$id", announce = false)
+    }
+
+    /**
+     * Save the editor draft as a new imported pack and switch to it. Assets
+     * (fonts/images) are copied through untouched. [onDone] runs on the main
+     * thread with the new pack id, or null when nothing was written.
+     */
+    fun saveEditorPack(
+        name: String,
+        files: Map<String, String>,
+        assets: Map<String, String>,
+        onDone: (String?) -> Unit = {},
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                val base = slug(name.ifBlank { "ui pack" })
+                var id = base
+                var counter = 2
+                while (File(packsDir, id).exists()) {
+                    id = "$base-$counter"
+                    counter++
+                }
+                val target = packsDir.apply { mkdirs() }
+                val dir = File(target, id)
+                dir.mkdirs()
+                files.forEach { (rel, text) ->
+                    val file = safePackFile(dir, rel)
+                    file.parentFile?.mkdirs()
+                    file.writeText(text)
+                }
+                assets.forEach { (rel, encoded) ->
+                    val bytes = runCatching {
+                        Base64.decode(encoded, Base64.DEFAULT)
+                    }.getOrNull() ?: return@forEach
+                    val file = safePackFile(dir, rel)
+                    file.parentFile?.mkdirs()
+                    file.writeBytes(bytes)
+                }
+                id
+            }
+            withContext(Dispatchers.Main) {
+                result.onSuccess { id ->
+                    refreshLocalPacks()
+                    selectPack(id)
+                    ui = ui.copy(
+                        toast = str("toast.packSaved", "已保存 pack：{name}").replace("{name}", id),
+                    )
+                    onDone(id)
+                }.onFailure {
+                    ui = ui.copy(
+                        toast = str("toast.packSaveFailed", "保存失败：{error}")
+                            .replace("{error}", it.message ?: ""),
+                    )
+                    onDone(null)
+                }
+            }
+        }
+    }
+
+    /** Zip a pack (edited draft or imported pack) to a user-picked document. */
+    fun exportPackZip(
+        files: Map<String, String>,
+        assets: Map<String, String>,
+        uri: Uri,
+    ) {
+        val ctx = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                ctx.contentResolver.openOutputStream(uri)?.use { output ->
+                    ZipOutputStream(output.buffered()).use { zip ->
+                        files.forEach { (rel, text) ->
+                            zip.putNextEntry(java.util.zip.ZipEntry(rel))
+                            zip.write(text.toByteArray(Charsets.UTF_8))
+                            zip.closeEntry()
+                        }
+                        assets.forEach { (rel, encoded) ->
+                            val bytes = runCatching {
+                                Base64.decode(encoded, Base64.DEFAULT)
+                            }.getOrNull() ?: return@forEach
+                            zip.putNextEntry(java.util.zip.ZipEntry(rel))
+                            zip.write(bytes)
+                            zip.closeEntry()
+                        }
+                    }
+                } ?: error("无法写入")
+            }
+            withContext(Dispatchers.Main) {
+                ui = ui.copy(
+                    toast = if (result.isSuccess) {
+                        str("toast.packExported", "pack 已导出")
+                    } else {
+                        str("toast.packExportFailed", "导出失败：{error}")
+                            .replace("{error}", result.exceptionOrNull()?.message ?: "")
+                    },
+                )
+            }
+        }
+    }
+
+    /** Reject absolute paths, `..`, and anything that escapes the pack root. */
+    private fun safePackFile(root: File, rel: String): File {
+        val clean = rel.replace('\\', '/').trimStart('/')
+        require(clean.isNotBlank() && clean.split('/').none { it == ".." || it.isBlank() }) {
+            "非法文件路径：$rel"
+        }
+        val file = File(root, clean)
+        require(file.canonicalPath.startsWith(root.canonicalPath + File.separator)) {
+            "非法文件路径：$rel"
+        }
+        return file
     }
 
     /** Read a pack directory: text files + base64 assets + asset hashes. */

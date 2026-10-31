@@ -54,6 +54,28 @@ App 认识三种来源，顺序与 **设置 → UI pack 管理** 对话框中的
 选择，因此 `activePackId` 保持为空。在管理器里选中任意 pack 会设置 `packPinned`，
 此后 relay 推送被忽略，直到用户再次选择 relay 那一行。
 
+## App 内编辑器
+
+**设置 → UI pack 管理 → 编辑当前 pack** 打开可视化编辑器。它读取当前生效的
+pack（relay / 内置 / 导入均可），把 `theme/colors.json`、`theme/typography.json`、
+`components.json` 和 `layout/chat.json` 里约 300 个标量键变成带类型的控件：
+
+- 颜色：取色器（HSV + alpha + hex），接受 `#RRGGBB` / `#AARRGGBB`；
+- 颜色 token：下拉选择 `primary` / `surfaceVariant` / `none` …；
+- 数字：滑杆 + 精确输入，范围与解析器的限制一致；
+- 开关、枚举、字体、文本。
+
+搜索框按中文标签、键名和说明过滤；「已改」只显示改动过的键；「显示说明」展开
+每个键的用途。**实时预览**默认开启，改动约 200 ms 后套用到当前界面；关闭后
+只改草稿，保存时才生效。
+
+结构型字段（`header.body`、`header.rows`、`chat.toolCard.byTool`、
+`dataSources`、`bindings`、`actions`、`strings.json`、`icons.json`、
+`nav.json`、`skins.json`、`windows/*.json`）用原始 JSON 编辑器处理，会做语法
+校验。**保存**会新建一个 `files/ui-packs/<id>/` 并切换过去，原 pack 不受影响；
+**导出**生成 ZIP，可以放进 `~/.pig/android-ui/` 交给 relay。字体和图片等
+二进制资源不在这里编辑，保存时原样复制。
+
 ## manifest.json
 
 ```json

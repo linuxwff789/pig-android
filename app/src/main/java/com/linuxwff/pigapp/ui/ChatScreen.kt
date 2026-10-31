@@ -3453,6 +3453,7 @@ private fun PackManagerDialog(
         ActivityResultContracts.OpenDocumentTree(),
     ) { uri -> uri?.let(vm::importPackTree) }
     var deleteTarget by remember { mutableStateOf<LocalPackInfo?>(null) }
+    var showEditor by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.refreshLocalPacks() }
 
     PackAlertDialog(
@@ -3483,6 +3484,19 @@ private fun PackManagerDialog(
                     style = MaterialTheme.typography.labelSmall,
                     color = scheme.onSurfaceVariant,
                 )
+                OutlinedButton(
+                    onClick = { showEditor = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape((corner / 2).coerceAtLeast(8).dp),
+                ) {
+                    Icon(
+                        packIcon("edit", "edit"),
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(packText("pack.edit", "编辑当前 pack"))
+                }
                 PackRow(
                     title = ui.relayPackName.ifBlank {
                         packText("pack.builtinPack", "内置 pack")
@@ -3570,6 +3584,9 @@ private fun PackManagerDialog(
             }
         },
     )
+    if (showEditor) {
+        PackEditorDialog(vm) { showEditor = false }
+    }
     deleteTarget?.let { target ->
         PackAlertDialog(
             onDismissRequest = { deleteTarget = null },

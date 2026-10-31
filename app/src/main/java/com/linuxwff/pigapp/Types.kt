@@ -394,6 +394,17 @@ data class PackActionRequest(
     val windowId: String? = null,
 )
 
+/** Raw files of the pack the in-app editor starts from. */
+data class PackEditorSource(
+    /** `""` = relay pack, `builtin:<name>` or an imported local pack id. */
+    val id: String,
+    val name: String,
+    /** JSON/text files (path -> contents). */
+    val files: Map<String, String>,
+    /** `assets/...` path -> base64; copied through on save. */
+    val assets: Map<String, String>,
+)
+
 /** A pack imported into the app's private `ui-packs/` directory. */
 data class LocalPackInfo(
     val id: String,

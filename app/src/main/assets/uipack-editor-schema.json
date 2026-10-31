@@ -1,0 +1,5058 @@
+{
+  "version": 1,
+  "generatedBy": "tools/gen_uipack_schema.py",
+  "groups": [
+    {
+      "id": "theme",
+      "title": "主题色",
+      "file": "theme/colors.json",
+      "path": [],
+      "desc": "全局配色、圆角、阴影与透明度。",
+      "fields": [
+        {
+          "key": "background",
+          "path": [
+            "background"
+          ],
+          "type": "color",
+          "label": "背景",
+          "default": "#0A0C12"
+        },
+        {
+          "key": "surface",
+          "path": [
+            "surface"
+          ],
+          "type": "color",
+          "label": "表面",
+          "default": "#12151E"
+        },
+        {
+          "key": "surfaceVariant",
+          "path": [
+            "surfaceVariant"
+          ],
+          "type": "color",
+          "label": "次表面",
+          "default": "#1A1F2B"
+        },
+        {
+          "key": "primary",
+          "path": [
+            "primary"
+          ],
+          "type": "color",
+          "label": "主色",
+          "default": "#A78BFA"
+        },
+        {
+          "key": "secondary",
+          "path": [
+            "secondary"
+          ],
+          "type": "color",
+          "label": "次色",
+          "default": "#7DD3FC"
+        },
+        {
+          "key": "text",
+          "path": [
+            "text"
+          ],
+          "type": "color",
+          "label": "正文",
+          "default": "#ECEEF5"
+        },
+        {
+          "key": "textMuted",
+          "path": [
+            "textMuted"
+          ],
+          "type": "color",
+          "label": "次要文字",
+          "default": "#98A2B8"
+        },
+        {
+          "key": "danger",
+          "path": [
+            "danger"
+          ],
+          "type": "color",
+          "label": "危险色",
+          "default": "#FB7185"
+        },
+        {
+          "key": "cornerRadius",
+          "path": [
+            "cornerRadius"
+          ],
+          "type": "int",
+          "label": "全局圆角",
+          "default": 18,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "accent",
+          "path": [
+            "accent"
+          ],
+          "type": "color",
+          "label": "强调色",
+          "default": "#22D3EE"
+        },
+        {
+          "key": "avatarShadow",
+          "path": [
+            "avatarShadow"
+          ],
+          "type": "bool",
+          "label": "头像光晕",
+          "default": false
+        },
+        {
+          "key": "bubbleShadow",
+          "path": [
+            "bubbleShadow"
+          ],
+          "type": "bool",
+          "label": "气泡阴影",
+          "default": true
+        },
+        {
+          "key": "onPrimary",
+          "path": [
+            "onPrimary"
+          ],
+          "type": "color",
+          "label": "主色上的文字",
+          "default": null,
+          "nullable": true
+        },
+        {
+          "key": "onSecondary",
+          "path": [
+            "onSecondary"
+          ],
+          "type": "color",
+          "label": "次色上的文字",
+          "default": null,
+          "nullable": true
+        },
+        {
+          "key": "onAccent",
+          "path": [
+            "onAccent"
+          ],
+          "type": "color",
+          "label": "强调色上的文字",
+          "default": null,
+          "nullable": true
+        },
+        {
+          "key": "outline",
+          "path": [
+            "outline"
+          ],
+          "type": "color",
+          "label": "边框色",
+          "default": null,
+          "nullable": true
+        },
+        {
+          "key": "outlineVariant",
+          "path": [
+            "outlineVariant"
+          ],
+          "type": "color",
+          "label": "淡边框",
+          "default": null,
+          "nullable": true
+        },
+        {
+          "key": "success",
+          "path": [
+            "success"
+          ],
+          "type": "color",
+          "label": "成功色",
+          "default": "#4ADE80"
+        },
+        {
+          "key": "warning",
+          "path": [
+            "warning"
+          ],
+          "type": "color",
+          "label": "警告色",
+          "default": "#FBBF24"
+        },
+        {
+          "key": "scrim",
+          "path": [
+            "scrim"
+          ],
+          "type": "color",
+          "label": "遮罩",
+          "default": "#9E000000"
+        },
+        {
+          "key": "bubbleStart",
+          "path": [
+            "bubbleStart"
+          ],
+          "type": "color",
+          "label": "气泡渐变起点",
+          "default": null,
+          "nullable": true
+        },
+        {
+          "key": "bubbleEnd",
+          "path": [
+            "bubbleEnd"
+          ],
+          "type": "color",
+          "label": "气泡渐变终点",
+          "default": null,
+          "nullable": true
+        },
+        {
+          "key": "cardRadius",
+          "path": [
+            "cardRadius"
+          ],
+          "type": "int",
+          "label": "卡片圆角",
+          "default": null,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "nullable": true
+        },
+        {
+          "key": "bubbleRadius",
+          "path": [
+            "bubbleRadius"
+          ],
+          "type": "int",
+          "label": "气泡圆角",
+          "default": null,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "nullable": true
+        },
+        {
+          "key": "chipRadius",
+          "path": [
+            "chipRadius"
+          ],
+          "type": "int",
+          "label": "胶囊圆角",
+          "default": null,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "nullable": true
+        },
+        {
+          "key": "composerRadius",
+          "path": [
+            "composerRadius"
+          ],
+          "type": "int",
+          "label": "输入框圆角",
+          "default": null,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "nullable": true
+        },
+        {
+          "key": "composerElevation",
+          "path": [
+            "composerElevation"
+          ],
+          "type": "int",
+          "label": "输入框阴影",
+          "default": 12,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "bubbleElevation",
+          "path": [
+            "bubbleElevation"
+          ],
+          "type": "int",
+          "label": "气泡阴影",
+          "default": 8,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "fabElevation",
+          "path": [
+            "fabElevation"
+          ],
+          "type": "int",
+          "label": "回到底部阴影",
+          "default": 6,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "bubbleStartAlpha",
+          "path": [
+            "bubbleStartAlpha"
+          ],
+          "type": "float",
+          "label": "气泡起点透明度",
+          "default": 0.3,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        },
+        {
+          "key": "bubbleEndAlpha",
+          "path": [
+            "bubbleEndAlpha"
+          ],
+          "type": "float",
+          "label": "气泡终点透明度",
+          "default": 0.16,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        },
+        {
+          "key": "bubbleBorderAlpha",
+          "path": [
+            "bubbleBorderAlpha"
+          ],
+          "type": "float",
+          "label": "气泡边框透明度",
+          "default": 0.32,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        },
+        {
+          "key": "cardBorderAlpha",
+          "path": [
+            "cardBorderAlpha"
+          ],
+          "type": "float",
+          "label": "卡片边框透明度",
+          "default": 0.6,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        },
+        {
+          "key": "chipAlpha",
+          "path": [
+            "chipAlpha"
+          ],
+          "type": "float",
+          "label": "胶囊背景透明度",
+          "default": 0.15,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "typography",
+      "title": "排版",
+      "file": "theme/typography.json",
+      "path": [],
+      "desc": "字号、字重、行高、字体族与字距。",
+      "fields": [
+        {
+          "key": "body",
+          "path": [
+            "body"
+          ],
+          "type": "int",
+          "label": "节点树",
+          "default": 15,
+          "min": 8,
+          "max": 40,
+          "step": 1,
+          "desc": "助手/用户正文、Markdown 段落"
+        },
+        {
+          "key": "label",
+          "path": [
+            "label"
+          ],
+          "type": "int",
+          "label": "标签字号",
+          "default": 11,
+          "min": 8,
+          "max": 40,
+          "step": 1,
+          "desc": "状态、会话元数据、表头"
+        },
+        {
+          "key": "h1",
+          "path": [
+            "h1"
+          ],
+          "type": "int",
+          "label": "一级标题",
+          "default": 21,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "h2",
+          "path": [
+            "h2"
+          ],
+          "type": "int",
+          "label": "二级标题",
+          "default": 19,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "h3",
+          "path": [
+            "h3"
+          ],
+          "type": "int",
+          "label": "三级标题",
+          "default": 17,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "h4",
+          "path": [
+            "h4"
+          ],
+          "type": "int",
+          "label": "四级标题",
+          "default": 15,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "h5",
+          "path": [
+            "h5"
+          ],
+          "type": "int",
+          "label": "五级标题",
+          "default": 14,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "h6",
+          "path": [
+            "h6"
+          ],
+          "type": "int",
+          "label": "六级标题",
+          "default": 13,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "code",
+          "path": [
+            "code"
+          ],
+          "type": "int",
+          "label": "代码字号",
+          "default": 12,
+          "min": 8,
+          "max": 40,
+          "step": 1,
+          "desc": "围栏代码块与行内代码"
+        },
+        {
+          "key": "lineHeight",
+          "path": [
+            "lineHeight"
+          ],
+          "type": "float",
+          "label": "行高",
+          "default": 1.5,
+          "min": 1.0,
+          "max": 2.5,
+          "step": 0.1,
+          "desc": "正文行高倍数"
+        },
+        {
+          "key": "fontFamily",
+          "path": [
+            "fontFamily"
+          ],
+          "type": "font",
+          "label": "正文字体",
+          "default": "sans",
+          "desc": "正文/UI 字体：sans、serif、mono、cursive 或 assets/fonts/x.ttf"
+        },
+        {
+          "key": "headingFontFamily",
+          "path": [
+            "headingFontFamily"
+          ],
+          "type": "font",
+          "label": "标题字体",
+          "default": "",
+          "desc": "标题；为空时回退到 fontFamily"
+        },
+        {
+          "key": "labelFontFamily",
+          "path": [
+            "labelFontFamily"
+          ],
+          "type": "font",
+          "label": "标签字体",
+          "default": "mono",
+          "desc": "标签、元数据、分节标题"
+        },
+        {
+          "key": "codeFontFamily",
+          "path": [
+            "codeFontFamily"
+          ],
+          "type": "font",
+          "label": "代码字体",
+          "default": "mono",
+          "desc": "代码块、行内代码、等宽节点"
+        },
+        {
+          "key": "bodyWeight",
+          "path": [
+            "bodyWeight"
+          ],
+          "type": "int",
+          "label": "正文字重",
+          "default": 400,
+          "min": 0,
+          "max": 800,
+          "step": 1,
+          "desc": "正文字重（100–900 或 normal/medium/bold）"
+        },
+        {
+          "key": "headingWeight",
+          "path": [
+            "headingWeight"
+          ],
+          "type": "int",
+          "label": "标题字重",
+          "default": 600,
+          "min": 0,
+          "max": 1200,
+          "step": 1,
+          "desc": "标题字重"
+        },
+        {
+          "key": "labelWeight",
+          "path": [
+            "labelWeight"
+          ],
+          "type": "int",
+          "label": "标签字重",
+          "default": 500,
+          "min": 0,
+          "max": 1000,
+          "step": 1,
+          "desc": "标签字重"
+        },
+        {
+          "key": "letterSpacing",
+          "path": [
+            "letterSpacing"
+          ],
+          "type": "float",
+          "label": "字距",
+          "default": null,
+          "min": -2.0,
+          "max": 4.0,
+          "step": 0.1,
+          "desc": "额外字距（sp），限制在 -2–4"
+        }
+      ]
+    },
+    {
+      "id": "components",
+      "title": "组件开关",
+      "file": "components.json",
+      "path": [],
+      "desc": "组件显隐、尺寸与文本行数上限。",
+      "fields": [
+        {
+          "key": "showHeaderAvatar",
+          "path": [
+            "showHeaderAvatar"
+          ],
+          "type": "bool",
+          "label": "顶栏头像",
+          "default": true,
+          "desc": "头部品牌头像"
+        },
+        {
+          "key": "headerAvatarSize",
+          "path": [
+            "headerAvatarSize"
+          ],
+          "type": "int",
+          "label": "顶栏头像尺寸",
+          "default": 36,
+          "min": 16,
+          "max": 96,
+          "step": 1,
+          "desc": "头部头像 dp"
+        },
+        {
+          "key": "showHeaderOnline",
+          "path": [
+            "showHeaderOnline"
+          ],
+          "type": "bool",
+          "label": "在线圆点",
+          "default": true,
+          "desc": "在线圆点 + 标签"
+        },
+        {
+          "key": "showDrawerBrand",
+          "path": [
+            "showDrawerBrand"
+          ],
+          "type": "bool",
+          "label": "抽屉品牌区",
+          "default": true,
+          "desc": "抽屉头部卡片"
+        },
+        {
+          "key": "showPanels",
+          "path": [
+            "showPanels"
+          ],
+          "type": "bool",
+          "label": "抽屉面板",
+          "default": true,
+          "desc": "nav 面板区块"
+        },
+        {
+          "key": "showSessions",
+          "path": [
+            "showSessions"
+          ],
+          "type": "bool",
+          "label": "会话列表",
+          "default": true,
+          "desc": "已忽略：最近会话区块始终渲染"
+        },
+        {
+          "key": "showSessionBadges",
+          "path": [
+            "showSessionBadges"
+          ],
+          "type": "bool",
+          "label": "会话徽标",
+          "default": true,
+          "desc": "运行中/已打开/开过/历史 徽标"
+        },
+        {
+          "key": "showSessionSize",
+          "path": [
+            "showSessionSize"
+          ],
+          "type": "bool",
+          "label": "会话大小",
+          "default": true,
+          "desc": "会话行中的 · 123K"
+        },
+        {
+          "key": "showCopy",
+          "path": [
+            "showCopy"
+          ],
+          "type": "bool",
+          "label": "复制按钮",
+          "default": true,
+          "desc": "每条消息的复制按钮"
+        },
+        {
+          "key": "showSelection",
+          "path": [
+            "showSelection"
+          ],
+          "type": "bool",
+          "label": "文本选择",
+          "default": true,
+          "desc": "长按文字选择"
+        },
+        {
+          "key": "showSuggestions",
+          "path": [
+            "showSuggestions"
+          ],
+          "type": "bool",
+          "label": "建议",
+          "default": true,
+          "desc": "空状态建议胶囊按钮"
+        },
+        {
+          "key": "showReadOnlyBanner",
+          "path": [
+            "showReadOnlyBanner"
+          ],
+          "type": "bool",
+          "label": "只读横幅",
+          "default": true,
+          "desc": "历史会话横幅"
+        },
+        {
+          "key": "showPendingBanner",
+          "path": [
+            "showPendingBanner"
+          ],
+          "type": "bool",
+          "label": "待处理横幅",
+          "default": true,
+          "desc": "插队/待处理横幅"
+        },
+        {
+          "key": "showSteerHint",
+          "path": [
+            "showSteerHint"
+          ],
+          "type": "bool",
+          "label": "插队提示",
+          "default": true,
+          "desc": "“点发送=插队”提示"
+        },
+        {
+          "key": "showStatusBar",
+          "path": [
+            "showStatusBar"
+          ],
+          "type": "bool",
+          "label": "状态栏",
+          "default": true,
+          "desc": "瞬时状态栏"
+        },
+        {
+          "key": "assistantAvatar",
+          "path": [
+            "assistantAvatar"
+          ],
+          "type": "bool",
+          "label": "助手头像",
+          "default": true,
+          "desc": "助手消息旁的头像"
+        },
+        {
+          "key": "messageAvatarSize",
+          "path": [
+            "messageAvatarSize"
+          ],
+          "type": "int",
+          "label": "消息头像尺寸",
+          "default": 24,
+          "min": 12,
+          "max": 64,
+          "step": 1,
+          "desc": "消息头像 dp"
+        },
+        {
+          "key": "bubbleMaxWidthDp",
+          "path": [
+            "bubbleMaxWidthDp"
+          ],
+          "type": "int",
+          "label": "气泡最大宽度",
+          "default": 520,
+          "min": 200,
+          "max": 1200,
+          "step": 1,
+          "desc": "用户气泡最大宽度"
+        },
+        {
+          "key": "toolSummaryLines",
+          "path": [
+            "toolSummaryLines"
+          ],
+          "type": "int",
+          "label": "工具摘要行数",
+          "default": 4,
+          "min": 1,
+          "max": 20,
+          "step": 1,
+          "desc": "摘要模式的行数上限"
+        },
+        {
+          "key": "toolExpandedLines",
+          "path": [
+            "toolExpandedLines"
+          ],
+          "type": "int",
+          "label": "工具展开行数",
+          "default": 200,
+          "min": 20,
+          "max": 2000,
+          "step": 1,
+          "desc": "展开工具输出的上限"
+        },
+        {
+          "key": "codeFenceMaxLines",
+          "path": [
+            "codeFenceMaxLines"
+          ],
+          "type": "int",
+          "label": "代码块行数",
+          "default": 400,
+          "min": 20,
+          "max": 2000,
+          "step": 1,
+          "desc": "Markdown 围栏代码块上限"
+        },
+        {
+          "key": "tableMaxLines",
+          "path": [
+            "tableMaxLines"
+          ],
+          "type": "int",
+          "label": "表格行数",
+          "default": 6,
+          "min": 1,
+          "max": 20,
+          "step": 1,
+          "desc": "Markdown 表格单元格上限"
+        },
+        {
+          "key": "composerButtonSize",
+          "path": [
+            "composerButtonSize"
+          ],
+          "type": "int",
+          "label": "输入框按钮尺寸",
+          "default": 46,
+          "min": 32,
+          "max": 72,
+          "step": 1,
+          "desc": "发送/停止按钮 dp"
+        }
+      ]
+    },
+    {
+      "id": "chat",
+      "title": "聊天区",
+      "file": "layout/chat.json",
+      "path": [
+        "chat"
+      ],
+      "desc": "消息间距、内边距、工具卡折叠模式与代码块。",
+      "fields": [
+        {
+          "key": "assistantLabel",
+          "path": [
+            "chat",
+            "assistantLabel"
+          ],
+          "type": "string",
+          "label": "助手名称",
+          "default": "PIG"
+        },
+        {
+          "key": "toolCards",
+          "path": [
+            "chat",
+            "toolCards"
+          ],
+          "type": "options",
+          "label": "工具卡模式",
+          "default": "collapsed",
+          "options": [
+            "collapsible",
+            "expanded",
+            "collapsed"
+          ]
+        },
+        {
+          "key": "toolGroups",
+          "path": [
+            "chat",
+            "toolGroups"
+          ],
+          "type": "bool",
+          "label": "工具卡分组",
+          "default": true
+        },
+        {
+          "key": "showUsage",
+          "path": [
+            "chat",
+            "showUsage"
+          ],
+          "type": "bool",
+          "label": "显示用量",
+          "default": true
+        },
+        {
+          "key": "paddingH",
+          "path": [
+            "chat",
+            "paddingH"
+          ],
+          "type": "int",
+          "label": "水平内边距",
+          "default": 14,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "paddingV",
+          "path": [
+            "chat",
+            "paddingV"
+          ],
+          "type": "int",
+          "label": "垂直内边距",
+          "default": 10,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "bottomPadding",
+          "path": [
+            "chat",
+            "bottomPadding"
+          ],
+          "type": "int",
+          "label": "底部留白",
+          "default": 16,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "messageSpacing",
+          "path": [
+            "chat",
+            "messageSpacing"
+          ],
+          "type": "int",
+          "label": "消息间距",
+          "default": 14,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "emptyAvatarSize",
+          "path": [
+            "chat",
+            "emptyAvatarSize"
+          ],
+          "type": "int",
+          "label": "空状态头像尺寸",
+          "default": 64,
+          "min": 16,
+          "max": 128,
+          "step": 1
+        },
+        {
+          "key": "codeBlockRadius",
+          "path": [
+            "chat",
+            "codeBlockRadius"
+          ],
+          "type": "int",
+          "label": "代码块圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        },
+        {
+          "key": "codeBlockBorderAlpha",
+          "path": [
+            "chat",
+            "codeBlockBorderAlpha"
+          ],
+          "type": "float",
+          "label": "代码块边框透明度",
+          "default": 0.35,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "composer",
+      "title": "输入框",
+      "file": "layout/chat.json",
+      "path": [
+        "composer"
+      ],
+      "desc": "输入框、发送/停止/附件按钮、缩略图与选区。",
+      "fields": [
+        {
+          "key": "placeholder",
+          "path": [
+            "composer",
+            "placeholder"
+          ],
+          "type": "string",
+          "label": "占位文字",
+          "default": "给 Pig 发消息…"
+        },
+        {
+          "key": "maxLines",
+          "path": [
+            "composer",
+            "maxLines"
+          ],
+          "type": "int",
+          "label": "最大行数",
+          "default": 6,
+          "min": 1,
+          "max": 12,
+          "step": 1
+        },
+        {
+          "key": "sendOnEnter",
+          "path": [
+            "composer",
+            "sendOnEnter"
+          ],
+          "type": "bool",
+          "label": "回车发送",
+          "default": true
+        },
+        {
+          "key": "fontSize",
+          "path": [
+            "composer",
+            "fontSize"
+          ],
+          "type": "int",
+          "label": "字号",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "输入文字字号（sp）；0 = 主题 bodyMedium"
+        },
+        {
+          "key": "textColor",
+          "path": [
+            "composer",
+            "textColor"
+          ],
+          "type": "token",
+          "label": "文字色",
+          "default": "onSurface",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "输入文字颜色 token"
+        },
+        {
+          "key": "minHeight",
+          "path": [
+            "composer",
+            "minHeight"
+          ],
+          "type": "int",
+          "label": "最小高度",
+          "default": 0,
+          "min": 0,
+          "max": 200,
+          "step": 1,
+          "desc": "输入最小高度；0 = 自然尺寸"
+        },
+        {
+          "key": "paddingH",
+          "path": [
+            "composer",
+            "paddingH"
+          ],
+          "type": "int",
+          "label": "水平内边距",
+          "default": 12,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "paddingV",
+          "path": [
+            "composer",
+            "paddingV"
+          ],
+          "type": "int",
+          "label": "垂直内边距",
+          "default": 10,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "radius",
+          "path": [
+            "composer",
+            "radius"
+          ],
+          "type": "int",
+          "label": "圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1,
+          "desc": "输入框顶部圆角；-1 = 主题 composerRadius/corner+8"
+        },
+        {
+          "key": "inputRadius",
+          "path": [
+            "composer",
+            "inputRadius"
+          ],
+          "type": "int",
+          "label": "输入框圆角",
+          "default": 22,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "OutlinedTextField 圆角"
+        },
+        {
+          "key": "inputAlpha",
+          "path": [
+            "composer",
+            "inputAlpha"
+          ],
+          "type": "float",
+          "label": "输入框透明度",
+          "default": 0.35,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "desc": "输入背景不透明度"
+        },
+        {
+          "key": "borderAlpha",
+          "path": [
+            "composer",
+            "borderAlpha"
+          ],
+          "type": "float",
+          "label": "边框透明度",
+          "default": 0.5,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "desc": "未聚焦输入边框不透明度"
+        },
+        {
+          "key": "elevation",
+          "path": [
+            "composer",
+            "elevation"
+          ],
+          "type": "int",
+          "label": "阴影",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1,
+          "desc": "输入框阴影；-1 = 主题 composerElevation"
+        },
+        {
+          "key": "surfaceAlpha",
+          "path": [
+            "composer",
+            "surfaceAlpha"
+          ],
+          "type": "float",
+          "label": "表面透明度",
+          "default": null,
+          "min": 0.0,
+          "max": 10.0,
+          "step": 0.01,
+          "desc": "输入框表面不透明度"
+        },
+        {
+          "key": "buttonIconSize",
+          "path": [
+            "composer",
+            "buttonIconSize"
+          ],
+          "type": "int",
+          "label": "按钮图标尺寸",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "发送/停止图标尺寸；0 = 21dp"
+        },
+        {
+          "key": "attachTint",
+          "path": [
+            "composer",
+            "attachTint"
+          ],
+          "type": "token",
+          "label": "附件图标色",
+          "default": "onSurfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "附件（图片）按钮的颜色 token"
+        },
+        {
+          "key": "attachBackground",
+          "path": [
+            "composer",
+            "attachBackground"
+          ],
+          "type": "token",
+          "label": "附件底色",
+          "default": "none",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "其后方圆底；none 或颜色 token"
+        },
+        {
+          "key": "attachBackgroundAlpha",
+          "path": [
+            "composer",
+            "attachBackgroundAlpha"
+          ],
+          "type": "float",
+          "label": "附件底色透明度",
+          "default": null,
+          "min": 0.0,
+          "max": 10.0,
+          "step": 0.01,
+          "desc": "0–1"
+        },
+        {
+          "key": "attachGap",
+          "path": [
+            "composer",
+            "attachGap"
+          ],
+          "type": "int",
+          "label": "附件间距",
+          "default": 4,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "附件按钮与输入框之间的 dp，0–24"
+        },
+        {
+          "key": "attachIconSize",
+          "path": [
+            "composer",
+            "attachIconSize"
+          ],
+          "type": "int",
+          "label": "附件图标尺寸",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "0 = buttonIconSize；0–48"
+        },
+        {
+          "key": "inputSurface",
+          "path": [
+            "composer",
+            "inputSurface"
+          ],
+          "type": "token",
+          "label": "输入框底色",
+          "default": "surfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "输入文字背后的颜色 token"
+        },
+        {
+          "key": "cursorColor",
+          "path": [
+            "composer",
+            "cursorColor"
+          ],
+          "type": "token",
+          "label": "光标色",
+          "default": "primary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "光标 token"
+        },
+        {
+          "key": "placeholderAlpha",
+          "path": [
+            "composer",
+            "placeholderAlpha"
+          ],
+          "type": "float",
+          "label": "占位文字透明度",
+          "default": 0.75,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "desc": "0–1"
+        },
+        {
+          "key": "sendStyle",
+          "path": [
+            "composer",
+            "sendStyle"
+          ],
+          "type": "options",
+          "label": "发送按钮样式",
+          "default": "brand",
+          "options": [
+            "brand",
+            "solid"
+          ],
+          "desc": "brand 保留 primary→tertiary 渐变，solid 使用单一 token"
+        },
+        {
+          "key": "sendTint",
+          "path": [
+            "composer",
+            "sendTint"
+          ],
+          "type": "token",
+          "label": "发送图标色",
+          "default": "onPrimary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "发送图标着色"
+        },
+        {
+          "key": "sendBackground",
+          "path": [
+            "composer",
+            "sendBackground"
+          ],
+          "type": "token",
+          "label": "发送按钮背景",
+          "default": "primary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "sendStyle 为 solid 时使用的 token"
+        },
+        {
+          "key": "sendGlow",
+          "path": [
+            "composer",
+            "sendGlow"
+          ],
+          "type": "int",
+          "label": "发送按钮光晕",
+          "default": 8,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "发送圆按钮后方彩色阴影的 dp，0–24"
+        },
+        {
+          "key": "stopBackground",
+          "path": [
+            "composer",
+            "stopBackground"
+          ],
+          "type": "token",
+          "label": "停止按钮背景",
+          "default": "error",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "停止圆按钮背后的 token"
+        },
+        {
+          "key": "stopBackgroundAlpha",
+          "path": [
+            "composer",
+            "stopBackgroundAlpha"
+          ],
+          "type": "float",
+          "label": "停止背景透明度",
+          "default": 0.16,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "desc": "0–1"
+        },
+        {
+          "key": "stopTint",
+          "path": [
+            "composer",
+            "stopTint"
+          ],
+          "type": "token",
+          "label": "停止图标色",
+          "default": "error",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "停止图标着色"
+        },
+        {
+          "key": "thumbSize",
+          "path": [
+            "composer",
+            "thumbSize"
+          ],
+          "type": "int",
+          "label": "缩略图尺寸",
+          "default": 56,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "待发送图片缩略图 dp，24–96"
+        },
+        {
+          "key": "thumbRadius",
+          "path": [
+            "composer",
+            "thumbRadius"
+          ],
+          "type": "int",
+          "label": "缩略图圆角",
+          "default": 10,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "缩略图圆角，0–40"
+        },
+        {
+          "key": "thumbGap",
+          "path": [
+            "composer",
+            "thumbGap"
+          ],
+          "type": "int",
+          "label": "缩略图间距",
+          "default": 6,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "缩略图之间的 dp，0–24"
+        },
+        {
+          "key": "innerPaddingH",
+          "path": [
+            "composer",
+            "innerPaddingH"
+          ],
+          "type": "int",
+          "label": "内层水平内边距",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        },
+        {
+          "key": "innerPaddingV",
+          "path": [
+            "composer",
+            "innerPaddingV"
+          ],
+          "type": "int",
+          "label": "内层垂直内边距",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        },
+        {
+          "key": "marginH",
+          "path": [
+            "composer",
+            "marginH"
+          ],
+          "type": "int",
+          "label": "水平外边距",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "marginV",
+          "path": [
+            "composer",
+            "marginV"
+          ],
+          "type": "int",
+          "label": "垂直外边距",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "maxWidth",
+          "path": [
+            "composer",
+            "maxWidth"
+          ],
+          "type": "int",
+          "label": "最大宽度",
+          "default": 0,
+          "min": 0,
+          "max": 1200,
+          "step": 1,
+          "desc": "0 = 全宽，否则输入框居中且最宽为该值（最大 1200）"
+        },
+        {
+          "key": "maxHeight",
+          "path": [
+            "composer",
+            "maxHeight"
+          ],
+          "type": "int",
+          "label": "最大高度",
+          "default": 0,
+          "min": 0,
+          "max": 600,
+          "step": 1,
+          "desc": "输入区域最大高度（dp），0 = 不限（最大 600）"
+        },
+        {
+          "key": "selectionColor",
+          "path": [
+            "composer",
+            "selectionColor"
+          ],
+          "type": "token",
+          "label": "选区色",
+          "default": "primary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "selectionAlpha",
+          "path": [
+            "composer",
+            "selectionAlpha"
+          ],
+          "type": "float",
+          "label": "选区透明度",
+          "default": 0.4,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        },
+        {
+          "key": "selectionHandleColor",
+          "path": [
+            "composer",
+            "selectionHandleColor"
+          ],
+          "type": "token",
+          "label": "选区手柄色",
+          "default": "primary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "选择手柄"
+        },
+        {
+          "key": "disabledSurface",
+          "path": [
+            "composer",
+            "disabledSurface"
+          ],
+          "type": "token",
+          "label": "禁用背景",
+          "default": "surfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "disabledBorderAlpha",
+          "path": [
+            "composer",
+            "disabledBorderAlpha"
+          ],
+          "type": "float",
+          "label": "禁用边框透明度",
+          "default": 0.12,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        },
+        {
+          "key": "disabledTextColor",
+          "path": [
+            "composer",
+            "disabledTextColor"
+          ],
+          "type": "token",
+          "label": "禁用文字色",
+          "default": "onSurfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "errorBorderColor",
+          "path": [
+            "composer",
+            "errorBorderColor"
+          ],
+          "type": "token",
+          "label": "错误边框色",
+          "default": "error",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "errorTextColor",
+          "path": [
+            "composer",
+            "errorTextColor"
+          ],
+          "type": "token",
+          "label": "错误文字色",
+          "default": "error",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "fontFamily",
+          "path": [
+            "composer",
+            "fontFamily"
+          ],
+          "type": "font",
+          "label": "正文字体",
+          "default": "",
+          "desc": "仅覆盖输入框的 typography.fontFamily（sans、serif、mono、cursive、assets/fonts/x.ttf）"
+        },
+        {
+          "key": "lineHeight",
+          "path": [
+            "composer",
+            "lineHeight"
+          ],
+          "type": "float",
+          "label": "行高",
+          "default": null,
+          "min": 1.0,
+          "max": 2.5,
+          "step": 0.1,
+          "desc": "相对输入字号的倍数；0 表示继承"
+        },
+        {
+          "key": "letterSpacing",
+          "path": [
+            "composer",
+            "letterSpacing"
+          ],
+          "type": "float",
+          "label": "字距",
+          "default": null,
+          "min": -2.0,
+          "max": 4.0,
+          "step": 0.1,
+          "desc": "sp，-2…8"
+        },
+        {
+          "key": "textAlign",
+          "path": [
+            "composer",
+            "textAlign"
+          ],
+          "type": "options",
+          "label": "文字对齐",
+          "default": "start",
+          "options": [
+            "start",
+            "center",
+            "end"
+          ],
+          "desc": "start / center / end"
+        },
+        {
+          "key": "placeholderFontSize",
+          "path": [
+            "composer",
+            "placeholderFontSize"
+          ],
+          "type": "int",
+          "label": "占位文字字号",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "0 = 与输入字号相同"
+        },
+        {
+          "key": "sendDisabledBackground",
+          "path": [
+            "composer",
+            "sendDisabledBackground"
+          ],
+          "type": "token",
+          "label": "发送禁用背景",
+          "default": "surfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "sendDisabledTint",
+          "path": [
+            "composer",
+            "sendDisabledTint"
+          ],
+          "type": "token",
+          "label": "发送禁用图标色",
+          "default": "onSurfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "sendShape",
+          "path": [
+            "composer",
+            "sendShape"
+          ],
+          "type": "options",
+          "label": "发送按钮形状",
+          "default": "circle",
+          "options": [
+            "circle",
+            "rounded"
+          ]
+        },
+        {
+          "key": "stopShape",
+          "path": [
+            "composer",
+            "stopShape"
+          ],
+          "type": "options",
+          "label": "停止按钮形状",
+          "default": "circle",
+          "options": [
+            "circle",
+            "rounded"
+          ]
+        },
+        {
+          "key": "attachShape",
+          "path": [
+            "composer",
+            "attachShape"
+          ],
+          "type": "options",
+          "label": "附件按钮形状",
+          "default": "circle",
+          "options": [
+            "circle",
+            "rounded"
+          ]
+        },
+        {
+          "key": "sendRadius",
+          "path": [
+            "composer",
+            "sendRadius"
+          ],
+          "type": "int",
+          "label": "发送按钮圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        },
+        {
+          "key": "stopRadius",
+          "path": [
+            "composer",
+            "stopRadius"
+          ],
+          "type": "int",
+          "label": "停止按钮圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        },
+        {
+          "key": "attachRadius",
+          "path": [
+            "composer",
+            "attachRadius"
+          ],
+          "type": "int",
+          "label": "附件按钮圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        },
+        {
+          "key": "sendSize",
+          "path": [
+            "composer",
+            "sendSize"
+          ],
+          "type": "int",
+          "label": "发送按钮尺寸",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "stopSize",
+          "path": [
+            "composer",
+            "stopSize"
+          ],
+          "type": "int",
+          "label": "停止按钮尺寸",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "attachSize",
+          "path": [
+            "composer",
+            "attachSize"
+          ],
+          "type": "int",
+          "label": "附件按钮尺寸",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "sendPadding",
+          "path": [
+            "composer",
+            "sendPadding"
+          ],
+          "type": "int",
+          "label": "发送按钮内边距",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "stopPadding",
+          "path": [
+            "composer",
+            "stopPadding"
+          ],
+          "type": "int",
+          "label": "停止按钮内边距",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "attachPadding",
+          "path": [
+            "composer",
+            "attachPadding"
+          ],
+          "type": "int",
+          "label": "附件按钮内边距",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "stopBorderWidth",
+          "path": [
+            "composer",
+            "stopBorderWidth"
+          ],
+          "type": "int",
+          "label": "停止按钮边框宽度",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "stopBorderColor",
+          "path": [
+            "composer",
+            "stopBorderColor"
+          ],
+          "type": "token",
+          "label": "停止按钮边框色",
+          "default": "error",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "placeholderColor",
+          "path": [
+            "composer",
+            "placeholderColor"
+          ],
+          "type": "token",
+          "label": "占位文字颜色",
+          "default": "onSurfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bubble",
+      "title": "聊天气泡",
+      "file": "layout/chat.json",
+      "path": [
+        "chat",
+        "bubble"
+      ],
+      "desc": "气泡内边距、边框、圆角与配色。",
+      "fields": [
+        {
+          "key": "paddingH",
+          "path": [
+            "chat",
+            "bubble",
+            "paddingH"
+          ],
+          "type": "int",
+          "label": "水平内边距",
+          "default": 14,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "paddingV",
+          "path": [
+            "chat",
+            "bubble",
+            "paddingV"
+          ],
+          "type": "int",
+          "label": "垂直内边距",
+          "default": 11,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "borderWidth",
+          "path": [
+            "chat",
+            "bubble",
+            "borderWidth"
+          ],
+          "type": "int",
+          "label": "边框宽度",
+          "default": 1,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "气泡边框宽度；0 表示移除"
+        },
+        {
+          "key": "textColor",
+          "path": [
+            "chat",
+            "bubble",
+            "textColor"
+          ],
+          "type": "token",
+          "label": "文字色",
+          "default": "onSurface",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "用户气泡文字 token"
+        },
+        {
+          "key": "assistantBubble",
+          "path": [
+            "chat",
+            "bubble",
+            "assistantBubble"
+          ],
+          "type": "bool",
+          "label": "助手气泡",
+          "default": false,
+          "desc": "把助手 Markdown 渲染在表面卡片内"
+        },
+        {
+          "key": "assistantBackgroundAlpha",
+          "path": [
+            "chat",
+            "bubble",
+            "assistantBackgroundAlpha"
+          ],
+          "type": "float",
+          "label": "助手背景透明度",
+          "default": 0.55,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "desc": "助手卡片背景不透明度"
+        },
+        {
+          "key": "assistantBorderAlpha",
+          "path": [
+            "chat",
+            "bubble",
+            "assistantBorderAlpha"
+          ],
+          "type": "float",
+          "label": "助手边框透明度",
+          "default": 0.25,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "desc": "助手卡片边框不透明度"
+        },
+        {
+          "key": "assistantTextColor",
+          "path": [
+            "chat",
+            "bubble",
+            "assistantTextColor"
+          ],
+          "type": "token",
+          "label": "助手文字色",
+          "default": "onSurface",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "助手卡片文字 token"
+        },
+        {
+          "key": "borderColor",
+          "path": [
+            "chat",
+            "bubble",
+            "borderColor"
+          ],
+          "type": "token",
+          "label": "边框色",
+          "default": "primary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "用户气泡边框 token"
+        },
+        {
+          "key": "assistantBorderColor",
+          "path": [
+            "chat",
+            "bubble",
+            "assistantBorderColor"
+          ],
+          "type": "token",
+          "label": "助手边框色",
+          "default": "outline",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "助手卡片边框 token"
+        },
+        {
+          "key": "userBackground",
+          "path": [
+            "chat",
+            "bubble",
+            "userBackground"
+          ],
+          "type": "options",
+          "label": "用户气泡背景",
+          "default": "brand",
+          "options": [
+            "brand",
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "brand 保留主题渐变；任意 token = 纯色填充"
+        },
+        {
+          "key": "userBackgroundAlpha",
+          "path": [
+            "chat",
+            "bubble",
+            "userBackgroundAlpha"
+          ],
+          "type": "float",
+          "label": "用户气泡背景透明度",
+          "default": null,
+          "min": 0.0,
+          "max": 10.0,
+          "step": 0.01,
+          "desc": "纯色填充的不透明度"
+        },
+        {
+          "key": "textAlign",
+          "path": [
+            "chat",
+            "bubble",
+            "textAlign"
+          ],
+          "type": "options",
+          "label": "文字对齐",
+          "default": "start",
+          "options": [
+            "start",
+            "center",
+            "end"
+          ],
+          "desc": "用户气泡文字的 start / center / end"
+        },
+        {
+          "key": "radiusTL",
+          "path": [
+            "chat",
+            "bubble",
+            "radiusTL"
+          ],
+          "type": "int",
+          "label": "左上圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        },
+        {
+          "key": "radiusTR",
+          "path": [
+            "chat",
+            "bubble",
+            "radiusTR"
+          ],
+          "type": "int",
+          "label": "右上圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        },
+        {
+          "key": "radiusBR",
+          "path": [
+            "chat",
+            "bubble",
+            "radiusBR"
+          ],
+          "type": "int",
+          "label": "右下圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        },
+        {
+          "key": "radiusBL",
+          "path": [
+            "chat",
+            "bubble",
+            "radiusBL"
+          ],
+          "type": "int",
+          "label": "左下圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        }
+      ]
+    },
+    {
+      "id": "toolCard",
+      "title": "工具卡片",
+      "file": "layout/chat.json",
+      "path": [
+        "chat",
+        "toolCard"
+      ],
+      "desc": "工具调用卡片的尺寸、配色与单工具覆盖。",
+      "fields": [
+        {
+          "key": "background",
+          "path": [
+            "chat",
+            "toolCard",
+            "background"
+          ],
+          "type": "options",
+          "label": "背景",
+          "default": "surface",
+          "options": [
+            "surface",
+            "surfaceVariant",
+            "background",
+            "transparent"
+          ],
+          "desc": "surface、surfaceVariant、background、transparent"
+        },
+        {
+          "key": "backgroundAlpha",
+          "path": [
+            "chat",
+            "toolCard",
+            "backgroundAlpha"
+          ],
+          "type": "float",
+          "label": "背景透明度",
+          "default": null,
+          "min": 0.0,
+          "max": 10.0,
+          "step": 0.01,
+          "desc": "卡片背景不透明度"
+        },
+        {
+          "key": "radius",
+          "path": [
+            "chat",
+            "toolCard",
+            "radius"
+          ],
+          "type": "int",
+          "label": "圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1,
+          "desc": "卡片圆角；-1 = 主题 cornerRadius"
+        },
+        {
+          "key": "borderWidth",
+          "path": [
+            "chat",
+            "toolCard",
+            "borderWidth"
+          ],
+          "type": "int",
+          "label": "边框宽度",
+          "default": 1,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "边框宽度；0 表示移除"
+        },
+        {
+          "key": "borderAlpha",
+          "path": [
+            "chat",
+            "toolCard",
+            "borderAlpha"
+          ],
+          "type": "float",
+          "label": "边框透明度",
+          "default": null,
+          "min": 0.0,
+          "max": 10.0,
+          "step": 0.01,
+          "desc": "-1 = 主题 cardBorderAlpha"
+        },
+        {
+          "key": "padding",
+          "path": [
+            "chat",
+            "toolCard",
+            "padding"
+          ],
+          "type": "int",
+          "label": "内边距",
+          "default": 12,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "展开卡片的 padding"
+        },
+        {
+          "key": "collapsedPaddingH",
+          "path": [
+            "chat",
+            "toolCard",
+            "collapsedPaddingH"
+          ],
+          "type": "int",
+          "label": "折叠态水平内边距",
+          "default": 11,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "collapsedPaddingV",
+          "path": [
+            "chat",
+            "toolCard",
+            "collapsedPaddingV"
+          ],
+          "type": "int",
+          "label": "折叠态垂直内边距",
+          "default": 8,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "iconBoxSize",
+          "path": [
+            "chat",
+            "toolCard",
+            "iconBoxSize"
+          ],
+          "type": "int",
+          "label": "图标框尺寸",
+          "default": 26,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "工具图标方框 dp"
+        },
+        {
+          "key": "iconSize",
+          "path": [
+            "chat",
+            "toolCard",
+            "iconSize"
+          ],
+          "type": "int",
+          "label": "图标尺寸",
+          "default": 15,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "工具图标 dp"
+        },
+        {
+          "key": "iconRadius",
+          "path": [
+            "chat",
+            "toolCard",
+            "iconRadius"
+          ],
+          "type": "int",
+          "label": "图标圆角",
+          "default": 8,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "工具图标方框圆角"
+        },
+        {
+          "key": "iconAlpha",
+          "path": [
+            "chat",
+            "toolCard",
+            "iconAlpha"
+          ],
+          "type": "float",
+          "label": "图标底透明度",
+          "default": 0.14,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "desc": "工具图标背景不透明度"
+        },
+        {
+          "key": "titleSize",
+          "path": [
+            "chat",
+            "toolCard",
+            "titleSize"
+          ],
+          "type": "int",
+          "label": "标题字号",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "工具名称字号；0 = 主题 titleSmall"
+        },
+        {
+          "key": "metricsColor",
+          "path": [
+            "chat",
+            "toolCard",
+            "metricsColor"
+          ],
+          "type": "token",
+          "label": "指标色",
+          "default": "onSurfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "指标文字 token"
+        },
+        {
+          "key": "chipRadius",
+          "path": [
+            "chat",
+            "toolCard",
+            "chipRadius"
+          ],
+          "type": "int",
+          "label": "胶囊圆角",
+          "default": 6,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "收起/摘要/展开 胶囊按钮圆角"
+        },
+        {
+          "key": "borderColor",
+          "path": [
+            "chat",
+            "toolCard",
+            "borderColor"
+          ],
+          "type": "token",
+          "label": "边框色",
+          "default": "outline",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "卡片边框 token"
+        },
+        {
+          "key": "errorBorderColor",
+          "path": [
+            "chat",
+            "toolCard",
+            "errorBorderColor"
+          ],
+          "type": "token",
+          "label": "错误边框色",
+          "default": "error",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "工具失败时的边框 token"
+        },
+        {
+          "key": "titleColor",
+          "path": [
+            "chat",
+            "toolCard",
+            "titleColor"
+          ],
+          "type": "token",
+          "label": "标题色",
+          "default": "onSurface",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "工具名称 token"
+        },
+        {
+          "key": "iconTint",
+          "path": [
+            "chat",
+            "toolCard",
+            "iconTint"
+          ],
+          "type": "token",
+          "label": "图标色",
+          "default": "secondary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "图标字形 token"
+        },
+        {
+          "key": "iconBackground",
+          "path": [
+            "chat",
+            "toolCard",
+            "iconBackground"
+          ],
+          "type": "token",
+          "label": "图标底色",
+          "default": "secondary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "图标方框填充 token（不透明度来自 iconAlpha）"
+        },
+        {
+          "key": "diffAddColor",
+          "path": [
+            "chat",
+            "toolCard",
+            "diffAddColor"
+          ],
+          "type": "token",
+          "label": "新增行色",
+          "default": "success",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "diff 块中的 + 行"
+        },
+        {
+          "key": "diffRemoveColor",
+          "path": [
+            "chat",
+            "toolCard",
+            "diffRemoveColor"
+          ],
+          "type": "token",
+          "label": "删除行色",
+          "default": "error",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "- 行"
+        },
+        {
+          "key": "diffContextColor",
+          "path": [
+            "chat",
+            "toolCard",
+            "diffContextColor"
+          ],
+          "type": "token",
+          "label": "上下文行色",
+          "default": "onSurfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "未变更的行"
+        },
+        {
+          "key": "codeFontFamily",
+          "path": [
+            "chat",
+            "toolCard",
+            "codeFontFamily"
+          ],
+          "type": "font",
+          "label": "代码字体",
+          "default": "",
+          "desc": "diff 字体族名称（见字体排版）；\"\" = 代码字体"
+        },
+        {
+          "key": "codeFontSize",
+          "path": [
+            "chat",
+            "toolCard",
+            "codeFontSize"
+          ],
+          "type": "int",
+          "label": "代码字号",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "diff 文字字号；0 = 11sp"
+        },
+        {
+          "key": "chipAlpha",
+          "path": [
+            "chat",
+            "toolCard",
+            "chipAlpha"
+          ],
+          "type": "float",
+          "label": "胶囊背景透明度",
+          "default": 0.15,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "desc": "选中胶囊按钮背景不透明度"
+        },
+        {
+          "key": "groupRadius",
+          "path": [
+            "chat",
+            "toolCard",
+            "groupRadius"
+          ],
+          "type": "int",
+          "label": "分组圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1,
+          "desc": "工具分组圆角；-1 = 卡片圆角"
+        },
+        {
+          "key": "groupPadding",
+          "path": [
+            "chat",
+            "toolCard",
+            "groupPadding"
+          ],
+          "type": "int",
+          "label": "分组内边距",
+          "default": 10,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "工具分组 padding"
+        },
+        {
+          "key": "maxWidth",
+          "path": [
+            "chat",
+            "toolCard",
+            "maxWidth"
+          ],
+          "type": "int",
+          "label": "最大宽度",
+          "default": 0,
+          "min": 0,
+          "max": 2000,
+          "step": 1,
+          "desc": "卡片宽度上限（dp）；0 = 铺满"
+        },
+        {
+          "key": "byTool",
+          "path": [
+            "chat",
+            "toolCard",
+            "byTool"
+          ],
+          "type": "json",
+          "label": "单工具配色",
+          "default": {}
+        }
+      ]
+    },
+    {
+      "id": "thinking",
+      "title": "思考块",
+      "file": "layout/chat.json",
+      "path": [
+        "chat",
+        "thinking"
+      ],
+      "desc": "推理过程折叠块的显隐与样式。",
+      "fields": [
+        {
+          "key": "show",
+          "path": [
+            "chat",
+            "thinking",
+            "show"
+          ],
+          "type": "bool",
+          "label": "显示",
+          "default": true,
+          "desc": "false 会完全隐藏思考块（与 pig 的 hideThinkingBlock 效果相同）"
+        },
+        {
+          "key": "collapsedByDefault",
+          "path": [
+            "chat",
+            "thinking",
+            "collapsedByDefault"
+          ],
+          "type": "bool",
+          "label": "默认折叠",
+          "default": true,
+          "desc": "初始为收起状态"
+        },
+        {
+          "key": "expandWhileStreaming",
+          "path": [
+            "chat",
+            "thinking",
+            "expandWhileStreaming"
+          ],
+          "type": "bool",
+          "label": "流式时展开",
+          "default": true,
+          "desc": "内容仍在流式输出时展开；用户点击优先于该设置"
+        },
+        {
+          "key": "showCount",
+          "path": [
+            "chat",
+            "thinking",
+            "showCount"
+          ],
+          "type": "bool",
+          "label": "显示字数",
+          "default": true,
+          "desc": "在标题旁显示 N 字"
+        },
+        {
+          "key": "title",
+          "path": [
+            "chat",
+            "thinking",
+            "title"
+          ],
+          "type": "string",
+          "label": "标题",
+          "default": "",
+          "desc": "覆盖 chat.thinking 文案（思考）"
+        },
+        {
+          "key": "fontSize",
+          "path": [
+            "chat",
+            "thinking",
+            "fontSize"
+          ],
+          "type": "int",
+          "label": "字号",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "正文字号；0 = App 的 body-small"
+        },
+        {
+          "key": "italic",
+          "path": [
+            "chat",
+            "thinking",
+            "italic"
+          ],
+          "type": "bool",
+          "label": "斜体",
+          "default": false,
+          "desc": "正文斜体"
+        },
+        {
+          "key": "background",
+          "path": [
+            "chat",
+            "thinking",
+            "background"
+          ],
+          "type": "options",
+          "label": "背景",
+          "default": "surfaceVariant",
+          "options": [
+            "surface",
+            "surfaceVariant",
+            "background",
+            "transparent"
+          ],
+          "desc": "surface、surfaceVariant、background、transparent"
+        },
+        {
+          "key": "backgroundAlpha",
+          "path": [
+            "chat",
+            "thinking",
+            "backgroundAlpha"
+          ],
+          "type": "float",
+          "label": "背景透明度",
+          "default": 0.42,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "desc": "背景不透明度"
+        },
+        {
+          "key": "titleColor",
+          "path": [
+            "chat",
+            "thinking",
+            "titleColor"
+          ],
+          "type": "token",
+          "label": "标题色",
+          "default": "secondary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "标题使用的主题 token"
+        },
+        {
+          "key": "textColor",
+          "path": [
+            "chat",
+            "thinking",
+            "textColor"
+          ],
+          "type": "token",
+          "label": "文字色",
+          "default": "onSurfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "字数、字形和正文使用的主题 token"
+        },
+        {
+          "key": "radius",
+          "path": [
+            "chat",
+            "thinking",
+            "radius"
+          ],
+          "type": "int",
+          "label": "圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1,
+          "desc": "块圆角；-1 = 10dp"
+        },
+        {
+          "key": "paddingH",
+          "path": [
+            "chat",
+            "thinking",
+            "paddingH"
+          ],
+          "type": "int",
+          "label": "水平内边距",
+          "default": 10,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "paddingV",
+          "path": [
+            "chat",
+            "thinking",
+            "paddingV"
+          ],
+          "type": "int",
+          "label": "垂直内边距",
+          "default": 7,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "maxHeight",
+          "path": [
+            "chat",
+            "thinking",
+            "maxHeight"
+          ],
+          "type": "int",
+          "label": "最大高度",
+          "default": 240,
+          "min": 60,
+          "max": 800,
+          "step": 1,
+          "desc": "正文可滚动高度上限（dp）"
+        },
+        {
+          "key": "collapsedGlyph",
+          "path": [
+            "chat",
+            "thinking",
+            "collapsedGlyph"
+          ],
+          "type": "string",
+          "label": "折叠图标",
+          "default": "▸"
+        },
+        {
+          "key": "expandedGlyph",
+          "path": [
+            "chat",
+            "thinking",
+            "expandedGlyph"
+          ],
+          "type": "string",
+          "label": "展开图标",
+          "default": "▾"
+        }
+      ]
+    },
+    {
+      "id": "markdown",
+      "title": "Markdown",
+      "file": "layout/chat.json",
+      "path": [
+        "chat",
+        "markdown"
+      ],
+      "desc": "正文里的链接、行内代码、代码块、表格与引用。",
+      "fields": [
+        {
+          "key": "linkColor",
+          "path": [
+            "chat",
+            "markdown",
+            "linkColor"
+          ],
+          "type": "token",
+          "label": "链接色",
+          "default": "secondary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "[text](url)"
+        },
+        {
+          "key": "inlineCodeBackground",
+          "path": [
+            "chat",
+            "markdown",
+            "inlineCodeBackground"
+          ],
+          "type": "token",
+          "label": "行内代码背景",
+          "default": "surfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "inlineCodeColor",
+          "path": [
+            "chat",
+            "markdown",
+            "inlineCodeColor"
+          ],
+          "type": "token",
+          "label": "行内代码文字",
+          "default": "onSurface",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "codeBlockBackground",
+          "path": [
+            "chat",
+            "markdown",
+            "codeBlockBackground"
+          ],
+          "type": "token",
+          "label": "代码块背景",
+          "default": "background",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "codeBlockAlpha",
+          "path": [
+            "chat",
+            "markdown",
+            "codeBlockAlpha"
+          ],
+          "type": "float",
+          "label": "代码块透明度",
+          "default": 0.6,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        },
+        {
+          "key": "codeBlockBorderColor",
+          "path": [
+            "chat",
+            "markdown",
+            "codeBlockBorderColor"
+          ],
+          "type": "token",
+          "label": "代码块边框色",
+          "default": "outline",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "围栏代码块边框（不透明度来自 chat.codeBlockBorderAlpha）"
+        },
+        {
+          "key": "quoteTextColor",
+          "path": [
+            "chat",
+            "markdown",
+            "quoteTextColor"
+          ],
+          "type": "token",
+          "label": "引用文字色",
+          "default": "onSurfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "> 引用块"
+        },
+        {
+          "key": "tableHeaderBackground",
+          "path": [
+            "chat",
+            "markdown",
+            "tableHeaderBackground"
+          ],
+          "type": "token",
+          "label": "表头背景",
+          "default": "surfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "表格表头行"
+        },
+        {
+          "key": "tableBorderColor",
+          "path": [
+            "chat",
+            "markdown",
+            "tableBorderColor"
+          ],
+          "type": "token",
+          "label": "表格边框色",
+          "default": "outline",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "tableBorderAlpha",
+          "path": [
+            "chat",
+            "markdown",
+            "tableBorderAlpha"
+          ],
+          "type": "float",
+          "label": "表格边框透明度",
+          "default": 0.4,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        },
+        {
+          "key": "tableZebraAlpha",
+          "path": [
+            "chat",
+            "markdown",
+            "tableZebraAlpha"
+          ],
+          "type": "float",
+          "label": "斑马纹透明度",
+          "default": null,
+          "min": 0.0,
+          "max": 10.0,
+          "step": 0.01,
+          "desc": "交替行叠加 tableHeaderBackground 的淡色，0 = 关闭"
+        },
+        {
+          "key": "hrColor",
+          "path": [
+            "chat",
+            "markdown",
+            "hrColor"
+          ],
+          "type": "token",
+          "label": "分隔线色",
+          "default": "outlineVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chrome",
+      "title": "Chrome",
+      "file": "layout/chat.json",
+      "path": [
+        "chat",
+        "chrome"
+      ],
+      "desc": "状态栏、Toast、对话框、筛选胶囊、回到底部按钮。",
+      "fields": [
+        {
+          "key": "statusColor",
+          "path": [
+            "chat",
+            "chrome",
+            "statusColor"
+          ],
+          "type": "token",
+          "label": "状态文字色",
+          "default": "onSurfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "状态胶囊文字 token"
+        },
+        {
+          "key": "statusSize",
+          "path": [
+            "chat",
+            "chrome",
+            "statusSize"
+          ],
+          "type": "int",
+          "label": "状态字号",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "字号；0 = 主题 labelSmall"
+        },
+        {
+          "key": "statusSpinnerColor",
+          "path": [
+            "chat",
+            "chrome",
+            "statusSpinnerColor"
+          ],
+          "type": "token",
+          "label": "转圈颜色",
+          "default": "secondary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "旋转指示器 token"
+        },
+        {
+          "key": "statusSpinnerSize",
+          "path": [
+            "chat",
+            "chrome",
+            "statusSpinnerSize"
+          ],
+          "type": "int",
+          "label": "转圈尺寸",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "旋转指示器 dp；0 = 11"
+        },
+        {
+          "key": "statusBackground",
+          "path": [
+            "chat",
+            "chrome",
+            "statusBackground"
+          ],
+          "type": "token",
+          "label": "状态背景",
+          "default": "surfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "胶囊 token；none = 透明"
+        },
+        {
+          "key": "statusBackgroundAlpha",
+          "path": [
+            "chat",
+            "chrome",
+            "statusBackgroundAlpha"
+          ],
+          "type": "float",
+          "label": "状态背景透明度",
+          "default": 0.55,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "desc": "胶囊不透明度"
+        },
+        {
+          "key": "statusPaddingH",
+          "path": [
+            "chat",
+            "chrome",
+            "statusPaddingH"
+          ],
+          "type": "int",
+          "label": "状态水平内边距",
+          "default": 12,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "statusPaddingV",
+          "path": [
+            "chat",
+            "chrome",
+            "statusPaddingV"
+          ],
+          "type": "int",
+          "label": "状态垂直内边距",
+          "default": 6,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "toastContainer",
+          "path": [
+            "chat",
+            "chrome",
+            "toastContainer"
+          ],
+          "type": "token",
+          "label": "提示条背景",
+          "default": "",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "snackbar 背景 token；\"\" = Material 默认值"
+        },
+        {
+          "key": "toastText",
+          "path": [
+            "chat",
+            "chrome",
+            "toastText"
+          ],
+          "type": "token",
+          "label": "提示条文字",
+          "default": "",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "snackbar 文字 token"
+        },
+        {
+          "key": "toastAction",
+          "path": [
+            "chat",
+            "chrome",
+            "toastAction"
+          ],
+          "type": "token",
+          "label": "提示条动作",
+          "default": "",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "snackbar 动作 token"
+        },
+        {
+          "key": "toastShape",
+          "path": [
+            "chat",
+            "chrome",
+            "toastShape"
+          ],
+          "type": "int",
+          "label": "提示条圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1,
+          "desc": "圆角；-1 = Material 默认值"
+        },
+        {
+          "key": "toastInsetH",
+          "path": [
+            "chat",
+            "chrome",
+            "toastInsetH"
+          ],
+          "type": "int",
+          "label": "提示条水平缩进",
+          "default": 12,
+          "min": 0,
+          "max": 64,
+          "step": 1,
+          "desc": "水平内缩"
+        },
+        {
+          "key": "dialogSurface",
+          "path": [
+            "chat",
+            "chrome",
+            "dialogSurface"
+          ],
+          "type": "token",
+          "label": "对话框背景",
+          "default": "",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "提示框背景 token；\"\" = Material 默认值"
+        },
+        {
+          "key": "dialogRadius",
+          "path": [
+            "chat",
+            "chrome",
+            "dialogRadius"
+          ],
+          "type": "int",
+          "label": "对话框圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1,
+          "desc": "提示框圆角"
+        },
+        {
+          "key": "dialogMaxWidth",
+          "path": [
+            "chat",
+            "chrome",
+            "dialogMaxWidth"
+          ],
+          "type": "int",
+          "label": "对话框最大宽度",
+          "default": 0,
+          "min": 0,
+          "max": 1200,
+          "step": 1,
+          "desc": "最大宽度（dp）；0 = Material 默认值"
+        },
+        {
+          "key": "dialogTitleColor",
+          "path": [
+            "chat",
+            "chrome",
+            "dialogTitleColor"
+          ],
+          "type": "token",
+          "label": "对话框标题色",
+          "default": "onSurface",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "对话框标题/图标 token"
+        },
+        {
+          "key": "dialogTextColor",
+          "path": [
+            "chat",
+            "chrome",
+            "dialogTextColor"
+          ],
+          "type": "token",
+          "label": "对话框正文色",
+          "default": "onSurfaceVariant",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "对话框正文 token"
+        },
+        {
+          "key": "chipBackground",
+          "path": [
+            "chat",
+            "chrome",
+            "chipBackground"
+          ],
+          "type": "token",
+          "label": "胶囊背景",
+          "default": "primary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "选中过滤胶囊按钮的填充 token"
+        },
+        {
+          "key": "chipBackgroundAlpha",
+          "path": [
+            "chat",
+            "chrome",
+            "chipBackgroundAlpha"
+          ],
+          "type": "float",
+          "label": "胶囊背景透明度",
+          "default": 0.18,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "desc": "选中填充不透明度"
+        },
+        {
+          "key": "chipLabelColor",
+          "path": [
+            "chat",
+            "chrome",
+            "chipLabelColor"
+          ],
+          "type": "token",
+          "label": "胶囊文字色",
+          "default": "primary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "选中胶囊按钮的文字 token"
+        },
+        {
+          "key": "chipShape",
+          "path": [
+            "chat",
+            "chrome",
+            "chipShape"
+          ],
+          "type": "options",
+          "label": "胶囊形状",
+          "default": "circle",
+          "options": [
+            "circle",
+            "rounded"
+          ],
+          "desc": "circle 或 rounded"
+        },
+        {
+          "key": "chipRadius",
+          "path": [
+            "chat",
+            "chrome",
+            "chipRadius"
+          ],
+          "type": "int",
+          "label": "胶囊圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1,
+          "desc": "chipShape = rounded 时的圆角；-1 = 10"
+        },
+        {
+          "key": "emptyTitleColor",
+          "path": [
+            "chat",
+            "chrome",
+            "emptyTitleColor"
+          ],
+          "type": "token",
+          "label": "空状态标题色",
+          "default": "",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "空状态标题 token；\"\" 继承环境颜色"
+        },
+        {
+          "key": "fabBackground",
+          "path": [
+            "chat",
+            "chrome",
+            "fabBackground"
+          ],
+          "type": "token",
+          "label": "回到底部背景",
+          "default": "primary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "「回到底部」气泡的填充 token"
+        },
+        {
+          "key": "fabBackgroundAlpha",
+          "path": [
+            "chat",
+            "chrome",
+            "fabBackgroundAlpha"
+          ],
+          "type": "float",
+          "label": "回到底部背景透明度",
+          "default": null,
+          "min": 0.0,
+          "max": 10.0,
+          "step": 0.01,
+          "desc": "气泡填充透明度"
+        },
+        {
+          "key": "fabTint",
+          "path": [
+            "chat",
+            "chrome",
+            "fabTint"
+          ],
+          "type": "token",
+          "label": "回到底部图标色",
+          "default": "onPrimary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ],
+          "desc": "气泡图标/文字的 token"
+        },
+        {
+          "key": "fabTintAlpha",
+          "path": [
+            "chat",
+            "chrome",
+            "fabTintAlpha"
+          ],
+          "type": "float",
+          "label": "回到底部图标透明度",
+          "default": null,
+          "min": 0.0,
+          "max": 10.0,
+          "step": 0.01,
+          "desc": "气泡图标/文字的透明度"
+        }
+      ]
+    },
+    {
+      "id": "drawer",
+      "title": "抽屉",
+      "file": "layout/chat.json",
+      "path": [
+        "drawer"
+      ],
+      "desc": "侧边抽屉的背景、间距、按钮与会话行。",
+      "fields": [
+        {
+          "key": "background",
+          "path": [
+            "drawer",
+            "background"
+          ],
+          "type": "options",
+          "label": "背景",
+          "default": "theme",
+          "options": [
+            "theme",
+            "surface",
+            "gradient",
+            "transparent"
+          ]
+        },
+        {
+          "key": "gradientAlpha",
+          "path": [
+            "drawer",
+            "gradientAlpha"
+          ],
+          "type": "float",
+          "label": "渐变透明度",
+          "default": 0.18,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        },
+        {
+          "key": "cornerRadius",
+          "path": [
+            "drawer",
+            "cornerRadius"
+          ],
+          "type": "int",
+          "label": "全局圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        },
+        {
+          "key": "paddingH",
+          "path": [
+            "drawer",
+            "paddingH"
+          ],
+          "type": "int",
+          "label": "水平内边距",
+          "default": 16,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "paddingV",
+          "path": [
+            "drawer",
+            "paddingV"
+          ],
+          "type": "int",
+          "label": "垂直内边距",
+          "default": 20,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "spacing",
+          "path": [
+            "drawer",
+            "spacing"
+          ],
+          "type": "int",
+          "label": "间距",
+          "default": 10,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "brandAvatarSize",
+          "path": [
+            "drawer",
+            "brandAvatarSize"
+          ],
+          "type": "int",
+          "label": "品牌头像尺寸",
+          "default": 44,
+          "min": 16,
+          "max": 96,
+          "step": 1
+        },
+        {
+          "key": "brandTagline",
+          "path": [
+            "drawer",
+            "brandTagline"
+          ],
+          "type": "bool",
+          "label": "品牌标语",
+          "default": true
+        },
+        {
+          "key": "brandCardAlpha",
+          "path": [
+            "drawer",
+            "brandCardAlpha"
+          ],
+          "type": "float",
+          "label": "品牌卡透明度",
+          "default": 0.34,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        },
+        {
+          "key": "brandPills",
+          "path": [
+            "drawer",
+            "brandPills"
+          ],
+          "type": "bool",
+          "label": "品牌胶囊",
+          "default": true
+        },
+        {
+          "key": "buttonHeight",
+          "path": [
+            "drawer",
+            "buttonHeight"
+          ],
+          "type": "int",
+          "label": "按钮高度",
+          "default": 0,
+          "min": 0,
+          "max": 96,
+          "step": 1
+        },
+        {
+          "key": "buttonRadius",
+          "path": [
+            "drawer",
+            "buttonRadius"
+          ],
+          "type": "int",
+          "label": "按钮圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        },
+        {
+          "key": "buttonIconSize",
+          "path": [
+            "drawer",
+            "buttonIconSize"
+          ],
+          "type": "int",
+          "label": "按钮图标尺寸",
+          "default": 16,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "sectionLabelSize",
+          "path": [
+            "drawer",
+            "sectionLabelSize"
+          ],
+          "type": "int",
+          "label": "分组标题字号",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "sectionLabelUppercase",
+          "path": [
+            "drawer",
+            "sectionLabelUppercase"
+          ],
+          "type": "bool",
+          "label": "分组标题大写",
+          "default": false
+        },
+        {
+          "key": "sessionRowRadius",
+          "path": [
+            "drawer",
+            "sessionRowRadius"
+          ],
+          "type": "int",
+          "label": "会话行圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        },
+        {
+          "key": "sessionSelectedAlpha",
+          "path": [
+            "drawer",
+            "sessionSelectedAlpha"
+          ],
+          "type": "float",
+          "label": "选中行背景透明度",
+          "default": 0.13,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        },
+        {
+          "key": "showSessionId",
+          "path": [
+            "drawer",
+            "showSessionId"
+          ],
+          "type": "bool",
+          "label": "显示会话 ID",
+          "default": true
+        },
+        {
+          "key": "showSessionTime",
+          "path": [
+            "drawer",
+            "showSessionTime"
+          ],
+          "type": "bool",
+          "label": "显示会话时间",
+          "default": true
+        },
+        {
+          "key": "searchRadius",
+          "path": [
+            "drawer",
+            "searchRadius"
+          ],
+          "type": "int",
+          "label": "搜索框圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        },
+        {
+          "key": "modules",
+          "path": [
+            "drawer",
+            "modules"
+          ],
+          "type": "json",
+          "label": "抽屉模块",
+          "default": [
+            "brand",
+            "newSession",
+            "skinSwitcher",
+            "packManager",
+            "panels"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "header",
+      "title": "顶栏",
+      "file": "layout/chat.json",
+      "path": [
+        "header"
+      ],
+      "desc": "顶栏容器、简单行（rows）与像素级节点树（body）。",
+      "fields": [
+        {
+          "key": "show",
+          "path": [
+            "header",
+            "show"
+          ],
+          "type": "bool",
+          "label": "显示",
+          "default": true,
+          "desc": "false 会完全移除头部"
+        },
+        {
+          "key": "height",
+          "path": [
+            "header",
+            "height"
+          ],
+          "type": "int",
+          "label": "高度",
+          "default": 0,
+          "min": 0,
+          "max": 200,
+          "step": 1,
+          "desc": "最小高度，单位 dp（0 = 由行内容包裹）"
+        },
+        {
+          "key": "paddingH",
+          "path": [
+            "header",
+            "paddingH"
+          ],
+          "type": "int",
+          "label": "水平内边距",
+          "default": 12,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "paddingV",
+          "path": [
+            "header",
+            "paddingV"
+          ],
+          "type": "int",
+          "label": "垂直内边距",
+          "default": 2,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "background",
+          "path": [
+            "header",
+            "background"
+          ],
+          "type": "options",
+          "label": "背景",
+          "default": "gradient",
+          "options": [
+            "gradient",
+            "surface",
+            "transparent"
+          ],
+          "desc": "gradient、surface、transparent"
+        },
+        {
+          "key": "gradientAlpha",
+          "path": [
+            "header",
+            "gradientAlpha"
+          ],
+          "type": "float",
+          "label": "渐变透明度",
+          "default": 0.13,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "desc": "仅用于 gradient"
+        },
+        {
+          "key": "divider",
+          "path": [
+            "header",
+            "divider"
+          ],
+          "type": "bool",
+          "label": "底部分隔线",
+          "default": false,
+          "desc": "底部分隔线"
+        },
+        {
+          "key": "body",
+          "path": [
+            "header",
+            "body"
+          ],
+          "type": "json",
+          "label": "节点树",
+          "default": null,
+          "desc": "像素级 appUI 节点树；存在时忽略 rows"
+        },
+        {
+          "key": "rows",
+          "path": [
+            "header",
+            "rows"
+          ],
+          "type": "json",
+          "label": "简单行",
+          "default": [],
+          "desc": "简单的行/元素列表（见下文）"
+        }
+      ]
+    },
+    {
+      "id": "sidebar",
+      "title": "侧边栏",
+      "file": "layout/chat.json",
+      "path": [
+        "sidebar"
+      ],
+      "desc": "抽屉宽度。",
+      "fields": [
+        {
+          "key": "widthDp",
+          "path": [
+            "sidebar",
+            "widthDp"
+          ],
+          "type": "int",
+          "label": "宽度",
+          "default": 300,
+          "min": 240,
+          "max": 560,
+          "step": 1
+        }
+      ]
+    },
+    {
+      "id": "skinSwitcher",
+      "title": "皮肤切换",
+      "file": "layout/chat.json",
+      "path": [
+        "skinSwitcher"
+      ],
+      "desc": "皮肤（skins.json）切换器。",
+      "fields": [
+        {
+          "key": "show",
+          "path": [
+            "skinSwitcher",
+            "show"
+          ],
+          "type": "bool",
+          "label": "显示",
+          "default": true
+        },
+        {
+          "key": "placement",
+          "path": [
+            "skinSwitcher",
+            "placement"
+          ],
+          "type": "options",
+          "label": "位置",
+          "default": "drawer",
+          "options": [
+            "drawer",
+            "settings",
+            "both"
+          ]
+        },
+        {
+          "key": "style",
+          "path": [
+            "skinSwitcher",
+            "style"
+          ],
+          "type": "options",
+          "label": "样式",
+          "default": "chips",
+          "options": [
+            "chips",
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "packManager",
+      "title": "pack 管理",
+      "file": "layout/chat.json",
+      "path": [
+        "packManager"
+      ],
+      "desc": "内置的 UI pack 管理入口。",
+      "fields": [
+        {
+          "key": "show",
+          "path": [
+            "packManager",
+            "show"
+          ],
+          "type": "bool",
+          "label": "显示",
+          "default": true
+        },
+        {
+          "key": "placement",
+          "path": [
+            "packManager",
+            "placement"
+          ],
+          "type": "options",
+          "label": "位置",
+          "default": "both",
+          "options": [
+            "drawer",
+            "settings",
+            "both"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "设置对话框",
+      "file": "layout/chat.json",
+      "path": [
+        "settings"
+      ],
+      "desc": "设置对话框的尺寸档位。",
+      "fields": [
+        {
+          "key": "defaultSize",
+          "path": [
+            "settings",
+            "defaultSize"
+          ],
+          "type": "string",
+          "label": "默认尺寸",
+          "default": "standard"
+        },
+        {
+          "key": "sizes",
+          "path": [
+            "settings",
+            "sizes"
+          ],
+          "type": "json",
+          "label": "尺寸档位",
+          "default": [
+            {
+              "id": "compact",
+              "label": "紧凑",
+              "width": 0.78,
+              "height": 0.6
+            },
+            {
+              "id": "standard",
+              "label": "标准",
+              "width": 0.92,
+              "height": 0.82
+            },
+            {
+              "id": "large",
+              "label": "大",
+              "width": 0.97,
+              "height": 0.94
+            },
+            {
+              "id": "full",
+              "label": "全屏",
+              "width": 1.0,
+              "height": 1.0
+            }
+          ]
+        },
+        {
+          "key": "showSizeSwitcher",
+          "path": [
+            "settings",
+            "showSizeSwitcher"
+          ],
+          "type": "bool",
+          "label": "尺寸切换",
+          "default": true
+        }
+      ]
+    },
+    {
+      "id": "manifest",
+      "title": "包信息",
+      "file": "manifest.json",
+      "path": [],
+      "desc": "pack 名称与版本。",
+      "fields": [
+        {
+          "key": "name",
+          "path": [
+            "name"
+          ],
+          "type": "string",
+          "label": "名称",
+          "default": "Pig default"
+        },
+        {
+          "key": "version",
+          "path": [
+            "version"
+          ],
+          "type": "int",
+          "label": "版本",
+          "default": 1,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        }
+      ]
+    }
+  ],
+  "raw": [
+    {
+      "id": "strings",
+      "title": "界面文案",
+      "file": "strings.json",
+      "desc": "key → 文案；点号表示嵌套，例如 header.online。",
+      "type": "json"
+    },
+    {
+      "id": "icons",
+      "title": "图标映射",
+      "file": "icons.json",
+      "desc": "逻辑图标名 → 内置图标名（menu/send/settings/…）。",
+      "type": "json"
+    },
+    {
+      "id": "nav",
+      "title": "抽屉入口",
+      "file": "nav.json",
+      "desc": "{\"items\":[{\"id\",\"label\",\"window\",\"command\",\"icon\"}]}。",
+      "type": "json"
+    },
+    {
+      "id": "skins",
+      "title": "皮肤",
+      "file": "skins.json",
+      "desc": "{\"default\":\"id\",\"skins\":[{\"id\",\"name\",\"theme\":{…}}]}。",
+      "type": "json"
+    },
+    {
+      "id": "dataSources",
+      "title": "数据源",
+      "file": "layout/chat.json",
+      "path": [
+        "dataSources"
+      ],
+      "desc": "RPC 数据源：名称 → {rpc, params, refresh}。",
+      "type": "json"
+    },
+    {
+      "id": "bindings",
+      "title": "绑定",
+      "file": "layout/chat.json",
+      "path": [
+        "bindings"
+      ],
+      "desc": "槽位 → JSON 路径或 {path, format, fallback}。",
+      "type": "json"
+    },
+    {
+      "id": "actions",
+      "title": "动作",
+      "file": "layout/chat.json",
+      "path": [
+        "actions"
+      ],
+      "desc": "命名动作 → {rpc, params, confirm}。",
+      "type": "json"
+    }
+  ]
+}

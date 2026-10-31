@@ -26,6 +26,11 @@ jobs:
       - name: "Docs: EN/ZH twins, switchers, links"
         run: python3 scripts/check-docs-i18n.py
 
+      # The in-app editor can only expose keys that are in this asset; a
+      # parser change without regenerating it silently loses fields.
+      - name: "UI pack editor schema is up to date"
+        run: python3 tools/gen_uipack_schema.py --check
+
       # windows/ inside a pack is rendered at runtime (provider-ui writes the
       # provider list from the user's own config); a committed copy leaks it
       # into every APK. This happened once with ~/.pig/android-ui.
