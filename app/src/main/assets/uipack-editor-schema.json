@@ -584,7 +584,7 @@
           ],
           "type": "float",
           "label": "字距",
-          "default": null,
+          "default": 0.0,
           "min": -2.0,
           "max": 4.0,
           "step": 0.1,
@@ -1205,9 +1205,9 @@
           ],
           "type": "float",
           "label": "表面透明度",
-          "default": null,
+          "default": 1.0,
           "min": 0.0,
-          "max": 10.0,
+          "max": 1.0,
           "step": 0.01,
           "desc": "输入框表面不透明度"
         },
@@ -1291,9 +1291,9 @@
           ],
           "type": "float",
           "label": "附件底色透明度",
-          "default": null,
+          "default": 1.0,
           "min": 0.0,
-          "max": 10.0,
+          "max": 1.0,
           "step": 0.01,
           "desc": "0–1"
         },
@@ -1892,7 +1892,7 @@
           ],
           "type": "float",
           "label": "行高",
-          "default": null,
+          "default": 0.0,
           "min": 1.0,
           "max": 2.5,
           "step": 0.1,
@@ -1906,7 +1906,7 @@
           ],
           "type": "float",
           "label": "字距",
-          "default": null,
+          "default": 0.0,
           "min": -2.0,
           "max": 4.0,
           "step": 0.1,
@@ -2483,9 +2483,9 @@
           ],
           "type": "float",
           "label": "用户气泡背景透明度",
-          "default": null,
+          "default": 1.0,
           "min": 0.0,
-          "max": 10.0,
+          "max": 1.0,
           "step": 0.01,
           "desc": "纯色填充的不透明度"
         },
@@ -2601,9 +2601,9 @@
           ],
           "type": "float",
           "label": "背景透明度",
-          "default": null,
+          "default": 1.0,
           "min": 0.0,
-          "max": 10.0,
+          "max": 1.0,
           "step": 0.01,
           "desc": "卡片背景不透明度"
         },
@@ -2646,7 +2646,7 @@
           ],
           "type": "float",
           "label": "边框透明度",
-          "default": null,
+          "default": -1.0,
           "min": 0.0,
           "max": 10.0,
           "step": 0.01,
@@ -3710,11 +3710,215 @@
           ],
           "type": "float",
           "label": "斑马纹透明度",
-          "default": null,
+          "default": 0.0,
           "min": 0.0,
-          "max": 10.0,
+          "max": 1.0,
           "step": 0.01,
           "desc": "交替行叠加 tableHeaderBackground 的淡色，0 = 关闭"
+        },
+        {
+          "key": "tableBorderWidth",
+          "path": [
+            "chat",
+            "markdown",
+            "tableBorderWidth"
+          ],
+          "type": "int",
+          "label": "网格线宽",
+          "default": 1,
+          "min": 0,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "key": "tableColumnLines",
+          "path": [
+            "chat",
+            "markdown",
+            "tableColumnLines"
+          ],
+          "type": "bool",
+          "label": "列分隔线",
+          "default": true
+        },
+        {
+          "key": "tableOuterBorder",
+          "path": [
+            "chat",
+            "markdown",
+            "tableOuterBorder"
+          ],
+          "type": "bool",
+          "label": "表格外框",
+          "default": true
+        },
+        {
+          "key": "tableCornerRadius",
+          "path": [
+            "chat",
+            "markdown",
+            "tableCornerRadius"
+          ],
+          "type": "int",
+          "label": "表格圆角",
+          "default": -1,
+          "min": -1,
+          "max": 40,
+          "step": 1
+        },
+        {
+          "key": "tableCellPaddingH",
+          "path": [
+            "chat",
+            "markdown",
+            "tableCellPaddingH"
+          ],
+          "type": "int",
+          "label": "单元格水平内边距",
+          "default": 6,
+          "min": 0,
+          "max": 24,
+          "step": 1
+        },
+        {
+          "key": "tableCellPaddingV",
+          "path": [
+            "chat",
+            "markdown",
+            "tableCellPaddingV"
+          ],
+          "type": "int",
+          "label": "单元格垂直内边距",
+          "default": 5,
+          "min": 0,
+          "max": 24,
+          "step": 1
+        },
+        {
+          "key": "tableTextColor",
+          "path": [
+            "chat",
+            "markdown",
+            "tableTextColor"
+          ],
+          "type": "token",
+          "label": "表格文字色",
+          "default": "",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "tableHeaderTextColor",
+          "path": [
+            "chat",
+            "markdown",
+            "tableHeaderTextColor"
+          ],
+          "type": "token",
+          "label": "表头文字色",
+          "default": "",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "tableHeaderBold",
+          "path": [
+            "chat",
+            "markdown",
+            "tableHeaderBold"
+          ],
+          "type": "bool",
+          "label": "表头加粗",
+          "default": true
+        },
+        {
+          "key": "tableTextSize",
+          "path": [
+            "chat",
+            "markdown",
+            "tableTextSize"
+          ],
+          "type": "int",
+          "label": "表格字号",
+          "default": 0,
+          "min": 0,
+          "max": 32,
+          "step": 1
+        },
+        {
+          "key": "tableHeaderTextSize",
+          "path": [
+            "chat",
+            "markdown",
+            "tableHeaderTextSize"
+          ],
+          "type": "int",
+          "label": "表头字号",
+          "default": 0,
+          "min": 0,
+          "max": 32,
+          "step": 1
+        },
+        {
+          "key": "tableZebraColor",
+          "path": [
+            "chat",
+            "markdown",
+            "tableZebraColor"
+          ],
+          "type": "token",
+          "label": "斑马纹颜色",
+          "default": "",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
         },
         {
           "key": "hrColor",
@@ -4335,9 +4539,9 @@
           ],
           "type": "float",
           "label": "回到底部背景透明度",
-          "default": null,
+          "default": 1.0,
           "min": 0.0,
-          "max": 10.0,
+          "max": 1.0,
           "step": 0.01,
           "desc": "气泡填充透明度"
         },
@@ -4380,9 +4584,9 @@
           ],
           "type": "float",
           "label": "回到底部图标透明度",
-          "default": null,
+          "default": 1.0,
           "min": 0.0,
-          "max": 10.0,
+          "max": 1.0,
           "step": 0.01,
           "desc": "气泡图标/文字的透明度"
         }

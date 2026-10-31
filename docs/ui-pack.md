@@ -631,8 +631,16 @@ removed through `drawer.modules`.
 | `codeBlockBorderColor` | `outline` | fenced block border (opacity from `chat.codeBlockBorderAlpha`) |
 | `quoteTextColor` | `onSurfaceVariant` | `>` blocks |
 | `tableHeaderBackground` | `surfaceVariant` | table header row |
-| `tableBorderColor` / `tableBorderAlpha` | `outline` / 0.55 | table grid (outer frame, rows, columns) |
-| `tableZebraAlpha` | 0 | alternate-row tint of `tableHeaderBackground`, 0 = off |
+| `tableBorderColor` / `tableBorderAlpha` | `outline` / 0.55 | grid colour and opacity |
+| `tableBorderWidth` | 1 | grid line width in dp (0 = no lines, max 4) |
+| `tableColumnLines` / `tableOuterBorder` | true / true | column rules / outer frame |
+| `tableCornerRadius` | -1 | table corner radius; -1 = `theme.cornerRadius / 2` |
+| `tableCellPaddingH` / `tableCellPaddingV` | 6 / 5 | cell padding in dp |
+| `tableTextColor` / `tableHeaderTextColor` | empty | empty inherits body / header colour |
+| `tableHeaderBold` | true | bold header |
+| `tableTextSize` / `tableHeaderTextSize` | 0 | 0 keeps body / labelSmall size |
+| `tableZebraColor` | empty | alternate-row colour; empty = `tableHeaderBackground` |
+| `tableZebraAlpha` | 0 | alternate-row opacity, 0 = off |
 | `hrColor` | `outlineVariant` | `---` and the quote bar |
 
 `composer.placeholderColor`: `onSurfaceVariant` (default),

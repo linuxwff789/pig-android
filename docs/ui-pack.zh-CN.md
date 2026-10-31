@@ -610,8 +610,16 @@ App 重启后优先级相同：pack 提供默认值，已保存的偏好（如�
 | `codeBlockBorderColor` | `outline` | 围栏代码块边框（不透明度来自 `chat.codeBlockBorderAlpha`） |
 | `quoteTextColor` | `onSurfaceVariant` | `>` 引用块 |
 | `tableHeaderBackground` | `surfaceVariant` | 表格表头行 |
-| `tableBorderColor` / `tableBorderAlpha` | `outline` / 0.55 | 表格网格线（外框、行线、列线） |
-| `tableZebraAlpha` | 0 | 交替行叠加 `tableHeaderBackground` 的淡色，0 = 关闭 |
+| `tableBorderColor` / `tableBorderAlpha` | `outline` / 0.55 | 表格网格线颜色与不透明度 |
+| `tableBorderWidth` | 1 | 网格线宽（dp，0 = 不画线，最大 4） |
+| `tableColumnLines` / `tableOuterBorder` | true / true | 列分隔线 / 外框开关 |
+| `tableCornerRadius` | -1 | 表格圆角；-1 = `theme.cornerRadius / 2` |
+| `tableCellPaddingH` / `tableCellPaddingV` | 6 / 5 | 单元格内边距（dp） |
+| `tableTextColor` / `tableHeaderTextColor` | 空 | 空 = 继承正文 / 表头颜色 |
+| `tableHeaderBold` | true | 表头加粗 |
+| `tableTextSize` / `tableHeaderTextSize` | 0 | 0 = 主题正文字号 / labelSmall |
+| `tableZebraColor` | 空 | 交替行颜色；空 = `tableHeaderBackground` |
+| `tableZebraAlpha` | 0 | 交替行不透明度，0 = 关闭 |
 | `hrColor` | `outlineVariant` | `---` 与引用条 |
 
 `composer.placeholderColor`：`onSurfaceVariant`（默认值）、`primary`、

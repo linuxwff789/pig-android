@@ -905,6 +905,29 @@ object UiPackParser {
                 .toFloat().coerceIn(0f, 1f),
             tableZebraAlpha = json.optDouble("tableZebraAlpha", d.tableZebraAlpha.toDouble())
                 .toFloat().coerceIn(0f, 1f),
+            tableBorderWidth = json.optInt("tableBorderWidth", d.tableBorderWidth)
+                .coerceIn(0, 4),
+            tableColumnLines = json.optBoolean("tableColumnLines", d.tableColumnLines),
+            tableOuterBorder = json.optBoolean("tableOuterBorder", d.tableOuterBorder),
+            tableCornerRadius = json.optInt("tableCornerRadius", d.tableCornerRadius)
+                .let { if (it < 0) -1 else it.coerceIn(0, 40) },
+            tableCellPaddingH = json.optInt("tableCellPaddingH", d.tableCellPaddingH)
+                .coerceIn(0, 24),
+            tableCellPaddingV = json.optInt("tableCellPaddingV", d.tableCellPaddingV)
+                .coerceIn(0, 24),
+            tableTextColor = json.optString("tableTextColor", d.tableTextColor).trim().take(24),
+            tableHeaderTextColor = json.optString(
+                "tableHeaderTextColor",
+                d.tableHeaderTextColor,
+            ).trim().take(24),
+            tableHeaderBold = json.optBoolean("tableHeaderBold", d.tableHeaderBold),
+            tableTextSize = json.optInt("tableTextSize", d.tableTextSize).coerceIn(0, 32),
+            tableHeaderTextSize = json.optInt(
+                "tableHeaderTextSize",
+                d.tableHeaderTextSize,
+            ).coerceIn(0, 32),
+            tableZebraColor = json.optString("tableZebraColor", d.tableZebraColor)
+                .trim().take(24),
             hrColor = token("hrColor", d.hrColor),
         )
     }

@@ -223,6 +223,23 @@ data class UiMarkdownAppearance(
     val tableBorderColor: String = "outline",
     val tableBorderAlpha: Float = 0.55f,
     val tableZebraAlpha: Float = 0f,
+    /** Grid line width in dp; 0 hides every line. */
+    val tableBorderWidth: Int = 1,
+    val tableColumnLines: Boolean = true,
+    val tableOuterBorder: Boolean = true,
+    /** -1 inherits `theme.cornerRadius / 2`. */
+    val tableCornerRadius: Int = -1,
+    val tableCellPaddingH: Int = 6,
+    val tableCellPaddingV: Int = 5,
+    /** Empty inherits the Markdown text colour. */
+    val tableTextColor: String = "",
+    val tableHeaderTextColor: String = "",
+    val tableHeaderBold: Boolean = true,
+    /** 0 keeps the Material text size. */
+    val tableTextSize: Int = 0,
+    val tableHeaderTextSize: Int = 0,
+    /** Empty reuses `tableHeaderBackground`. */
+    val tableZebraColor: String = "",
     val hrColor: String = "outlineVariant",
 )
 

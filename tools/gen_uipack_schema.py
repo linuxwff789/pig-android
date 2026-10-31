@@ -139,6 +139,8 @@ def parse_default(raw: str, typ: str):
         return int(raw)
     if re.fullmatch(r"-?\d+\.\d+[fF]?", raw):
         return float(raw.rstrip("fF"))
+    if re.fullmatch(r"-?\d+[fF]", raw):
+        return float(raw[:-1])
     if raw.startswith("listOf("):
         inner = raw[len("listOf("):-1]
         return [parse_default(p, "String") for p in split_top_level(inner)]
@@ -346,6 +348,12 @@ LABELS = {
     "codeBlockAlpha": "代码块透明度", "codeBlockBorderColor": "代码块边框色",
     "quoteTextColor": "引用文字色", "tableHeaderBackground": "表头背景",
     "tableBorderColor": "表格边框色", "tableBorderAlpha": "表格边框透明度",
+    "tableBorderWidth": "网格线宽", "tableColumnLines": "列分隔线",
+    "tableOuterBorder": "表格外框", "tableCornerRadius": "表格圆角",
+    "tableCellPaddingH": "单元格水平内边距", "tableCellPaddingV": "单元格垂直内边距",
+    "tableTextColor": "表格文字色", "tableHeaderTextColor": "表头文字色",
+    "tableHeaderBold": "表头加粗", "tableTextSize": "表格字号",
+    "tableHeaderTextSize": "表头字号", "tableZebraColor": "斑马纹颜色",
     "tableZebraAlpha": "斑马纹透明度", "hrColor": "分隔线色",
     "statusColor": "状态文字色", "statusSize": "状态字号",
     "statusSpinnerColor": "转圈颜色", "statusSpinnerSize": "转圈尺寸",
@@ -463,6 +471,11 @@ RANGE_OVERRIDES = {
     ("composer", "maxWidth"): (0, 1200), ("composer", "maxHeight"): (0, 600),
     ("composer", "maxLines"): (1, 12), ("composer", "minHeight"): (0, 200),
     ("thinking", "maxHeight"): (60, 800),
+    ("markdown", "tableBorderWidth"): (0, 4),
+    ("markdown", "tableCellPaddingH"): (0, 24),
+    ("markdown", "tableCellPaddingV"): (0, 24),
+    ("markdown", "tableTextSize"): (0, 32),
+    ("markdown", "tableHeaderTextSize"): (0, 32),
     ("toolCard", "maxWidth"): (0, 2000),
     ("chrome", "dialogMaxWidth"): (0, 1200),
     ("header", "height"): (0, 200),

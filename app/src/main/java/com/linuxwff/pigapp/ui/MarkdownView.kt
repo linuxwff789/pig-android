@@ -154,9 +154,34 @@ fun PigMarkdown(
 @Composable
 private fun MarkdownTable(model: MarkdownComponentModel, cornerRadius: Int) {
     val md = LocalUiPack.current.layout.markdown
+    val components = LocalUiPack.current.components
     val headerBackground = packColor(md.tableHeaderBackground)
     val borderColor = packColor(md.tableBorderColor).copy(alpha = md.tableBorderAlpha)
-    val zebraColor = packColor(md.tableHeaderBackground).copy(alpha = md.tableZebraAlpha)
+    val zebraBase = if (md.tableZebraColor.isBlank()) {
+        headerBackground
+    } else {
+        packColor(md.tableZebraColor)
+    }
+    val zebraColor = zebraBase.copy(alpha = md.tableZebraAlpha)
+    val textColor = if (md.tableTextColor.isBlank()) Color.Unspecified else packColor(md.tableTextColor)
+    val headerTextColor = if (md.tableHeaderTextColor.isBlank()) {
+        Color.Unspecified
+    } else {
+        packColor(md.tableHeaderTextColor)
+    }
+    val borderWidth = md.tableBorderWidth.coerceIn(0, 4)
+    val radius = if (md.tableCornerRadius >= 0) {
+        md.tableCornerRadius
+    } else {
+        (cornerRadius / 2).coerceAtLeast(4)
+    }
+    val shape = RoundedCornerShape(radius.dp)
+    val headerStyle = MaterialTheme.typography.labelSmall.let {
+        if (md.tableHeaderTextSize > 0) it.copy(fontSize = md.tableHeaderTextSize.sp) else it
+    }
+    val bodyStyle = MaterialTheme.typography.bodyMedium.let {
+        if (md.tableTextSize > 0) it.copy(fontSize = md.tableTextSize.sp) else it
+    }
     val content = model.content
     val headerNode = model.node.findChildOfType(GFMElementTypes.HEADER)
     val separator = model.node.findChildOfType(GFMTokenTypes.TABLE_SEPARATOR)
@@ -173,43 +198,62 @@ private fun MarkdownTable(model: MarkdownComponentModel, cornerRadius: Int) {
     if (columns == 0) return
     val alignments = parseAlignments(separator?.getTextInNode(content)?.toString(), columns)
 
-    val shape = RoundedCornerShape((cornerRadius / 2).coerceAtLeast(4).dp)
     Column(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clip(shape)
-            .border(1.dp, borderColor, shape),
+            .then(
+                if (md.tableOuterBorder && borderWidth > 0) {
+                    Modifier.border(borderWidth.dp, borderColor, shape)
+                } else {
+                    Modifier
+                },
+            ),
     ) {
         if (headerCells.isNotEmpty()) {
             TableRow(
                 colors = headerBackground,
                 columns = columns,
                 borderColor = borderColor,
+                borderWidth = borderWidth,
+                columnLines = md.tableColumnLines,
+                paddingH = md.tableCellPaddingH,
+                paddingV = md.tableCellPaddingV,
             ) { index ->
                 TableCell(
                     content = content,
                     node = headerCells.getOrNull(index),
                     modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = headerStyle,
                     textAlign = alignments[index],
-                    bold = true,
+                    bold = md.tableHeaderBold,
+                    color = headerTextColor,
+                    maxLines = components.tableMaxLines,
                 )
             }
         }
         rows.forEachIndexed { rowIndex, row ->
-            HorizontalDivider(color = borderColor)
+            if (borderWidth > 0) {
+                HorizontalDivider(thickness = borderWidth.dp, color = borderColor)
+            }
             TableRow(
                 colors = if (rowIndex % 2 == 1 && md.tableZebraAlpha > 0f) zebraColor else null,
                 columns = columns,
                 borderColor = borderColor,
+                borderWidth = borderWidth,
+                columnLines = md.tableColumnLines,
+                paddingH = md.tableCellPaddingH,
+                paddingV = md.tableCellPaddingV,
             ) { index ->
                 TableCell(
                     content = content,
                     node = row.getOrNull(index),
                     modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = bodyStyle,
                     textAlign = alignments[index],
+                    color = textColor,
+                    maxLines = components.tableMaxLines,
                 )
             }
         }
@@ -217,14 +261,18 @@ private fun MarkdownTable(model: MarkdownComponentModel, cornerRadius: Int) {
 }
 
 /**
- * One table row: equal-height cells with a vertical rule between every pair.
- * `IntrinsicSize.Min` lets the rules span wrapped multi-line cells.
+ * One table row: equal-height cells with an optional vertical rule between
+ * every pair. `IntrinsicSize.Min` lets the rules span wrapped multi-line cells.
  */
 @Composable
 private fun TableRow(
     colors: Color?,
     columns: Int,
     borderColor: Color,
+    borderWidth: Int,
+    columnLines: Boolean,
+    paddingH: Int,
+    paddingV: Int,
     cell: @Composable (Int) -> Unit,
 ) {
     Row(
@@ -234,15 +282,15 @@ private fun TableRow(
             .height(IntrinsicSize.Min),
     ) {
         for (index in 0 until columns) {
-            if (index > 0) {
+            if (index > 0 && columnLines && borderWidth > 0) {
                 Box(
                     Modifier
-                        .width(1.dp)
+                        .width(borderWidth.dp)
                         .fillMaxHeight()
                         .background(borderColor),
                 )
             }
-            Box(Modifier.weight(1f).padding(horizontal = 6.dp, vertical = 5.dp)) {
+            Box(Modifier.weight(1f).padding(horizontal = paddingH.dp, vertical = paddingV.dp)) {
                 cell(index)
             }
         }
@@ -257,6 +305,8 @@ private fun TableCell(
     style: TextStyle,
     textAlign: TextAlign,
     bold: Boolean = false,
+    color: Color = Color.Unspecified,
+    maxLines: Int = 6,
 ) {
     val text = buildAnnotatedString {
         if (bold) pushStyle(SpanStyle(fontWeight = FontWeight.SemiBold))
@@ -268,8 +318,9 @@ private fun TableCell(
         modifier = modifier,
         style = style,
         textAlign = textAlign,
-        maxLines = 6,
+        maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
+        color = color,
     )
 }
 
