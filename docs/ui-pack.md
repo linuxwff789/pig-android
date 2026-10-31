@@ -86,8 +86,9 @@ lock icon. Editing or saving one automatically forks it into a local pack, so
 the source is never modified. Local packs are updated **in place**; the scheme
 name can be changed in the save dialog or from the pack manager (pencil icon).
 The editor's **Copy** action saves the current draft as a new local pack and
-keeps editing it. Every pack row in the manager offers edit / copy-and-edit /
-rename / delete. **Export** writes a ZIP you can drop into
+keeps editing it. In the manager, **long-press any pack** (including local
+packs) to copy or rename it; a copy is named automatically as "<name> 副本",
+"<name> 副本 2", ... Local rows also keep inline edit and delete. **Export** writes a ZIP you can drop into
 `~/.pig/android-ui/` for the relay. Binary assets (fonts, images) are not edited
 here and are copied through on save.
 

@@ -792,7 +792,11 @@ fun PackEditorDialog(
     }
 
     if (showCopy) {
-        var name by remember { mutableStateOf(source.name) }
+        var name by remember {
+            mutableStateOf(
+                derivedCopyName(source.name, vm.ui.localPacks.map { it.name } + source.name),
+            )
+        }
         PackAlertDialog(
             onDismissRequest = { showCopy = false },
             title = { Text("复制为新 pack") },
@@ -1589,4 +1593,21 @@ private fun hexString(color: Color): String {
     } else {
         String.format(java.util.Locale.US, "#%08X", argb)
     }
+}
+
+/**
+ * Name used when a pack is duplicated: "<name> 副本", then "<name> 副本 2", ...
+ * Re-copying an existing copy walks back to its stem so names do not stack.
+ */
+internal fun derivedCopyName(base: String, existing: Collection<String>): String {
+    val clean = base.trim().ifBlank { "UI pack" }
+    val stem = clean.replace(Regex("\\s*副本(\\s+\\d+)?$"), "").ifBlank { clean }
+    val names = existing.map { it.trim() }.toSet()
+    var candidate = "$stem 副本"
+    var index = 2
+    while (candidate in names) {
+        candidate = "$stem 副本 $index"
+        index++
+    }
+    return candidate
 }
