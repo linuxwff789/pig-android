@@ -610,7 +610,7 @@ App 重启后优先级相同：pack 提供默认值，已保存的偏好（如�
 | `codeBlockBorderColor` | `outline` | 围栏代码块边框（不透明度来自 `chat.codeBlockBorderAlpha`） |
 | `quoteTextColor` | `onSurfaceVariant` | `>` 引用块 |
 | `tableHeaderBackground` | `surfaceVariant` | 表格表头行 |
-| `tableBorderColor` / `tableBorderAlpha` | `outline` / 0.4 | 行分隔线 |
+| `tableBorderColor` / `tableBorderAlpha` | `outline` / 0.55 | 表格网格线（外框、行线、列线） |
 | `tableZebraAlpha` | 0 | 交替行叠加 `tableHeaderBackground` 的淡色，0 = 关闭 |
 | `hrColor` | `outlineVariant` | `---` 与引用条 |
 

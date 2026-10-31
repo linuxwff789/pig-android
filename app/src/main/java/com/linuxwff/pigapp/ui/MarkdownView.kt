@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -170,50 +173,77 @@ private fun MarkdownTable(model: MarkdownComponentModel, cornerRadius: Int) {
     if (columns == 0) return
     val alignments = parseAlignments(separator?.getTextInNode(content)?.toString(), columns)
 
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    val shape = RoundedCornerShape((cornerRadius / 2).coerceAtLeast(4).dp)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(shape)
+            .border(1.dp, borderColor, shape),
+    ) {
         if (headerCells.isNotEmpty()) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape((cornerRadius / 2).coerceAtLeast(4).dp))
-                    .background(headerBackground)
-                    .padding(horizontal = 6.dp, vertical = 5.dp),
-            ) {
-                for (index in 0 until columns) {
-                    TableCell(
-                        content = content,
-                        node = headerCells.getOrNull(index),
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.labelSmall,
-                        textAlign = alignments[index],
-                        bold = true,
-                    )
-                }
+            TableRow(
+                colors = headerBackground,
+                columns = columns,
+                borderColor = borderColor,
+            ) { index ->
+                TableCell(
+                    content = content,
+                    node = headerCells.getOrNull(index),
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.labelSmall,
+                    textAlign = alignments[index],
+                    bold = true,
+                )
             }
         }
         rows.forEachIndexed { rowIndex, row ->
             HorizontalDivider(color = borderColor)
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .then(
-                        if (rowIndex % 2 == 1 && md.tableZebraAlpha > 0f) {
-                            Modifier.background(zebraColor)
-                        } else {
-                            Modifier
-                        },
-                    )
-                    .padding(horizontal = 6.dp, vertical = 5.dp),
-            ) {
-                for (index in 0 until columns) {
-                    TableCell(
-                        content = content,
-                        node = row.getOrNull(index),
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = alignments[index],
-                    )
-                }
+            TableRow(
+                colors = if (rowIndex % 2 == 1 && md.tableZebraAlpha > 0f) zebraColor else null,
+                columns = columns,
+                borderColor = borderColor,
+            ) { index ->
+                TableCell(
+                    content = content,
+                    node = row.getOrNull(index),
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = alignments[index],
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One table row: equal-height cells with a vertical rule between every pair.
+ * `IntrinsicSize.Min` lets the rules span wrapped multi-line cells.
+ */
+@Composable
+private fun TableRow(
+    colors: Color?,
+    columns: Int,
+    borderColor: Color,
+    cell: @Composable (Int) -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .then(if (colors != null) Modifier.background(colors) else Modifier)
+            .height(IntrinsicSize.Min),
+    ) {
+        for (index in 0 until columns) {
+            if (index > 0) {
+                Box(
+                    Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(borderColor),
+                )
+            }
+            Box(Modifier.weight(1f).padding(horizontal = 6.dp, vertical = 5.dp)) {
+                cell(index)
             }
         }
     }

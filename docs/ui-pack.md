@@ -631,7 +631,7 @@ removed through `drawer.modules`.
 | `codeBlockBorderColor` | `outline` | fenced block border (opacity from `chat.codeBlockBorderAlpha`) |
 | `quoteTextColor` | `onSurfaceVariant` | `>` blocks |
 | `tableHeaderBackground` | `surfaceVariant` | table header row |
-| `tableBorderColor` / `tableBorderAlpha` | `outline` / 0.4 | row separators |
+| `tableBorderColor` / `tableBorderAlpha` | `outline` / 0.55 | table grid (outer frame, rows, columns) |
 | `tableZebraAlpha` | 0 | alternate-row tint of `tableHeaderBackground`, 0 = off |
 | `hrColor` | `outlineVariant` | `---` and the quote bar |
 

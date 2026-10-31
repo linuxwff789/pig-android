@@ -221,7 +221,7 @@ data class UiMarkdownAppearance(
     val quoteTextColor: String = "onSurfaceVariant",
     val tableHeaderBackground: String = "surfaceVariant",
     val tableBorderColor: String = "outline",
-    val tableBorderAlpha: Float = 0.4f,
+    val tableBorderAlpha: Float = 0.55f,
     val tableZebraAlpha: Float = 0f,
     val hrColor: String = "outlineVariant",
 )
