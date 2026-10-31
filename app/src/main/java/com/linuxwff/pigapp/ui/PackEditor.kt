@@ -30,12 +30,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.DropdownMenu
@@ -374,7 +376,11 @@ private class PackEditorState(
     }
 
     fun reset(file: String, field: EditorField) {
-        docs[file]?.removeAt(field.path)
+        val id = fieldId(file, field.path)
+        val doc = docs.getOrPut(file) { JSONObject() }
+        // Restore the source value instead of deleting an explicitly-set key:
+        // deleting is the same visual result but would still count as an edit.
+        if (id in originalHas) doc.putAt(field.path, originalValue[id]) else doc.removeAt(field.path)
         editedFiles.add(file)
         revision++
     }
@@ -456,10 +462,14 @@ private class PackEditorState(
 // ---------------------------------------------------------------------------
 
 @Composable
-fun PackEditorDialog(vm: AppViewModel, onDismiss: () -> Unit) {
+fun PackEditorDialog(
+    vm: AppViewModel,
+    initialPackId: String? = null,
+    onDismiss: () -> Unit,
+) {
     val context = LocalContext.current
     val schema = remember(context) { loadEditorSchema(context) }
-    val source = remember { vm.packEditorSource() }
+    var source by remember { mutableStateOf(vm.packEditorSource(initialPackId)) }
     val state = remember(source) { PackEditorState(source, schema) }
     val scheme = MaterialTheme.colorScheme
 
@@ -470,6 +480,7 @@ fun PackEditorDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     var previewApplied by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
     var showSave by remember { mutableStateOf(false) }
+    var showCopy by remember { mutableStateOf(false) }
     var rawTarget by remember { mutableStateOf<RawTarget?>(null) }
     var expanded by remember { mutableStateOf(setOf("theme", "chat", "composer")) }
 
@@ -485,6 +496,14 @@ fun PackEditorDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     fun close() {
         if (previewApplied && !saved) vm.restoreActivePack()
         onDismiss()
+    }
+
+    // Stay in the editor after a copy: the just-written local pack becomes the
+    // new source, so the "protected" badge and copy-on-save behaviour go away.
+    fun adopt(id: String) {
+        source = vm.packEditorSource(id)
+        previewApplied = true
+        saved = false
     }
 
     LaunchedEffect(revision, preview) {
@@ -517,9 +536,28 @@ fun PackEditorDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                     Column(Modifier.weight(1f)) {
                         Text("UI 编辑器", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            source.name + if (modified > 0) " · $modified 项已改" else " · 未修改",
+                            buildString {
+                                append(source.name)
+                                if (source.protected) append(" · 受保护")
+                                if (modified > 0) append(" · $modified 项已改") else append(" · 未修改")
+                            },
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (modified > 0) scheme.primary else scheme.onSurfaceVariant,
+                            color = if (source.protected) {
+                                scheme.tertiary
+                            } else if (modified > 0) {
+                                scheme.primary
+                            } else {
+                                scheme.onSurfaceVariant
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    IconButton(onClick = { showCopy = true }) {
+                        Icon(
+                            Icons.Default.ContentCopy,
+                            contentDescription = "复制为新 pack",
+                            tint = scheme.onSurfaceVariant,
                         )
                     }
                     IconButton(onClick = { preview = !preview }) {
@@ -529,14 +567,12 @@ fun PackEditorDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                             tint = if (preview) scheme.primary else scheme.onSurfaceVariant,
                         )
                     }
-                    TextButton(onClick = { exportZip.launch("ui-pack.zip") }) {
+                    IconButton(onClick = { exportZip.launch("ui-pack.zip") }) {
                         Icon(
-                            Icons.Default.Save,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
+                            Icons.Default.Upload,
+                            contentDescription = "导出 ZIP",
+                            tint = scheme.onSurfaceVariant,
                         )
-                        Spacer(Modifier.width(4.dp))
-                        Text("导出")
                     }
                     TextButton(onClick = { showSave = true }) {
                         Text("保存", color = scheme.primary)
@@ -706,21 +742,26 @@ fun PackEditorDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     }
 
     if (showSave) {
-        var name by remember { mutableStateOf(source.name + " 副本") }
+        var name by remember { mutableStateOf(source.name) }
+        val protectedPack = source.protected
         PackAlertDialog(
             onDismissRequest = { showSave = false },
-            title = { Text("保存为新 pack") },
+            title = { Text(if (protectedPack) "另存为新 pack" else "保存") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
                         singleLine = true,
-                        label = { Text("名称") },
+                        label = { Text("方案名称") },
                     )
                     Text(
-                        "会写入 App 私有目录并立即切换到新 pack；原 pack 不受影响。" +
-                            "想给 Termux 用可以「导出」成 ZIP。",
+                        if (protectedPack) {
+                            "默认主题受保护，不会改动原 pack；保存会复制出一份可编辑的本地 pack。"
+                        } else {
+                            "保存会直接更新「${source.name}」，名称也可以在这里改。" +
+                                "想给 Termux 用可以「导出」成 ZIP。"
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant,
                     )
@@ -730,7 +771,12 @@ fun PackEditorDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                 TextButton(
                     onClick = {
                         showSave = false
-                        vm.saveEditorPack(name, state.files(), state.assets) { id ->
+                        vm.saveEditorPack(
+                            name = name,
+                            files = state.files(),
+                            assets = state.assets,
+                            overwriteId = if (protectedPack) null else source.id,
+                        ) { id ->
                             if (id != null) {
                                 saved = true
                                 onDismiss()
@@ -741,6 +787,43 @@ fun PackEditorDialog(vm: AppViewModel, onDismiss: () -> Unit) {
             },
             dismissButton = {
                 TextButton(onClick = { showSave = false }) { Text("取消") }
+            },
+        )
+    }
+
+    if (showCopy) {
+        var name by remember { mutableStateOf(source.name) }
+        PackAlertDialog(
+            onDismissRequest = { showCopy = false },
+            title = { Text("复制为新 pack") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        singleLine = true,
+                        label = { Text("方案名称") },
+                    )
+                    Text(
+                        "把当前草稿复制成一个新的本地 pack，并继续在编辑器里打开它；" +
+                            "原 pack 不会被修改。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showCopy = false
+                        vm.saveEditorPack(name, state.files(), state.assets, overwriteId = null) { id ->
+                            if (id != null) adopt(id)
+                        }
+                    },
+                ) { Text("复制") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCopy = false }) { Text("取消") }
             },
         )
     }
@@ -935,9 +1018,9 @@ private fun ColorField(
         )
         Spacer(Modifier.width(10.dp))
         Text(
-            if (isSet && text.isNotBlank()) text else "自动",
+            if (field.nullable && !isSet) "自动" else text.ifBlank { "未设置" },
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-            color = if (isSet) scheme.onSurface else scheme.onSurfaceVariant,
+            color = if (field.nullable && !isSet) scheme.onSurfaceVariant else scheme.onSurface,
         )
     }
     if (picking) {

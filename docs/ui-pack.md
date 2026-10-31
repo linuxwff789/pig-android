@@ -79,8 +79,15 @@ keep the current look until you save.
 Structural values (`header.body`, `header.rows`, `chat.toolCard.byTool`,
 `dataSources`, `bindings`, `actions`, `strings.json`, `icons.json`,
 `nav.json`, `skins.json`, `windows/*.json`) are edited as raw JSON with
-validation. **Save** creates a new `files/ui-packs/<id>/` and switches to it, so
-the source pack is untouched; **Export** writes a ZIP you can drop into
+validation.
+
+**Default-theme protection**: relay and bundled packs are read-only and carry a
+lock icon. Editing or saving one automatically forks it into a local pack, so
+the source is never modified. Local packs are updated **in place**; the scheme
+name can be changed in the save dialog or from the pack manager (pencil icon).
+The editor's **Copy** action saves the current draft as a new local pack and
+keeps editing it. Every pack row in the manager offers edit / copy-and-edit /
+rename / delete. **Export** writes a ZIP you can drop into
 `~/.pig/android-ui/` for the relay. Binary assets (fonts, images) are not edited
 here and are copied through on save.
 

@@ -72,9 +72,15 @@ pack（relay / 内置 / 导入均可），把 `theme/colors.json`、`theme/typog
 结构型字段（`header.body`、`header.rows`、`chat.toolCard.byTool`、
 `dataSources`、`bindings`、`actions`、`strings.json`、`icons.json`、
 `nav.json`、`skins.json`、`windows/*.json`）用原始 JSON 编辑器处理，会做语法
-校验。**保存**会新建一个 `files/ui-packs/<id>/` 并切换过去，原 pack 不受影响；
-**导出**生成 ZIP，可以放进 `~/.pig/android-ui/` 交给 relay。字体和图片等
-二进制资源不在这里编辑，保存时原样复制。
+校验。
+
+**默认主题保护**：relay 与内置 pack 带锁图标，只读。编辑或保存它们时会自动
+复制成一个本地 pack，原 pack 不会被修改。本地 pack 保存时**原地更新**；方案名
+可以在保存对话框里改，也可以在 pack 管理里用铅笔图标重命名。编辑器顶栏的
+「复制」会把当前草稿另存为新本地 pack 并继续编辑；pack 管理里每个 pack 行还
+提供 编辑 / 复制并编辑 / 重命名 / 删除。**导出**生成 ZIP，可以放进
+`~/.pig/android-ui/` 交给 relay。字体和图片等二进制资源不在这里编辑，保存时
+原样复制。
 
 ## manifest.json
 

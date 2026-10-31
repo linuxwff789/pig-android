@@ -1639,7 +1639,7 @@ class AppViewModel @JvmOverloads constructor(
             ui = ui.copy(toast = str("pack.bundledReadOnly", "内置 pack 不能删除"))
             return
         }
-        if (!Regex("^[a-zA-Z0-9._-]{1,64}$").matches(id) || id == "." || id == "..") {
+        if (!Regex("^[a-zA-Z0-9\\u4e00-\\u9fa5._-]{1,64}$").matches(id) || id == "." || id == "..") {
             ui = ui.copy(toast = str("pack.deleteFailed", "删除失败：{error}").replace("{error}", id))
             return
         }
@@ -1816,9 +1816,14 @@ class AppViewModel @JvmOverloads constructor(
     // In-app UI pack editor
     // ------------------------------------------------------------------
 
-    /** Raw files of the pack currently in effect; the editor edits a draft copy. */
-    fun packEditorSource(): PackEditorSource {
-        val id = ui.activePackId
+    /**
+     * Raw files of [packId] (default: the pack currently in effect). The
+     * editor always works on a draft; relay and bundled packs are marked
+     * protected because the app cannot write back to `~/.pig/android-ui` or
+     * the APK.
+     */
+    fun packEditorSource(packId: String? = null): PackEditorSource {
+        val id = packId ?: ui.activePackId
         val (files, assets) = if (id.isBlank()) {
             relayFiles to relayAssets
         } else {
@@ -1829,9 +1834,16 @@ class AppViewModel @JvmOverloads constructor(
             ui.relayPackName.ifBlank { "Pig default" }
         } else {
             ui.localPacks.firstOrNull { it.id == id }?.name
-                ?: ui.uiPack.name.ifBlank { "UI pack" }
+                ?: if (id.startsWith(BUNDLED_PREFIX)) id.removePrefix(BUNDLED_PREFIX)
+                else ui.uiPack.name
         }
-        return PackEditorSource(id, name, files, assets)
+        return PackEditorSource(
+            id = id,
+            name = name.ifBlank { "UI pack" },
+            files = files,
+            assets = assets,
+            protected = id.isBlank() || id.startsWith(BUNDLED_PREFIX),
+        )
     }
 
     /**
@@ -1867,29 +1879,48 @@ class AppViewModel @JvmOverloads constructor(
     }
 
     /**
-     * Save the editor draft as a new imported pack and switch to it. Assets
-     * (fonts/images) are copied through untouched. [onDone] runs on the main
-     * thread with the new pack id, or null when nothing was written.
+     * Write the editor draft. An imported pack is updated in place when
+     * [overwriteId] points at it; otherwise (protected relay/bundled source,
+     * or "copy") a new local pack is created. The name in the save dialog is
+     * canonical and is written into `manifest.json`.
      */
     fun saveEditorPack(
         name: String,
         files: Map<String, String>,
         assets: Map<String, String>,
+        overwriteId: String? = null,
         onDone: (String?) -> Unit = {},
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val result = runCatching {
-                val base = slug(name.ifBlank { "ui pack" })
-                var id = base
-                var counter = 2
-                while (File(packsDir, id).exists()) {
-                    id = "$base-$counter"
-                    counter++
+                val cleanName = name.trim().ifBlank { "UI pack" }.take(64)
+                val canOverwrite = !overwriteId.isNullOrBlank() &&
+                    !overwriteId.startsWith(BUNDLED_PREFIX)
+                val id = if (canOverwrite) {
+                    require(File(packsDir, overwriteId!!).isDirectory) { "pack 不存在" }
+                    overwriteId
+                } else {
+                    val base = slug(cleanName)
+                    var candidate = base
+                    var counter = 2
+                    while (File(packsDir, candidate).exists()) {
+                        candidate = "$base-$counter"
+                        counter++
+                    }
+                    candidate
                 }
-                val target = packsDir.apply { mkdirs() }
-                val dir = File(target, id)
+                val dir = File(packsDir.apply { mkdirs() }, id)
                 dir.mkdirs()
-                files.forEach { (rel, text) ->
+
+                val draft = files.toMutableMap()
+                val manifest = runCatching {
+                    JSONObject(draft["manifest.json"].orEmpty())
+                }.getOrElse { JSONObject() }
+                manifest.put("name", cleanName)
+                if (!manifest.has("version")) manifest.put("version", 1)
+                draft["manifest.json"] = manifest.toString(2)
+
+                draft.forEach { (rel, text) ->
                     val file = safePackFile(dir, rel)
                     file.parentFile?.mkdirs()
                     file.writeText(text)
@@ -1902,14 +1933,29 @@ class AppViewModel @JvmOverloads constructor(
                     file.parentFile?.mkdirs()
                     file.writeBytes(bytes)
                 }
+                // An in-place save must not keep files the draft no longer has.
+                val keep = draft.keys + assets.keys
+                dir.walkTopDown().forEach { file ->
+                    if (!file.isFile) return@forEach
+                    val rel = file.relativeTo(dir).path.replace('\\', '/')
+                    if (rel !in keep) file.delete()
+                }
                 id
             }
             withContext(Dispatchers.Main) {
                 result.onSuccess { id ->
                     refreshLocalPacks()
-                    selectPack(id)
+                    if (ui.activePackId == id) {
+                        // selectPack() no-ops when the id is already active.
+                        loadPackFiles(id)?.let { (f, a, h) ->
+                            applyPackAsync(f, a, h, "local:$id", announce = false)
+                        }
+                    } else {
+                        selectPack(id)
+                    }
                     ui = ui.copy(
-                        toast = str("toast.packSaved", "已保存 pack：{name}").replace("{name}", id),
+                        toast = str("toast.packSaved", "已保存 pack：{name}")
+                            .replace("{name}", name.trim().ifBlank { "UI pack" }),
                     )
                     onDone(id)
                 }.onFailure {
@@ -1919,6 +1965,41 @@ class AppViewModel @JvmOverloads constructor(
                     )
                     onDone(null)
                 }
+            }
+        }
+    }
+
+    /** Rename an imported pack's display name without moving its directory. */
+    fun renamePack(id: String, newName: String) {
+        val clean = newName.trim().take(64)
+        if (clean.isBlank()) return
+        if (id.isBlank() || id.startsWith(BUNDLED_PREFIX)) {
+            ui = ui.copy(toast = str("pack.renameProtected", "内置 pack 不能重命名"))
+            return
+        }
+        val dir = File(packsDir, id)
+        if (!dir.isDirectory) {
+            ui = ui.copy(toast = str("toast.packDeleted", "pack 不存在：{name}").replace("{name}", id))
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = runCatching {
+                val file = File(dir, "manifest.json")
+                val manifest = runCatching { JSONObject(file.readText()) }.getOrElse { JSONObject() }
+                manifest.put("name", clean)
+                if (!manifest.has("version")) manifest.put("version", 1)
+                file.writeText(manifest.toString(2))
+            }.isSuccess
+            withContext(Dispatchers.Main) {
+                refreshLocalPacks()
+                if (ok && ui.activePackId == id) restoreActivePack()
+                ui = ui.copy(
+                    toast = if (ok) {
+                        str("toast.packRenamed", "已重命名为：{name}").replace("{name}", clean)
+                    } else {
+                        str("toast.packRenameFailed", "重命名失败")
+                    },
+                )
             }
         }
     }

@@ -403,6 +403,8 @@ data class PackEditorSource(
     val files: Map<String, String>,
     /** `assets/...` path -> base64; copied through on save. */
     val assets: Map<String, String>,
+    /** Relay and bundled packs are read-only; saving forks them into a copy. */
+    val protected: Boolean = false,
 )
 
 /** A pack imported into the app's private `ui-packs/` directory. */

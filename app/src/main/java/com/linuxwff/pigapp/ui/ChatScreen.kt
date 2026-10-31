@@ -154,6 +154,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -3453,6 +3455,9 @@ private fun PackManagerDialog(
         ActivityResultContracts.OpenDocumentTree(),
     ) { uri -> uri?.let(vm::importPackTree) }
     var deleteTarget by remember { mutableStateOf<LocalPackInfo?>(null) }
+    var renameTarget by remember { mutableStateOf<LocalPackInfo?>(null) }
+    var copyTarget by remember { mutableStateOf<PackActionTarget?>(null) }
+    var editorPackId by remember { mutableStateOf<String?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.refreshLocalPacks() }
 
@@ -3485,7 +3490,10 @@ private fun PackManagerDialog(
                     color = scheme.onSurfaceVariant,
                 )
                 OutlinedButton(
-                    onClick = { showEditor = true },
+                    onClick = {
+                        editorPackId = ui.activePackId.ifBlank { null }
+                        showEditor = true
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape((corner / 2).coerceAtLeast(8).dp),
                 ) {
@@ -3497,6 +3505,14 @@ private fun PackManagerDialog(
                     Spacer(Modifier.width(6.dp))
                     Text(packText("pack.edit", "编辑当前 pack"))
                 }
+                Text(
+                    packText(
+                        "pack.protectedHint",
+                        "内置 / relay pack 受保护：编辑或保存时会自动复制一份本地 pack。",
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
                 PackRow(
                     title = ui.relayPackName.ifBlank {
                         packText("pack.builtinPack", "内置 pack")
@@ -3505,7 +3521,14 @@ private fun PackManagerDialog(
                         .replace("{files}", ui.uiPackFiles.toString()),
                     selected = ui.activePackId.isBlank(),
                     cornerRadius = corner,
+                    locked = true,
                     onPick = { vm.selectPack("") },
+                    onCopy = {
+                        copyTarget = PackActionTarget(
+                            "",
+                            ui.relayPackName.ifBlank { "Pig default" },
+                        )
+                    },
                 )
 
                 if (ui.localPacks.isEmpty()) {
@@ -3529,7 +3552,18 @@ private fun PackManagerDialog(
                             },
                             selected = pack.id == ui.activePackId,
                             cornerRadius = corner,
+                            locked = pack.bundled,
                             onPick = { vm.selectPack(pack.id) },
+                            onEdit = if (pack.bundled) null else ({
+                                editorPackId = pack.id
+                                showEditor = true
+                            }),
+                            onCopy = if (pack.bundled) {
+                                { copyTarget = PackActionTarget(pack.id, pack.name) }
+                            } else {
+                                null
+                            },
+                            onRename = if (pack.bundled) null else ({ renameTarget = pack }),
                             onDelete = if (pack.bundled) null else ({ deleteTarget = pack }),
                         )
                     }
@@ -3585,7 +3619,91 @@ private fun PackManagerDialog(
         },
     )
     if (showEditor) {
-        PackEditorDialog(vm) { showEditor = false }
+        PackEditorDialog(vm, initialPackId = editorPackId) {
+            showEditor = false
+            editorPackId = null
+        }
+    }
+    copyTarget?.let { target ->
+        var name by remember { mutableStateOf(target.name) }
+        PackAlertDialog(
+            onDismissRequest = { copyTarget = null },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = scheme.surface,
+            title = { Text(packText("pack.copyTitle", "复制并编辑")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        singleLine = true,
+                        label = { Text(packText("pack.nameLabel", "方案名称")) },
+                    )
+                    Text(
+                        packText(
+                            "pack.copyBody",
+                            "复制「{name}」为新的本地 pack 并打开编辑器；原 pack 不会被修改。",
+                        ).replace("{name}", target.name),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val source = vm.packEditorSource(target.id)
+                        copyTarget = null
+                        vm.saveEditorPack(
+                            name = name,
+                            files = source.files,
+                            assets = source.assets,
+                            overwriteId = null,
+                        ) { id ->
+                            if (id != null) {
+                                editorPackId = id
+                                showEditor = true
+                            }
+                        }
+                    },
+                ) { Text(packText("pack.copy", "复制")) }
+            },
+            dismissButton = {
+                TextButton(onClick = { copyTarget = null }) {
+                    Text(packText("dialog.cancel", "取消"))
+                }
+            },
+        )
+    }
+    renameTarget?.let { target ->
+        var name by remember { mutableStateOf(target.name) }
+        PackAlertDialog(
+            onDismissRequest = { renameTarget = null },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = scheme.surface,
+            title = { Text(packText("pack.renameTitle", "重命名 pack")) },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    singleLine = true,
+                    label = { Text(packText("pack.nameLabel", "方案名称")) },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.renamePack(target.id, name)
+                        renameTarget = null
+                    },
+                ) { Text(packText("pack.rename", "重命名")) }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameTarget = null }) {
+                    Text(packText("dialog.cancel", "取消"))
+                }
+            },
+        )
     }
     deleteTarget?.let { target ->
         PackAlertDialog(
@@ -3629,13 +3747,19 @@ private fun PackManagerDialog(
     }
 }
 
+private data class PackActionTarget(val id: String, val name: String)
+
 @Composable
 private fun PackRow(
     title: String,
     subtitle: String,
     selected: Boolean,
     cornerRadius: Int,
+    locked: Boolean = false,
     onPick: () -> Unit,
+    onEdit: (() -> Unit)? = null,
+    onCopy: (() -> Unit)? = null,
+    onRename: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -3655,12 +3779,24 @@ private fun PackRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (locked) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = packText("pack.protected", "受保护"),
+                            modifier = Modifier.size(12.dp),
+                            tint = scheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.labelSmall,
@@ -3676,6 +3812,36 @@ private fun PackRow(
                     modifier = Modifier.size(15.dp),
                     tint = scheme.primary,
                 )
+            }
+            if (onEdit != null) {
+                IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = packText("pack.edit", "编辑"),
+                        modifier = Modifier.size(15.dp),
+                        tint = scheme.primary,
+                    )
+                }
+            }
+            if (onCopy != null) {
+                IconButton(onClick = onCopy, modifier = Modifier.size(30.dp)) {
+                    Icon(
+                        Icons.Default.ContentCopy,
+                        contentDescription = packText("pack.copyEdit", "复制并编辑"),
+                        modifier = Modifier.size(15.dp),
+                        tint = scheme.primary,
+                    )
+                }
+            }
+            if (onRename != null) {
+                IconButton(onClick = onRename, modifier = Modifier.size(30.dp)) {
+                    Icon(
+                        Icons.Default.Create,
+                        contentDescription = packText("pack.rename", "重命名"),
+                        modifier = Modifier.size(15.dp),
+                        tint = scheme.onSurfaceVariant,
+                    )
+                }
             }
             if (onDelete != null) {
                 IconButton(
