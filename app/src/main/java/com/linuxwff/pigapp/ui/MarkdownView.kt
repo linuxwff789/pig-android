@@ -1,5 +1,6 @@
 package com.linuxwff.pigapp.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -341,6 +342,7 @@ fun AssistantMarkdown(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CollapsibleCode(
     language: String,
