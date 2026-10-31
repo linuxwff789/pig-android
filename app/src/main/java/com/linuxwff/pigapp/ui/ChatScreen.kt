@@ -4258,6 +4258,10 @@ private fun MessageList(
     val fabBackground = packColor(chrome.fabBackground).copy(alpha = chrome.fabBackgroundAlpha)
     val fabTint = packColor(chrome.fabTint).copy(alpha = chrome.fabTintAlpha)
     var autoScroll by remember { mutableStateOf(true) }
+    // Rows currently in long-press selection mode. New tokens must not scroll
+    // the text out from under the drag handles.
+    val selectingRows = remember { mutableStateMapOf<String, Boolean>() }
+    val anySelection = selectingRows.values.any { it }
     var programmaticScroll by remember { mutableStateOf(false) }
     // Where the reader was before an older page was prepended.
     var olderAnchor by remember { mutableStateOf<OlderAnchor?>(null) }
@@ -4295,8 +4299,9 @@ private fun MessageList(
         last?.toolResult?.length,
         last?.images?.size,
         showTyping,
+        anySelection,
     ) {
-        if (messages.isNotEmpty() && autoScroll && olderAnchor == null) {
+        if (messages.isNotEmpty() && autoScroll && olderAnchor == null && !anySelection) {
             programmaticScroll = true
             try {
                 runCatching {
@@ -4414,6 +4419,8 @@ private fun MessageList(
                         codeBlockBorderAlpha = codeBlockBorderAlpha,
                         streaming = item.message.id == streamingId,
                         hideThinking = hideThinking,
+                        selecting = selectingRows[item.message.id] == true,
+                        onSelectingChange = { on -> selectingRows[item.message.id] = on },
                         avatarShadow = avatarShadow,
                         bubbleShadow = bubbleShadow,
                         onCopy = onCopy,
@@ -4766,6 +4773,8 @@ private fun MessageRow(
     codeBlockBorderAlpha: Float,
     streaming: Boolean,
     hideThinking: Boolean,
+    selecting: Boolean,
+    onSelectingChange: (Boolean) -> Unit,
     avatarShadow: Boolean,
     bubbleShadow: Boolean,
     onCopy: (String) -> Unit,
@@ -4774,6 +4783,11 @@ private fun MessageRow(
 ) {
     val components = packComponents()
     val theme = packTheme()
+    // A row scrolled out of composition drops its SelectionContainer; clear the
+    // flag too or auto-follow would stay paused for the rest of the session.
+    DisposableEffect(message.id) {
+        onDispose { onSelectingChange(false) }
+    }
     when (message.role) {
         Role.USER -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             val scheme = MaterialTheme.colorScheme
@@ -4801,7 +4815,6 @@ private fun MessageRow(
                     bottomStart = (cornerRadius + 4).dp,
                 )
             }
-            var selecting by rememberSaveable(message.id) { mutableStateOf(false) }
             val bubble: @Composable () -> Unit = {
                 Box(
                     Modifier
@@ -4882,7 +4895,7 @@ private fun MessageRow(
                 Modifier.pointerInput(message.id) {
                     detectTapGestures(
                         onLongPress = {
-                            if (components.showSelection) selecting = true
+                            if (components.showSelection) onSelectingChange(true)
                         },
                     )
                 },
@@ -4894,7 +4907,7 @@ private fun MessageRow(
                 }
             }
             if (selecting && components.showSelection) {
-                TextButton(onClick = { selecting = false }) {
+                TextButton(onClick = { onSelectingChange(false) }) {
                     Text(packText("chat.done", "完成"))
                 }
             }
@@ -4911,7 +4924,10 @@ private fun MessageRow(
                 Spacer(Modifier.width(9.dp))
             }
             Column(Modifier.weight(1f)) {
-                var selecting by rememberSaveable(message.id) { mutableStateOf(false) }
+                // Hoisted out of AssistantMarkdown: toggling selection mode swaps
+                // the wrapper composable and remounts the body, which used to
+                // reset every code block to collapsed on long-press.
+                val codeToggles = remember(message.id) { mutableStateMapOf<Int, Boolean>() }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         assistantLabel,
@@ -4920,7 +4936,7 @@ private fun MessageRow(
                         modifier = Modifier.weight(1f),
                     )
                     if (selecting && components.showSelection) {
-                        TextButton(onClick = { selecting = false }) {
+                        TextButton(onClick = { onSelectingChange(false) }) {
                             Text(packText("chat.done", "完成"))
                         }
                     }
@@ -4930,33 +4946,49 @@ private fun MessageRow(
                 }
                 Spacer(Modifier.height(4.dp))
                 if (!hideThinking && message.thinking.isNotBlank()) {
+                    // Freeze the reasoning while a selection is open, otherwise
+                    // every new token reflows the text under the drag handles.
+                    val thinkingText = if (selecting) {
+                        remember(message.id) { message.thinking }
+                    } else {
+                        message.thinking
+                    }
+                    val thinkingStreaming =
+                        if (selecting) remember(message.id) { streaming } else streaming
                     ThinkingBlock(
                         onOpen = onUserRead,
                         id = message.id,
-                        text = message.thinking,
-                        streaming = streaming,
+                        text = thinkingText,
+                        streaming = thinkingStreaming,
                     )
                     Spacer(Modifier.height(6.dp))
                 }
                 val content: @Composable () -> Unit = {
                     Column(Modifier.fillMaxWidth()) {
-                        if (streaming) {
+                        // While a selection is open the body is frozen: a new
+                        // token, or the switch from raw streaming text to
+                        // Markdown, reflows the text and drops the drag.
+                        val bodyStreaming = if (selecting) remember(message.id) { streaming } else streaming
+                        val liveText = message.text.ifBlank { "…" }
+                        val bodyText = if (selecting) remember(message.id) { liveText } else liveText
+                        if (bodyStreaming) {
                             // Parsing a growing Markdown document on every delta is
                             // O(n²); show the raw text while it streams and render
                             // Markdown once the message is complete.
                             Text(
-                                message.text.ifBlank { "…" },
+                                bodyText,
                                 modifier = Modifier.fillMaxWidth(),
                                 style = MaterialTheme.typography.bodyLarge,
                             )
                         } else {
                             AssistantMarkdown(
-                                text = message.text.ifBlank { "…" },
+                                text = bodyText,
                                 modifier = Modifier.fillMaxWidth(),
                                 types = types,
                                 cornerRadius = cornerRadius,
                                 codeBlockRadius = codeBlockRadius,
                                 codeBlockBorderAlpha = codeBlockBorderAlpha,
+                                codeToggleState = codeToggles,
                             )
                         }
                         if (message.images.isNotEmpty() || message.imagesOmitted > 0) {
@@ -5016,7 +5048,7 @@ private fun MessageRow(
                         .pointerInput(message.id) {
                             detectTapGestures(
                                 onLongPress = {
-                                    if (components.showSelection) selecting = true
+                                    if (components.showSelection) onSelectingChange(true)
                                 },
                             )
                         },

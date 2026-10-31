@@ -3,6 +3,7 @@ package com.linuxwff.pigapp.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,9 +26,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.SpanStyle
@@ -307,7 +310,13 @@ fun AssistantMarkdown(
     cornerRadius: Int = 16,
     codeBlockRadius: Int = -1,
     codeBlockBorderAlpha: Float = 0.35f,
+    // Open/closed state per code block, hoisted by the caller: long-pressing a
+    // message to enter selection mode remounts the body, and state remembered
+    // inside the block would snap back to collapsed.
+    codeToggleState: SnapshotStateMap<Int, Boolean>? = null,
 ) {
+    val localToggles = remember { mutableStateMapOf<Int, Boolean>() }
+    val toggles = codeToggleState ?: localToggles
     val segments = remember(text) { splitCodeFences(text) }
     Column(modifier) {
         segments.forEachIndexed { index, segment ->
@@ -324,6 +333,8 @@ fun AssistantMarkdown(
                     code = segment.code,
                     cornerRadius = if (codeBlockRadius >= 0) codeBlockRadius else cornerRadius,
                     borderAlpha = codeBlockBorderAlpha,
+                    expanded = toggles[index] == true,
+                    onToggle = { toggles[index] = toggles[index] != true },
                 )
             }
         }
@@ -336,8 +347,9 @@ private fun CollapsibleCode(
     code: String,
     cornerRadius: Int,
     borderAlpha: Float,
+    expanded: Boolean,
+    onToggle: () -> Unit,
 ) {
-    var expanded by remember(code) { mutableStateOf(false) }
     val md = LocalUiPack.current.layout.markdown
     val scheme = MaterialTheme.colorScheme
     val components = packComponents()
@@ -353,7 +365,10 @@ private fun CollapsibleCode(
         Row(
             Modifier
                 .fillMaxWidth()
-                .clickable { expanded = !expanded }
+                // Long-press must not toggle: it is how the message enters
+                // selection mode, and a no-op long-press handler keeps the
+                // release from being reported as a click.
+                .combinedClickable(onClick = onToggle, onLongClick = {})
                 .padding(horizontal = 10.dp, vertical = 7.dp),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         ) {
