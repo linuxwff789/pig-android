@@ -6689,9 +6689,23 @@ internal fun olderHistoryTarget(window: Int, total: Int): Int {
     return if (total in 1 until next) total else next
 }
 
-/** Message timestamps are ISO-8601 ("...Z"); 0 keeps a damaged line sortable. */
-internal fun parseMessageTime(stamp: String): Long =
-    if (stamp.isBlank()) 0L else runCatching { Instant.parse(stamp).toEpochMilli() }.getOrDefault(0L)
+/**
+ * Message timestamps: pig's raw message objects carry epoch milliseconds
+ * (`"timestamp": 1793340742501`, a JSON number, so `optString` hands back the
+ * digits), while live frames and older payloads use ISO-8601. Anything else is
+ * 0 so a damaged line stays sortable instead of jumping to the top.
+ */
+internal fun parseMessageTime(stamp: String): Long {
+    val value = stamp.trim()
+    if (value.isEmpty()) return 0L
+    val numeric = value.toLongOrNull()
+    if (numeric != null) {
+        if (numeric <= 0) return 0L
+        // Ten digits are seconds; pig writes thirteen-digit milliseconds.
+        return if (numeric < 100_000_000_000L) numeric * 1000L else numeric
+    }
+    return runCatching { Instant.parse(value).toEpochMilli() }.getOrDefault(0L)
+}
 
 /**
  * A paged reply starts mid-session. Notices from turns before the first

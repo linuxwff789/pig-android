@@ -40,6 +40,9 @@ class HistoryOrderTest {
         assertEquals(listOf("a1", "n0"), mergeNotices(items, notices).map { it.id })
         assertEquals(0L, parseMessageTime("not a timestamp"))
         assertEquals(1_789_948_800_000L, parseMessageTime("2026-09-21T00:00:00Z"))
+        // pig's session file stores epoch milliseconds on the message object.
+        assertEquals(1_793_340_742_501L, parseMessageTime("1793340742501"))
+        assertEquals(1_793_340_742_000L, parseMessageTime("1793340742"))
     }
     @Test
     fun pagedWindowHidesNoticesFromEarlierTurns() {
