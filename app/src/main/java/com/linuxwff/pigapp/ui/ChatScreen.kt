@@ -5144,13 +5144,18 @@ private fun toolCardWidth(appearance: UiToolCardAppearance): Modifier =
     }
 
 /** `14:03 · 1.2s`: when the call ran and how long it took (either may be absent). */
-private fun toolTiming(message: ChatMsg, showTimestamps: Boolean): String {
+private fun toolTiming(message: ChatMsg, showTimestamps: Boolean, elapsedMs: Long = 0L): String {
     val parts = ArrayList<String>(2)
     if (showTimestamps) {
         val time = formatChatTime(message.at)
         if (time.isNotBlank()) parts.add(time)
     }
-    val duration = formatToolDuration(message.toolDurationMs)
+    // A running call has no pig duration yet: tick the elapsed time instead.
+    val duration = if (message.running) {
+        formatToolDuration(elapsedMs)
+    } else {
+        formatToolDuration(message.toolDurationMs)
+    }
     if (duration.isNotBlank()) parts.add(duration)
     return parts.joinToString(" · ")
 }
@@ -5174,8 +5179,23 @@ private fun ToolCard(
         )
     }
     val toolStrings = LocalUiPack.current.strings
-    // Wall-clock start (pig's call timestamp) and pig's measured runtime.
-    val timing = toolTiming(message, showTimestamps)
+    // Wall-clock start (pig's call timestamp) and pig's measured runtime. A
+    // running call ticks once a second so the card shows how long it has been
+    // going instead of only a spinner.
+    var tick by remember(message.id) { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(message.id, message.running) {
+        if (!message.running) return@LaunchedEffect
+        while (true) {
+            tick = System.currentTimeMillis()
+            delay(1_000)
+        }
+    }
+    val elapsed = if (message.running && message.at > 0L) {
+        (tick - message.at).coerceAtLeast(0L)
+    } else {
+        0L
+    }
+    val timing = toolTiming(message, showTimestamps, elapsed)
     val view = remember(
         message.toolName,
         message.toolArgs,

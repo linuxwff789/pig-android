@@ -6343,6 +6343,9 @@ class AppViewModel @JvmOverloads constructor(
                 toolName = event.optString("toolName", "tool"),
                 toolArgs = event.optJSONObject("args")?.toString(2) ?: "",
                 running = true,
+                // Live cards need a start time too: the card shows elapsed time
+                // while the tool runs and the clock label once it ends.
+                at = System.currentTimeMillis(),
             ),
         )
     }
