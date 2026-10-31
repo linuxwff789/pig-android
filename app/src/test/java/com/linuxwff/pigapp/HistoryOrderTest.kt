@@ -2,6 +2,8 @@ package com.linuxwff.pigapp
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 class HistoryOrderTest {
     @Test
@@ -44,6 +46,18 @@ class HistoryOrderTest {
         assertEquals(1_793_340_742_501L, parseMessageTime("1793340742501"))
         assertEquals(1_793_340_742_000L, parseMessageTime("1793340742"))
     }
+    @Test
+    fun chatTimeLabelFollowsAge() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val now = ZonedDateTime.of(2026, 10, 31, 18, 0, 0, 0, zone).toInstant().toEpochMilli()
+        fun at(year: Int, month: Int, day: Int, hour: Int, minute: Int) =
+            ZonedDateTime.of(year, month, day, hour, minute, 0, 0, zone).toInstant().toEpochMilli()
+        assertEquals("09:05", formatChatTime(at(2026, 10, 31, 9, 5), now, zone))
+        assertEquals("03-02 07:08", formatChatTime(at(2026, 3, 2, 7, 8), now, zone))
+        assertEquals("2025-12-31 23:59", formatChatTime(at(2025, 12, 31, 23, 59), now, zone))
+        assertEquals("", formatChatTime(0, now, zone))
+    }
+
     @Test
     fun pagedWindowHidesNoticesFromEarlierTurns() {
         val notices = listOf(

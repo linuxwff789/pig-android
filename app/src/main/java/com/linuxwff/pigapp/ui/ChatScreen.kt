@@ -181,6 +181,7 @@ import com.linuxwff.pigapp.UiRequest
 import com.linuxwff.pigapp.UiSkin
 import com.linuxwff.pigapp.UiToolCardAppearance
 import com.linuxwff.pigapp.WebDavClient
+import com.linuxwff.pigapp.formatChatTime
 import com.linuxwff.pigapp.WebDavConfig
 import com.linuxwff.pigapp.resolve
 import com.linuxwff.pigapp.toolPresentation
@@ -528,6 +529,7 @@ fun PigApp(vm: AppViewModel) {
                         hasOlderHistory = ui.historyHasOlder,
                         streamingId = ui.streamingId,
                         hideThinking = ui.hideThinkingBlock,
+                        showTimestamps = ui.showTimestamps,
                         toolMode = ui.toolMode.ifBlank { ui.uiPack.layout.toolCards },
                         assistantLabel = ui.uiPack.layout.assistantLabel,
                         chatPaddingH = ui.uiPack.layout.chatPaddingH,
@@ -1606,6 +1608,15 @@ private fun SettingsDialog(
                     subtitle = packText("settings.bubbleShadowHint", "用户消息气泡的投影，默认跟随 UI pack"),
                     checked = ui.bubbleShadow,
                     onCheckedChange = vm::setBubbleShadow,
+                )
+                SettingToggle(
+                    title = packText("settings.showTimestamps", "显示消息时间"),
+                    subtitle = packText(
+                        "settings.showTimestampsHint",
+                        "在每条消息上显示时间；今天的只显示时分，更早的带日期",
+                    ),
+                    checked = ui.showTimestamps,
+                    onCheckedChange = vm::setShowTimestamps,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -4230,6 +4241,7 @@ private fun MessageList(
     hasOlderHistory: Boolean,
     streamingId: String?,
     hideThinking: Boolean,
+    showTimestamps: Boolean,
     toolMode: String,
     assistantLabel: String,
     chatPaddingH: Int,
@@ -4419,6 +4431,7 @@ private fun MessageList(
                         codeBlockBorderAlpha = codeBlockBorderAlpha,
                         streaming = item.message.id == streamingId,
                         hideThinking = hideThinking,
+                        showTimestamps = showTimestamps,
                         selecting = selectingRows[item.message.id] == true,
                         onSelectingChange = { on -> selectingRows[item.message.id] = on },
                         avatarShadow = avatarShadow,
@@ -4775,6 +4788,7 @@ private fun MessageRow(
     hideThinking: Boolean,
     selecting: Boolean,
     onSelectingChange: (Boolean) -> Unit,
+    showTimestamps: Boolean,
     avatarShadow: Boolean,
     bubbleShadow: Boolean,
     onCopy: (String) -> Unit,
@@ -4888,6 +4902,18 @@ private fun MessageRow(
                                 color = packColor(bubbleAppearance.textColor),
                             )
                         }
+                        if (showTimestamps) {
+                            val time = formatChatTime(message.at)
+                            if (time.isNotBlank()) {
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    time,
+                                    modifier = Modifier.align(Alignment.End),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = packColor(bubbleAppearance.textColor).copy(alpha = 0.7f),
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -4935,6 +4961,17 @@ private fun MessageRow(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f),
                     )
+                    if (showTimestamps) {
+                        val time = formatChatTime(message.at)
+                        if (time.isNotBlank()) {
+                            Text(
+                                time,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                        }
+                    }
                     if (selecting && components.showSelection) {
                         TextButton(onClick = { onSelectingChange(false) }) {
                             Text(packText("chat.done", "完成"))

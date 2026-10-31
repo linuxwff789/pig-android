@@ -37,6 +37,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.text.SimpleDateFormat
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
@@ -215,6 +217,7 @@ class AppViewModel @JvmOverloads constructor(
             } else {
                 true
             },
+            showTimestamps = prefs.getBoolean("showTimestamps", false),
             skinId = prefs.getString("skinId", "").orEmpty(),
             activePackId = initialPackId(),
             contextOverrides = loadContextOverrides(),
@@ -1497,6 +1500,11 @@ class AppViewModel @JvmOverloads constructor(
     fun setBubbleShadow(enabled: Boolean) {
         prefs.edit().putBoolean("bubbleShadow", enabled).apply()
         ui = ui.copy(bubbleShadow = enabled)
+    }
+
+    fun setShowTimestamps(enabled: Boolean) {
+        prefs.edit().putBoolean("showTimestamps", enabled).apply()
+        ui = ui.copy(showTimestamps = enabled)
     }
 
     private val packsDir: File
@@ -6705,6 +6713,30 @@ internal fun parseMessageTime(stamp: String): Long {
         return if (numeric < 100_000_000_000L) numeric * 1000L else numeric
     }
     return runCatching { Instant.parse(value).toEpochMilli() }.getOrDefault(0L)
+}
+
+private val CHAT_TIME_ONLY: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val CHAT_TIME_WITH_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm")
+private val CHAT_TIME_WITH_YEAR: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+
+/**
+ * Clock label for a transcript row: time only for today, date once the message
+ * is older, year once it is not from this year. Empty for messages without a
+ * usable timestamp.
+ */
+internal fun formatChatTime(
+    at: Long,
+    now: Long = System.currentTimeMillis(),
+    zone: ZoneId = ZoneId.systemDefault(),
+): String {
+    if (at <= 0) return ""
+    val stamp = Instant.ofEpochMilli(at).atZone(zone)
+    val current = Instant.ofEpochMilli(now).atZone(zone)
+    return when {
+        stamp.toLocalDate() == current.toLocalDate() -> stamp.format(CHAT_TIME_ONLY)
+        stamp.year == current.year -> stamp.format(CHAT_TIME_WITH_DATE)
+        else -> stamp.format(CHAT_TIME_WITH_YEAR)
+    }
 }
 
 /**
