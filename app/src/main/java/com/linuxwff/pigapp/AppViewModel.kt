@@ -6753,11 +6753,11 @@ internal fun formatToolDuration(ms: Long): String {
         ms < 60_000L -> String.format(Locale.US, "%.1fs", ms / 1000.0)
         ms < 3_600_000L -> {
             val seconds = ms / 1000L
-            "${seconds / 60}m ${seconds % 60}s"
+            String.format(Locale.US, "%dm %02ds", seconds / 60, seconds % 60)
         }
         else -> {
             val minutes = ms / 60_000L
-            "${minutes / 60}h ${minutes % 60}m"
+            String.format(Locale.US, "%dh %02dm", minutes / 60, minutes % 60)
         }
     }
 }
