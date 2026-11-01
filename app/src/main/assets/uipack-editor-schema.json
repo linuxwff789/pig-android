@@ -999,6 +999,47 @@
           "min": 0.0,
           "max": 1.0,
           "step": 0.01
+        },
+        {
+          "key": "selectionColor",
+          "path": [
+            "chat",
+            "selectionColor"
+          ],
+          "type": "token",
+          "label": "选区色",
+          "default": "primary",
+          "options": [
+            "primary",
+            "secondary",
+            "tertiary",
+            "onPrimary",
+            "onSurface",
+            "onSurfaceVariant",
+            "surface",
+            "surfaceVariant",
+            "background",
+            "outline",
+            "outlineVariant",
+            "error",
+            "success",
+            "warning",
+            "none",
+            "transparent"
+          ]
+        },
+        {
+          "key": "selectionAlpha",
+          "path": [
+            "chat",
+            "selectionAlpha"
+          ],
+          "type": "float",
+          "label": "选区透明度",
+          "default": 0.6,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
         }
       ]
     },
@@ -3714,7 +3755,7 @@
           "min": 0.0,
           "max": 1.0,
           "step": 0.01,
-          "desc": "交替行叠加 tableHeaderBackground 的淡色，0 = 关闭"
+          "desc": "交替行不透明度，0 = 关闭"
         },
         {
           "key": "tableBorderWidth",
@@ -3728,7 +3769,8 @@
           "default": 1,
           "min": 0,
           "max": 4,
-          "step": 1
+          "step": 1,
+          "desc": "网格线宽（dp，0 = 不画线，最大 4）"
         },
         {
           "key": "tableColumnLines",
@@ -3764,7 +3806,8 @@
           "default": -1,
           "min": -1,
           "max": 40,
-          "step": 1
+          "step": 1,
+          "desc": "表格圆角；-1 = theme.cornerRadius / 2"
         },
         {
           "key": "tableCellPaddingH",
@@ -3861,7 +3904,8 @@
           ],
           "type": "bool",
           "label": "表头加粗",
-          "default": true
+          "default": true,
+          "desc": "表头加粗"
         },
         {
           "key": "tableTextSize",
@@ -3918,7 +3962,8 @@
             "warning",
             "none",
             "transparent"
-          ]
+          ],
+          "desc": "交替行颜色；空 = tableHeaderBackground"
         },
         {
           "key": "hrColor",

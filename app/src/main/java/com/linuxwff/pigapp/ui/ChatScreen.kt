@@ -5007,6 +5007,26 @@ private fun ThinkingBlock(
     }
 }
 
+/**
+ * Selection wrapper for transcript text. `chat.selectionColor` /
+ * `chat.selectionAlpha` make the highlight strong enough to stay readable on
+ * top of inline-code and bubble backgrounds (the Material default is a 40%
+ * primary wash, which disappears into those).
+ */
+@Composable
+private fun PackSelectionContainer(content: @Composable () -> Unit) {
+    val layout = LocalUiPack.current.layout
+    val tint = packColor(layout.chatSelectionColor)
+    CompositionLocalProvider(
+        LocalTextSelectionColors provides TextSelectionColors(
+            handleColor = tint,
+            backgroundColor = tint.copy(alpha = layout.chatSelectionAlpha),
+        ),
+    ) {
+        SelectionContainer { content() }
+    }
+}
+
 @Composable
 private fun MessageRow(
     message: ChatMsg,
@@ -5159,7 +5179,7 @@ private fun MessageRow(
                 },
             ) {
                 if (selecting && components.showSelection) {
-                    SelectionContainer { bubble() }
+                    PackSelectionContainer { bubble() }
                 } else {
                     bubble()
                 }
@@ -5323,7 +5343,7 @@ private fun MessageRow(
                         },
                 ) {
                     if (selecting && components.showSelection) {
-                        SelectionContainer { contentBlock() }
+                        PackSelectionContainer { contentBlock() }
                     } else {
                         contentBlock()
                     }
@@ -5338,7 +5358,7 @@ private fun MessageRow(
         Role.NOTICE -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             // Notices are the app's own error channel: long-press to select
             // and copy instead of retyping what is on screen.
-            SelectionContainer {
+            PackSelectionContainer {
                 Text(
                     message.text,
                     modifier = Modifier

@@ -184,6 +184,7 @@ CHAT_FIELDS = [
     "assistantLabel", "toolCards", "toolGroups", "showUsage",
     "chatPaddingH", "chatPaddingV", "chatBottomPadding", "messageSpacing",
     "emptyAvatarSize", "codeBlockRadius", "codeBlockBorderAlpha",
+    "chatSelectionColor", "chatSelectionAlpha",
 ]
 COMPOSER_FIELDS = [f for f in (
     "composerPlaceholder composerMaxLines sendOnEnter composerFontSize "
@@ -222,6 +223,8 @@ LAYOUT_KEYS = {
     "sidebarWidthDp": "sidebar.widthDp",
     "chatPaddingH": "chat.paddingH",
     "chatPaddingV": "chat.paddingV",
+    "chatSelectionColor": "chat.selectionColor",
+    "chatSelectionAlpha": "chat.selectionAlpha",
     "chatBottomPadding": "chat.bottomPadding",
     "composerPlaceholder": "composer.placeholder",
     "composerInputBorderAlpha": "composer.borderAlpha",

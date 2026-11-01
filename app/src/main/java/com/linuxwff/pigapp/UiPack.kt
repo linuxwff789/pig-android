@@ -221,6 +221,9 @@ data class UiLayout(
     val composerAttachPadding: Int = 0,
     val composerStopBorderWidth: Int = 0,
     val composerStopBorderColor: String = "error",
+    /** Long-press text selection in messages (the composer has its own pair). */
+    val chatSelectionColor: String = "primary",
+    val chatSelectionAlpha: Float = 0.6f,
     /** Chat transcript appearance. */
     val chatPaddingH: Int = 14,
     val chatPaddingV: Int = 10,
@@ -718,6 +721,12 @@ object UiPackParser {
                 "stopBorderColor",
                 d.composerStopBorderColor,
             )?.takeIf { it.isNotBlank() } ?: d.composerStopBorderColor,
+            chatSelectionColor = chat?.optString("selectionColor", d.chatSelectionColor)
+                ?.takeIf { it.isNotBlank() } ?: d.chatSelectionColor,
+            chatSelectionAlpha = (chat?.optDouble(
+                "selectionAlpha",
+                d.chatSelectionAlpha.toDouble(),
+            ) ?: d.chatSelectionAlpha.toDouble()).toFloat().coerceIn(0f, 1f),
             chatPaddingH = (chat?.optInt("paddingH", d.chatPaddingH) ?: d.chatPaddingH)
                 .coerceIn(0, 64),
             chatPaddingV = (chat?.optInt("paddingV", d.chatPaddingV) ?: d.chatPaddingV)
