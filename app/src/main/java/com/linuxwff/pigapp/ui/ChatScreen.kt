@@ -27,6 +27,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1596,7 +1597,7 @@ private fun SettingsDialog(
                 )
                 SettingToggle(
                     title = packText("settings.wakeLock", "唤醒锁"),
-                    subtitle = packText("settings.wakeLockHint", "像 termux-wake-lock 一样让 CPU 不休眠"),
+                    subtitle = packText("settings.wakeLockHint", "只在执行任务时让 CPU 不休眠（空闲时自动释放）"),
                     checked = ui.wakeLock,
                     onCheckedChange = vm::setWakeLock,
                 )
@@ -4514,7 +4515,6 @@ private fun MessageList(
     // the text out from under the drag handles.
     val selectingRows = remember { mutableStateMapOf<String, Boolean>() }
     val anySelection = selectingRows.values.any { it }
-    var programmaticScroll by remember { mutableStateOf(false) }
     // Where the reader was before an older page was prepended.
     var olderAnchor by remember { mutableStateOf<OlderAnchor?>(null) }
     var pulled by remember { mutableStateOf(0f) }
@@ -4528,15 +4528,17 @@ private fun MessageList(
                 last.images.isEmpty())
         )
 
-    // Follow new output only while the user is parked at the bottom. A manual
-    // upward drag disables it; reaching the bottom again re-enables it.
+    // Follow new output only while the reader is parked at the bottom. Only a
+    // real drag from the user pauses following. Watching isScrollInProgress
+    // instead caught every programmatic scroll that was interrupted mid-way
+    // (a new token arrives while the list is still animating), which silently
+    // pinned the view and made long answers look like they stopped halfway.
+    val dragged by listState.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(dragged) {
+        if (dragged) autoScroll = false
+        else if (!listState.canScrollForward) autoScroll = true
+    }
     LaunchedEffect(listState) {
-        launch {
-            snapshotFlow { listState.isScrollInProgress && !programmaticScroll }
-                .collect { scrolling ->
-                    if (scrolling) autoScroll = false
-                }
-        }
         launch {
             snapshotFlow { listState.canScrollForward }.collect { canForward ->
                 if (!canForward) autoScroll = true
@@ -4554,17 +4556,12 @@ private fun MessageList(
         anySelection,
     ) {
         if (messages.isNotEmpty() && autoScroll && olderAnchor == null && !anySelection) {
-            programmaticScroll = true
-            try {
-                runCatching {
-                    // offset 0 aligns the item's *top* with the viewport; a
-                    // long answer would then pin the head of the message and
-                    // the newest tokens stayed below the fold.
-                    val last = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
-                    listState.scrollToItem(last, Int.MAX_VALUE)
-                }
-            } finally {
-                programmaticScroll = false
+            runCatching {
+                // offset 0 aligns the item's *top* with the viewport; a
+                // long answer would then pin the head of the message and
+                // the newest tokens stayed below the fold.
+                val last = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
+                listState.scrollToItem(last, Int.MAX_VALUE)
             }
         }
     }
@@ -4743,15 +4740,12 @@ private fun MessageList(
                 shadowElevation = packThemeValues.fabElevation.dp,
                 modifier = Modifier.clickable {
                     scope.launch {
-                        programmaticScroll = true
                         autoScroll = true
-                        try {
+                        runCatching {
                             listState.animateScrollToItem(
                                 (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0),
                                 Int.MAX_VALUE,
                             )
-                        } finally {
-                            programmaticScroll = false
                         }
                     }
                 },

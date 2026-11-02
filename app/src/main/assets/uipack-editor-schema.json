@@ -3448,7 +3448,7 @@
           ],
           "type": "int",
           "label": "最大高度",
-          "default": 240,
+          "default": 480,
           "min": 60,
           "max": 800,
           "step": 1,

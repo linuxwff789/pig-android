@@ -77,6 +77,10 @@ type session struct {
 
 	uiMu   sync.Mutex
 	uiHash string
+	// uiStat is a metadata-only fingerprint (path + size + mtime) of the pack
+	// directory. Comparing it is ~1000x cheaper than re-reading and hashing
+	// every file, which used to wake the SoC every 800ms while idle.
+	uiStat string
 
 	msgMu    sync.Mutex
 	msgCache map[string]msgCacheEntry
@@ -216,6 +220,26 @@ func (a *agentProc) clearPending(id string) {
 	a.mu.Unlock()
 }
 
+// frameTypeHead returns a pig frame's top-level "type" without decoding it.
+// pig writes "type" first, so scanning the head is enough; a full Unmarshal of
+// a multi-megabyte frame just to read this one field is what this avoids.
+func frameTypeHead(payload []byte) string {
+	limit := len(payload)
+	if limit > 128 {
+		limit = 128
+	}
+	const key = `"type":"`
+	i := bytes.Index(payload[:limit], []byte(key))
+	if i < 0 {
+		return ""
+	}
+	rest := payload[i+len(key) : limit]
+	if j := bytes.IndexByte(rest, '"'); j >= 0 {
+		return string(rest[:j])
+	}
+	return ""
+}
+
 // trackFrame keeps per-agent state and learns its session path from get_state.
 func (a *agentProc) trackFrame(s *session, payload []byte) {
 	var head struct {
@@ -242,7 +266,12 @@ func (a *agentProc) trackFrame(s *session, payload []byte) {
 		StatusText    *string         `json:"statusText"`
 		Title         string          `json:"title"`
 	}
-	if !bytes.Contains(payload, []byte(`"type"`)) {
+	if !bytes.Contains(payload[:min(len(payload), 128)], []byte(`"type"`)) {
+		return
+	}
+	// turn_end repeats the whole turn (reasoning plus every tool result) and
+	// drives no state here. Decoding it allocated a full copy just to drop it.
+	if frameTypeHead(payload) == "turn_end" {
 		return
 	}
 	if err := json.Unmarshal(payload, &head); err != nil {
@@ -1065,7 +1094,11 @@ func (s *session) takeHistoryLimit(id any) (int, bool) {
 // 4000-message session would otherwise cross the socket as one ~18 MB line and
 // be parsed in full on the phone.
 func (s *session) fitHistory(payload []byte, paths ...string) []byte {
-	if !bytes.Contains(payload, []byte(`"command":"get_messages"`)) {
+	head := payload
+	if len(head) > 256 {
+		head = head[:256]
+	}
+	if !bytes.Contains(head, []byte(`"command":"get_messages"`)) {
 		return payload
 	}
 	// One pass into known fields: get_messages replies carry nothing else, and
@@ -1596,27 +1629,54 @@ func (s *session) handleClientLine(line []byte) {
 }
 
 func (s *session) watchUI() {
+	const (
+		fast       = 800 * time.Millisecond
+		slow       = 5 * time.Second
+		quietAfter = 40 // ~32s with no edit before backing off
+	)
+	timer := time.NewTimer(fast)
+	defer timer.Stop()
+	interval := fast
+	quiet := 0
 	for {
 		select {
 		case <-s.stopped:
 			return
-		case <-time.After(800 * time.Millisecond):
+		case <-timer.C:
+		}
+		fingerprint := statUI(s.uiDir)
+		s.uiMu.Lock()
+		same := fingerprint != "" && s.uiStat == fingerprint
+		s.uiMu.Unlock()
+		if same {
+			quiet++
+			if quiet >= quietAfter && interval != slow {
+				interval = slow
+			}
+			timer.Reset(interval)
+			continue
 		}
 		files, assets, assetHashes, hash, err := scanUI(s.uiDir)
 		if err != nil {
+			timer.Reset(interval)
 			continue
 		}
 		s.uiMu.Lock()
-		if hash == s.uiHash {
-			s.uiMu.Unlock()
-			continue
-		}
+		changed := hash != s.uiHash
 		s.uiHash = hash
+		if fingerprint != "" {
+			s.uiStat = fingerprint
+		}
 		s.uiMu.Unlock()
-		_ = s.send(frame{
-			"type": "relay_ui_pack", "hash": hash, "files": files,
-			"assets": assets, "assetHashes": assetHashes,
-		})
+		quiet = 0
+		interval = fast
+		if changed {
+			_ = s.send(frame{
+				"type": "relay_ui_pack", "hash": hash, "files": files,
+				"assets": assets, "assetHashes": assetHashes,
+			})
+		}
+		timer.Reset(interval)
 	}
 }
 

@@ -265,7 +265,8 @@ data class UiThinkingAppearance(
     val radius: Int = -1,
     val paddingH: Int = 10,
     val paddingV: Int = 7,
-    val maxHeight: Int = 240,
+    /** Streaming reasoning is usually longer than an answer; 240dp hid most of it. */
+    val maxHeight: Int = 480,
     /** Glyphs for the collapsed / expanded header. */
     val collapsedGlyph: String = "▸",
     val expandedGlyph: String = "▾",

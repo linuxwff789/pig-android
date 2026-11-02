@@ -136,9 +136,15 @@ func (w *connWriter) sendRaw(payload []byte) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	_ = w.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-	_, err := w.conn.Write(append(payload, '\n'))
+	// writev: pig frames reach here with no spare capacity, so appending '\n'
+	// copied every frame (and a tool result can be megabytes). Two buffers let
+	// the kernel gather them in one call instead.
+	bufs := net.Buffers{payload, newlineFrame}
+	_, err := bufs.WriteTo(w.conn)
 	return err
 }
+
+var newlineFrame = []byte{'\n'}
 
 type sessionFile struct {
 	path string
@@ -497,6 +503,47 @@ func scanUI(dir string) (map[string]string, map[string]string, map[string]string
 		h.Write([]byte{0})
 	}
 	return files, assets, assetHashes, hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// statUI fingerprints a UI pack directory from file metadata only: relative
+// path, size and mtime. It walks the same files as scanUI but never opens one,
+// so the 800ms watch loop costs a few stats instead of reading and hashing the
+// whole pack (which kept the CPU out of deep sleep while idle).
+func statUI(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return ""
+	}
+	var b strings.Builder
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		name := d.Name()
+		if d.IsDir() {
+			if path != dir && strings.HasPrefix(name, ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasPrefix(name, ".") || d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		entry, err := d.Info()
+		if err != nil || entry.Size() > 512*1024 {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return nil
+		}
+		fmt.Fprintf(&b, "%s\x00%d\x00%d\n", filepath.ToSlash(rel), entry.Size(), entry.ModTime().UnixNano())
+		return nil
+	})
+	return b.String()
 }
 
 func isBinary(data []byte) bool {
