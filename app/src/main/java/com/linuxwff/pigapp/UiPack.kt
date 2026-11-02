@@ -146,6 +146,11 @@ data class UiLayout(
     /** Group consecutive same-name tool cards behind one collapsible header. */
     val toolGroups: Boolean = true,
     val showUsage: Boolean = true,
+    /**
+     * Default for the full-screen system-bar behaviour. A user toggling the
+     * setting writes an explicit preference that wins over the pack.
+     */
+    val immersive: Boolean = true,
     val composerPlaceholder: String = "给 Pig 发消息…",
     val composerMaxLines: Int = 6,
     val sendOnEnter: Boolean = true,
@@ -550,6 +555,7 @@ object UiPackParser {
             toolCards = mode.takeIf { it in modes } ?: d.toolCards,
             toolGroups = chat?.optBoolean("toolGroups", d.toolGroups) ?: d.toolGroups,
             showUsage = chat?.optBoolean("showUsage", d.showUsage) ?: d.showUsage,
+            immersive = chat?.optBoolean("immersive", d.immersive) ?: d.immersive,
             composerPlaceholder = composer?.optString("placeholder", d.composerPlaceholder)
                 ?.takeIf { it.isNotBlank() } ?: d.composerPlaceholder,
             composerMaxLines = (composer?.optInt("maxLines", d.composerMaxLines)

@@ -910,6 +910,16 @@
           "default": true
         },
         {
+          "key": "immersive",
+          "path": [
+            "chat",
+            "immersive"
+          ],
+          "type": "bool",
+          "label": "沉浸模式",
+          "default": true
+        },
+        {
           "key": "paddingH",
           "path": [
             "chat",

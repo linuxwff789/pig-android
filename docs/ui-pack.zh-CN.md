@@ -546,6 +546,7 @@ App 重启后优先级相同：pack 提供默认值，已保存的偏好（如�
 | `emptyAvatarSize` | 64 | 空状态头像 dp |
 | `codeBlockRadius` | -1 | 围栏代码块圆角；`-1` = theme/2 |
 | `codeBlockBorderAlpha` | 0.35 | 围栏代码块边框不透明度 |
+| `immersive` | true | 默认隐藏系统状态栏/导航栏；在设置里手动切换后以用户选择为准 |
 | `selectionColor` / `selectionAlpha` | `primary` / 0.6 | 长按选中消息文字时的高亮色与不透明度；调高 alpha 可压过行内代码/气泡底色 |
 
 ### 输入框（`composer`）

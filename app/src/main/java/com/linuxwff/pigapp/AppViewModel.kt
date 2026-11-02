@@ -1863,9 +1863,15 @@ class AppViewModel @JvmOverloads constructor(
         val skin = ui.skinId.takeIf { id -> parsed.skins.any { it.id == id } }
             ?: parsed.defaultSkin.takeIf { id -> parsed.skins.any { it.id == id } }
             ?: parsed.skins.firstOrNull()?.id.orEmpty()
+        val immersive = if (prefs.contains("immersive")) {
+            prefs.getBoolean("immersive", false)
+        } else {
+            parsed.layout.immersive
+        }
         ui = ui.copy(
             uiPack = parsed.copy(fontFiles = basePack?.fontFiles.orEmpty()).withSkin(skin),
             skinId = skin,
+            immersive = immersive,
         )
     }
 
@@ -1874,7 +1880,16 @@ class AppViewModel @JvmOverloads constructor(
         val id = ui.activePackId
         if (id.isBlank()) {
             if (relayFiles["manifest.json"].isNullOrBlank()) {
-                ui = ui.copy(uiPack = UiPack(), uiPackHash = "", skinId = "")
+                ui = ui.copy(
+                    uiPack = UiPack(),
+                    uiPackHash = "",
+                    skinId = "",
+                    immersive = if (prefs.contains("immersive")) {
+                        prefs.getBoolean("immersive", false)
+                    } else {
+                        UiPack().layout.immersive
+                    },
+                )
             } else {
                 applyPackAsync(relayFiles, relayAssets, relayHashes, relayHash, announce = false)
             }
@@ -6328,9 +6343,15 @@ class AppViewModel @JvmOverloads constructor(
         } else {
             resolvedPack.theme.bubbleShadow
         }
+        val immersive = if (prefs.contains("immersive")) {
+            prefs.getBoolean("immersive", false)
+        } else {
+            resolvedPack.layout.immersive
+        }
         ui = ui.copy(
             uiPack = resolvedPack,
             uiPackHash = hash,
+            immersive = immersive,
             uiPackFiles = files.size,
             skinId = skinId,
             assetCount = assets.size,

@@ -567,6 +567,7 @@ removed through `drawer.modules`.
 | `emptyAvatarSize` | 64 | empty-state avatar dp |
 | `codeBlockRadius` | -1 | fenced code block radius; `-1` = theme/2 |
 | `codeBlockBorderAlpha` | 0.35 | fenced code block border opacity |
+| `immersive` | true | hide the system status/navigation bars by default; an explicit Settings toggle wins |
 | `selectionColor` / `selectionAlpha` | `primary` / 0.6 | message text-selection highlight; raise alpha to overpower inline-code/bubble backgrounds |
 
 ### Composer (`composer`)

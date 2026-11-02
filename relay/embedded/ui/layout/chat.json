@@ -9,6 +9,7 @@
   },
   "chat": {
     "showUsage": true,
+    "immersive": true,
     "toolCards": "collapsed",
     "assistantLabel": "PIGGY",
     "toolGroups": true,

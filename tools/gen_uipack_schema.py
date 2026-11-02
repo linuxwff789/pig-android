@@ -181,7 +181,7 @@ SECTIONS = {
 
 # UiLayout fields are spread over several objects in layout/chat.json.
 CHAT_FIELDS = [
-    "assistantLabel", "toolCards", "toolGroups", "showUsage",
+    "assistantLabel", "toolCards", "toolGroups", "showUsage", "immersive",
     "chatPaddingH", "chatPaddingV", "chatBottomPadding", "messageSpacing",
     "emptyAvatarSize", "codeBlockRadius", "codeBlockBorderAlpha",
     "chatSelectionColor", "chatSelectionAlpha",
@@ -223,6 +223,7 @@ LAYOUT_KEYS = {
     "sidebarWidthDp": "sidebar.widthDp",
     "chatPaddingH": "chat.paddingH",
     "chatPaddingV": "chat.paddingV",
+    "immersive": "chat.immersive",
     "chatSelectionColor": "chat.selectionColor",
     "chatSelectionAlpha": "chat.selectionAlpha",
     "chatBottomPadding": "chat.bottomPadding",
@@ -315,7 +316,7 @@ LABELS = {
     "codeFenceMaxLines": "代码块行数", "tableMaxLines": "表格行数",
     "composerButtonSize": "输入框按钮尺寸",
     # chat
-    "assistantLabel": "助手名称", "toolCards": "工具卡模式",
+    "assistantLabel": "助手名称", "toolCards": "工具卡模式", "immersive": "沉浸模式",
     "toolGroups": "工具卡分组", "showUsage": "显示用量",
     "paddingH": "水平内边距", "paddingV": "垂直内边距",
     "bottomPadding": "底部留白", "messageSpacing": "消息间距",
