@@ -163,6 +163,16 @@ class AppViewModel @JvmOverloads constructor(
     private var packPinnedByUser = false
     private var autoReconnectJob: kotlinx.coroutines.Job? = null
     private var lastPongAt = 0L
+    /** Last live token; the stall watchdog measures silence against it. */
+    private var lastDeltaAt = 0L
+    /** Non-zero while a get_state probe is outstanding for a stalled stream. */
+    private var stallProbeAt = 0L
+    /** Last time a stalled stream was healed; keeps the resync from looping. */
+    private var lastStallHealAt = 0L
+    /** Throttles the "delta had no target" log. */
+    private var lastMissLogAt = 0L
+    /** Set by a heal so the resync re-seeds the live buffers from the transcript. */
+    private var seedLiveFromHistory = false
     /** Wakes the keepalive loop so a foreground switch re-evaluates its cadence. */
     private val pingWake = Channel<Unit>(Channel.CONFLATED)
     private var desiredSessionPath: String? = null
@@ -316,6 +326,17 @@ class AppViewModel @JvmOverloads constructor(
                     continue
                 }
                 client.send(JSONObject().put("type", "relay_ping").put("id", "ping-${nextId++}"))
+            }
+        }
+        // A stream that loses its tail (a dropped message_end, a rebuild that
+        // replaced the live bubble) leaves the transcript in the raw-text
+        // streaming branch forever; switching sessions used to be the only way
+        // out. Probe pig's state when tokens stop and re-sync if it says the turn
+        // is over.
+        viewModelScope.launch {
+            while (true) {
+                delay(STREAM_STALL_TICK_MS)
+                checkStreamStall()
             }
         }
     }
@@ -3510,6 +3531,62 @@ class AppViewModel @JvmOverloads constructor(
         client.send(JSONObject().put("id", id).put("type", "get_state"))
     }
 
+    /**
+     * Streaming is judged stalled when a bubble is still marked streaming but no
+     * token has arrived for [STREAM_STALL_MS]. A long tool call is silent too, so
+     * ask pig's state instead of guessing; one probe at a time and one heal per
+     * minute keeps a busy turn from being re-synced in a loop.
+     */
+    private fun checkStreamStall() {
+        if (ui.streamingId == null) {
+            stallProbeAt = 0L
+            lastDeltaAt = 0L
+            return
+        }
+        // Compose is not drawing while the app is away, so silence there is
+        // expected; the probe runs again as soon as the user is back.
+        if (!foreground) return
+        val now = System.currentTimeMillis()
+        if (lastDeltaAt == 0L) {
+            lastDeltaAt = now
+            return
+        }
+        if (stallProbeAt != 0L) {
+            // The probe never came back (dropped frame, dead socket). Let the
+            // next probe ask again instead of waiting forever.
+            if (now - stallProbeAt > STREAM_PROBE_TIMEOUT_MS) stallProbeAt = 0L
+            return
+        }
+        if (!client.connected.value) return
+        if (now - lastStallHealAt < STREAM_HEAL_COOLDOWN_MS) return
+        if (now - lastDeltaAt < STREAM_STALL_MS) return
+        stallProbeAt = now
+        requestState()
+    }
+
+    /**
+     * pig answered that nothing is streaming, so the tail of the stream was lost:
+     * drop the stale live state and re-read the transcript it already wrote, which
+     * is what made switching sessions appear to "fix" a stuck answer.
+     */
+    private fun healStalledStream(source: String) {
+        val id = ui.streamingId ?: return
+        val now = System.currentTimeMillis()
+        val silentFor = if (lastDeltaAt > 0) now - lastDeltaAt else -1L
+        lastStallHealAt = now
+        stallProbeAt = 0L
+        lastDeltaAt = 0L
+        AppLog.event("stream", "heal ($source) assistant=$id silent=${silentFor}ms")
+        // The resync must survive the "a turn started while the history was
+        // building" guard, and bindResumedAssistant() only re-marks a bubble as
+        // streaming while busy is set.
+        liveActive = false
+        currentAssistant = null
+        seedLiveFromHistory = true
+        ui = ui.copy(streamingId = null, busy = false, status = "")
+        requestMessages()
+    }
+
     private fun requestMessages() {
         val id = "msgs-${nextId++}"
         lastMessagesRequestId = id
@@ -4484,7 +4561,27 @@ class AppViewModel @JvmOverloads constructor(
     }
 
     private fun update(id: String, block: (ChatMsg) -> ChatMsg) {
-        ui = ui.copy(messages = ui.messages.map { if (it.id == id) block(it) else it })
+        var found = false
+        val next = ui.messages.map {
+            if (it.id == id) {
+                found = true
+                block(it)
+            } else {
+                it
+            }
+        }
+        if (!found) {
+            // A delta whose bubble was replaced by a history rebuild used to
+            // vanish without a trace, which is what a stream stuck on its last
+            // snapshot looks like. Leave a throttled line in app.log instead.
+            val now = System.currentTimeMillis()
+            if (now - lastMissLogAt > 2_000) {
+                lastMissLogAt = now
+                AppLog.event("stream", "update missed id=$id streaming=${ui.streamingId}")
+            }
+            return
+        }
+        ui = ui.copy(messages = next)
     }
 
     private fun remove(id: String) {
@@ -5397,6 +5494,17 @@ class AppViewModel @JvmOverloads constructor(
                     ui.sessionFile.isNotBlank() && ui.sessionFile != reportedFile
                 val settledNow = !straggler &&
                     (!awaitingNewSession || newSessionSettled(reportedSessionId, reportedFile))
+                if (stallProbeAt != 0L) {
+                    // This reply answers the watchdog's question: pig says whether
+                    // the turn is still running. Silence plus "not streaming"
+                    // means the tail frame was lost.
+                    stallProbeAt = 0L
+                    if (!streaming && !data.optBoolean("isCompacting", false)) {
+                        healStalledStream("get_state")
+                    } else {
+                        lastDeltaAt = System.currentTimeMillis()
+                    }
+                }
                 val sessionId = if (settledNow) reportedSessionId else ui.sessionId
                 val sessionFile = if (settledNow) reportedFile else ui.sessionFile
                 val switched = sessionId.isNotBlank() &&
@@ -6163,6 +6271,19 @@ class AppViewModel @JvmOverloads constructor(
             liveBuffer.setLength(0)
             liveBuffer.append(it)
         }
+        if (seedLiveFromHistory) {
+            // A healed stream lost its tail; continue from what pig actually
+            // persisted instead of the truncated buffer this app kept.
+            seedLiveFromHistory = false
+            val last = build.items.lastOrNull { it.role == Role.ASSISTANT }
+            liveBuffer.setLength(0)
+            liveThinking.setLength(0)
+            if (last != null) {
+                liveBuffer.append(last.text)
+                liveThinking.append(last.thinking)
+            }
+            liveThinkingDirty = true
+        }
         currentAssistant = build.assistantId
         ui = ui.copy(messages = build.items)
         rememberHistory(path, window, hasOlder)
@@ -6481,6 +6602,9 @@ class AppViewModel @JvmOverloads constructor(
      * each one is what made scrolling drop frames. Coalesce to ~20 fps.
      */
     private fun scheduleLiveFlush() {
+        // Every token passes through here, which makes it the one place the stall
+        // watchdog has to watch.
+        lastDeltaAt = System.currentTimeMillis()
         // Compose is not drawing while the app is in the background; rebuilding
         // the message list every 50ms only allocates. liveText keeps growing and
         // onForeground flushes it once.
@@ -6998,6 +7122,12 @@ private const val MAX_IMAGE_B64_CHARS = 8_000_000
 /** Keepalive cadence: fast while the user is watching, slow in the background. */
 private const val PING_FOREGROUND_MS = 4_000L
 private const val PING_BACKGROUND_MS = 30_000L
+
+/** How much token silence counts as a stalled stream, and how often to check. */
+private const val STREAM_STALL_MS = 10_000L
+private const val STREAM_STALL_TICK_MS = 2_000L
+private const val STREAM_PROBE_TIMEOUT_MS = 6_000L
+private const val STREAM_HEAL_COOLDOWN_MS = 60_000L
 
 /** How long a reconnect waits for the running relay before launching another. */
 private const val RELAY_RELAUNCH_GRACE_MS = 4_000L
