@@ -5278,6 +5278,7 @@ private fun MessageRow(
                                 codeBlockRadius = codeBlockRadius,
                                 codeBlockBorderAlpha = codeBlockBorderAlpha,
                                 codeToggleState = codeToggles,
+                                selectionMode = selecting,
                             )
                         }
                         if (message.images.isNotEmpty() || message.imagesOmitted > 0) {

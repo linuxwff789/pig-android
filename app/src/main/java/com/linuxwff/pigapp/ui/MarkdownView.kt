@@ -93,6 +93,12 @@ fun PigMarkdown(
     modifier: Modifier = Modifier,
     types: TypeScale = TypeScale(),
     cornerRadius: Int = 16,
+    /**
+     * While a transcript selection is active, drop inline-code backgrounds:
+     * Compose paints span backgrounds *above* the selection highlight, so an
+     * opaque code span punches a hole through the selected range.
+     */
+    selectionMode: Boolean = false,
 ) {
     val components = remember(cornerRadius) {
         markdownComponents(
@@ -138,7 +144,11 @@ fun PigMarkdown(
         inlineCodeText = packColor(md.inlineCodeColor),
         linkText = packColor(md.linkColor),
         codeBackground = packColor(md.codeBlockBackground).copy(alpha = md.codeBlockAlpha),
-        inlineCodeBackground = packColor(md.inlineCodeBackground),
+        inlineCodeBackground = if (selectionMode) {
+            Color.Transparent
+        } else {
+            packColor(md.inlineCodeBackground)
+        },
         dividerColor = packColor(md.hrColor),
     )
     Markdown(
@@ -392,6 +402,7 @@ fun AssistantMarkdown(
     cornerRadius: Int = 16,
     codeBlockRadius: Int = -1,
     codeBlockBorderAlpha: Float = 0.35f,
+    selectionMode: Boolean = false,
     // Open/closed state per code block, hoisted by the caller: long-pressing a
     // message to enter selection mode remounts the body, and state remembered
     // inside the block would snap back to collapsed.
@@ -409,6 +420,7 @@ fun AssistantMarkdown(
                     modifier = Modifier.fillMaxWidth(),
                     types = types,
                     cornerRadius = cornerRadius,
+                    selectionMode = selectionMode,
                 )
                 is MarkdownSegment.Code -> CollapsibleCode(
                     language = segment.language,
