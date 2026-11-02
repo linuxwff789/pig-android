@@ -37,6 +37,9 @@ import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -84,6 +87,23 @@ private class PigImageTransformer(private val cornerRadius: Int) : ImageTransfor
             contentDescription = link,
         )
     }
+}
+
+
+/**
+ * A pack can pick a code background that is almost identical to the page
+ * (light themes often set `surfaceVariant` a shade off white). When the
+ * contrast ratio falls below 1.25, nudge it toward the body text colour so
+ * inline code stays visible instead of looking like plain text.
+ */
+private fun readableInlineCode(configured: Color, page: Color): Color {
+    val base = configured.compositeOver(page)
+    val a = base.luminance()
+    val b = page.luminance()
+    val ratio = (maxOf(a, b) + 0.05f) / (minOf(a, b) + 0.05f)
+    if (ratio >= 1.25f) return base
+    val ink = if (b > 0.5f) Color(0xFF1A1C22) else Color(0xFFECEEF5)
+    return lerp(base, ink, 0.16f)
 }
 
 /** Markdown with a GFM table renderer (the m3 renderer has no table component). */
@@ -139,6 +159,7 @@ fun PigMarkdown(
         ),
     )
     val md = LocalUiPack.current.layout.markdown
+    val pageBackground = MaterialTheme.colorScheme.background
     val colors = markdownColor(
         codeText = packColor(md.inlineCodeColor),
         inlineCodeText = packColor(md.inlineCodeColor),
@@ -147,7 +168,7 @@ fun PigMarkdown(
         inlineCodeBackground = if (selectionMode) {
             Color.Transparent
         } else {
-            packColor(md.inlineCodeBackground)
+            readableInlineCode(packColor(md.inlineCodeBackground), pageBackground)
         },
         dividerColor = packColor(md.hrColor),
     )
