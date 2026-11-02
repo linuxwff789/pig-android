@@ -30,8 +30,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -161,6 +163,8 @@ class AppViewModel @JvmOverloads constructor(
     private var packPinnedByUser = false
     private var autoReconnectJob: kotlinx.coroutines.Job? = null
     private var lastPongAt = 0L
+    /** Wakes the keepalive loop so a foreground switch re-evaluates its cadence. */
+    private val pingWake = Channel<Unit>(Channel.CONFLATED)
     private var desiredSessionPath: String? = null
     /**
      * Bumped whenever the conversation being shown changes. A get_messages
@@ -287,12 +291,18 @@ class AppViewModel @JvmOverloads constructor(
         // of waking the CPU every 4s for a round trip that never changes.
         viewModelScope.launch {
             while (true) {
-                val interval = if (foreground) 4_000L else 30_000L
-                delay(interval)
+                val interval = if (foreground) PING_FOREGROUND_MS else PING_BACKGROUND_MS
+                // A foreground switch must not sit out the 30s background wait:
+                // waking early re-reads the cadence instead of keeping a stale one.
+                withTimeoutOrNull(interval) { pingWake.receive() }
                 if (!client.connected.value) continue
                 val now = System.currentTimeMillis()
-                val staleAfter = if (foreground) 12_000L else 90_000L
-                if (lastPongAt > 0 && now - lastPongAt > staleAfter) {
+                // Judge a silent socket against the cadence that actually ran.
+                // Sleeping 30s in the background and then applying the 12s
+                // foreground limit declared a healthy socket dead, closed it and
+                // re-ran the relay on every trip back to the app.
+                val limit = maxOf(interval * 2, if (foreground) 12_000L else 90_000L)
+                if (lastPongAt > 0 && now - lastPongAt > limit) {
                     lastPongAt = 0
                     client.close()
                     if (foreground) {
@@ -1027,6 +1037,7 @@ class AppViewModel @JvmOverloads constructor(
         if (client.connected.value) {
             lastPongAt = System.currentTimeMillis()
             client.send(JSONObject().put("type", "relay_ping").put("id", "ping-${nextId++}"))
+            pingWake.trySend(Unit)
             return
         }
         startAutoReconnect()
@@ -1038,12 +1049,19 @@ class AppViewModel @JvmOverloads constructor(
         saveDrafts(force = true)
         autoReconnectJob?.cancel()
         autoReconnectJob = null
+        // Switch the keepalive to its slow cadence now instead of after the
+        // current foreground wait.
+        pingWake.trySend(Unit)
     }
 
     private fun startAutoReconnect() {
         if (autoReconnectJob?.isActive == true) return
         autoReconnectJob = viewModelScope.launch {
-            var nextLaunch = 0L
+            // Give a still-running relay a chance to answer before asking Termux
+            // to run another one: a duplicate exits with "address already in
+            // use", posts a Termux notification, and the relaunch killed the
+            // parked pig processes for no reason.
+            var nextLaunch = System.currentTimeMillis() + RELAY_RELAUNCH_GRACE_MS
             while (foreground && !client.connected.value) {
                 val ctx = getApplication<Application>()
                 if (!RelayLauncher.hasPermission(ctx)) break
@@ -4474,6 +4492,9 @@ class AppViewModel @JvmOverloads constructor(
     }
 
     private fun handle(event: JSONObject) {
+        // Any frame proves the socket is alive, not just a pong. Streaming used
+        // to leave lastPongAt behind whenever a pong raced a large frame.
+        lastPongAt = System.currentTimeMillis()
         when (val type = event.optString("type")) {
             "relay_hello" -> {
                 // A relay from before 1.1.34 has no backup frames; hide the
@@ -6973,6 +6994,13 @@ private const val BUNDLED_PACK_ROOT = "ui-packs"
 
 /** Largest base64 payload accepted from pig (~6 MiB of image bytes). */
 private const val MAX_IMAGE_B64_CHARS = 8_000_000
+
+/** Keepalive cadence: fast while the user is watching, slow in the background. */
+private const val PING_FOREGROUND_MS = 4_000L
+private const val PING_BACKGROUND_MS = 30_000L
+
+/** How long a reconnect waits for the running relay before launching another. */
+private const val RELAY_RELAUNCH_GRACE_MS = 4_000L
 
 /** Most images rendered for one message. */
 private const val MAX_IMAGES_PER_MESSAGE = 8
