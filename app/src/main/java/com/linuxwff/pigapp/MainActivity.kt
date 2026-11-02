@@ -10,7 +10,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.runtime.LaunchedEffect
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.linuxwff.pigapp.ui.PigApp
 import com.linuxwff.pigapp.ui.PigTheme
 
@@ -35,6 +39,8 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         setContent {
+            val immersive = vm.ui.immersive
+            LaunchedEffect(immersive) { applyImmersive(immersive) }
             PigTheme(vm.ui.uiPack) {
                 PigApp(vm)
             }
@@ -55,7 +61,26 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        applyImmersive(vm.ui.immersive)
         vm.onForeground()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // Some ROMs restore the bars after a dialog, the recents screen or an
+        // orientation change; re-hide them whenever we come back to the front.
+        if (hasFocus) applyImmersive(vm.ui.immersive)
+    }
+
+    private fun applyImmersive(enabled: Boolean) {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        if (enabled) {
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
     }
 
     override fun onPause() {

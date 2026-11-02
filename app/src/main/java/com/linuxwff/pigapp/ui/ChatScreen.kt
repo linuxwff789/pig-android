@@ -1613,6 +1613,15 @@ private fun SettingsDialog(
                     onCheckedChange = vm::setBubbleShadow,
                 )
                 SettingToggle(
+                    title = packText("settings.immersive", "沉浸模式"),
+                    subtitle = packText(
+                        "settings.immersiveHint",
+                        "隐藏状态栏和导航栏；从屏幕边缘滑动可临时唤出",
+                    ),
+                    checked = ui.immersive,
+                    onCheckedChange = vm::setImmersive,
+                )
+                SettingToggle(
                     title = packText("settings.showTimestamps", "显示消息时间"),
                     subtitle = packText(
                         "settings.showTimestampsHint",

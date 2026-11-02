@@ -665,6 +665,8 @@ data class AppUiState(
     val bubbleShadow: Boolean = true,
     /** Show each message's clock time (local pref, off by default). */
     val showTimestamps: Boolean = false,
+    /** Hide the system status/navigation bars (local pref, off by default). */
+    val immersive: Boolean = false,
     /** Empty = use the UI pack's chat.toolCards; otherwise collapsed/summary/expanded. */
     val toolMode: String = "",
     /** True for a history session served from disk (no pig process running). */

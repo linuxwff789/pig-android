@@ -219,6 +219,7 @@ class AppViewModel @JvmOverloads constructor(
                 true
             },
             showTimestamps = prefs.getBoolean("showTimestamps", false),
+            immersive = prefs.getBoolean("immersive", false),
             skinId = prefs.getString("skinId", "").orEmpty(),
             activePackId = initialPackId(),
             contextOverrides = loadContextOverrides(),
@@ -1506,6 +1507,11 @@ class AppViewModel @JvmOverloads constructor(
     fun setShowTimestamps(enabled: Boolean) {
         prefs.edit().putBoolean("showTimestamps", enabled).apply()
         ui = ui.copy(showTimestamps = enabled)
+    }
+
+    fun setImmersive(enabled: Boolean) {
+        prefs.edit().putBoolean("immersive", enabled).apply()
+        ui = ui.copy(immersive = enabled)
     }
 
     private val packsDir: File
