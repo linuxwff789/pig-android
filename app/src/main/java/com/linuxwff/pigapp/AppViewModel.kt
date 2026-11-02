@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -270,15 +271,28 @@ class AppViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             RunCommandFeedback.outcomes.collect { handleRunCommandOutcome(it) }
         }
+        // Hold the partial wake lock only while a turn runs. Keeping it for the
+        // whole service lifetime (the old behaviour) cost battery while idle and
+        // stopped the device from reaching deep sleep; the foreground service
+        // plus the loopback socket is what actually maintains the connection.
+        viewModelScope.launch {
+            snapshotFlow { ui.busy }.collect { busy ->
+                KeepAliveService.setTurnActive(getApplication(), busy)
+            }
+        }
         // Loopback TCP has no keepalive: after the phone sleeps or the process
         // is frozen the socket can look alive while the relay is gone. Ping
-        // periodically and drop the connection when the pongs stop.
+        // periodically and drop the connection when the pongs stop. The relay is
+        // on the same device, so a backgrounded app can back off to 30s instead
+        // of waking the CPU every 4s for a round trip that never changes.
         viewModelScope.launch {
             while (true) {
-                delay(4_000)
+                val interval = if (foreground) 4_000L else 30_000L
+                delay(interval)
                 if (!client.connected.value) continue
                 val now = System.currentTimeMillis()
-                if (lastPongAt > 0 && now - lastPongAt > 12_000) {
+                val staleAfter = if (foreground) 12_000L else 90_000L
+                if (lastPongAt > 0 && now - lastPongAt > staleAfter) {
                     lastPongAt = 0
                     client.close()
                     if (foreground) {

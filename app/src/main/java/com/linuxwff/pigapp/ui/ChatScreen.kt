@@ -1597,7 +1597,7 @@ private fun SettingsDialog(
                 )
                 SettingToggle(
                     title = packText("settings.wakeLock", "唤醒锁"),
-                    subtitle = packText("settings.wakeLockHint", "像 termux-wake-lock 一样让 CPU 不休眠"),
+                    subtitle = packText("settings.wakeLockHint", "只在执行任务时让 CPU 不休眠（空闲时自动释放）"),
                     checked = ui.wakeLock,
                     onCheckedChange = vm::setWakeLock,
                 )

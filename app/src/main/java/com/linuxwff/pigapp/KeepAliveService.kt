@@ -20,11 +20,17 @@ import androidx.core.content.ContextCompat
  * pig-relay) alive while the screen is off. Like Termux's `termux-wake-lock`,
  * it can also hold a partial wake lock so the CPU is not suspended during a
  * long turn; the user can turn that off from the drawer.
+ *
+ * The wake lock is held for the duration of one turn, not for the lifetime of
+ * the service: the foreground notification already keeps the process and the
+ * socket alive, so holding the CPU awake while idle only cost battery (a
+ * measured 10.5mAh for a single 39-minute hold).
  */
 class KeepAliveService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private val handler = Handler(Looper.getMainLooper())
-    private val renewWakeLock = Runnable { applyWakeLock(prefsEnabled()) }
+    private val renewWakeLock = Runnable { refreshWakeLock() }
+    private val releaseWhenIdle = Runnable { if (!turnActive) releaseWakeLock() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -32,7 +38,7 @@ class KeepAliveService : Service() {
         super.onCreate()
         running = true
         startForeground(NOTIFICATION_ID, buildNotification())
-        applyWakeLock(prefsEnabled())
+        refreshWakeLock()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -43,14 +49,17 @@ class KeepAliveService : Service() {
             }
             ACTION_SET_WAKE_LOCK -> {
                 val enabled = intent.getBooleanExtra(EXTRA_ENABLED, prefsEnabled())
-                applyWakeLock(enabled)
+                refreshWakeLock()
+                if (!enabled) releaseWakeLock()
             }
+            ACTION_TURN_STATE -> setTurnActive(intent.getBooleanExtra(EXTRA_ACTIVE, false))
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
         running = false
+        turnActive = false
         releaseWakeLock()
         super.onDestroy()
     }
@@ -58,29 +67,37 @@ class KeepAliveService : Service() {
     private fun prefsEnabled(): Boolean =
         getSharedPreferences("pig", MODE_PRIVATE).getBoolean(PREF_WAKE_LOCK, true)
 
-    private fun applyWakeLock(enabled: Boolean) {
-        if (!enabled) {
+    /** A turn started or settled; hold the CPU only while one is running. */
+    private fun setTurnActive(active: Boolean) {
+        turnActive = active
+        handler.removeCallbacks(releaseWhenIdle)
+        if (active) {
+            refreshWakeLock()
+        } else {
+            // Let the last frames of the turn land before the CPU may sleep.
+            handler.postDelayed(releaseWhenIdle, TURN_GRACE_MS)
+        }
+    }
+
+    private fun refreshWakeLock() {
+        handler.removeCallbacks(renewWakeLock)
+        if (!prefsEnabled() || !turnActive) {
             releaseWakeLock()
             return
         }
-        // Never hold the CPU indefinitely: a dead relay should not keep the
-        // device awake for the whole service lifetime. Renew while the service
-        // is alive, and let the OS reclaim it if the process is frozen.
-        handler.removeCallbacks(renewWakeLock)
-        if (wakeLock?.isHeld == true) {
-            runCatching { wakeLock?.release() }
-        }
-        wakeLock = null
         runCatching {
-            val manager = getSystemService(PowerManager::class.java)
-            wakeLock = manager.newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK,
-                "Pig::RelayConnection",
-            ).apply {
-                setReferenceCounted(false)
-                acquire(WAKE_LOCK_MS)
+            val held = wakeLock?.isHeld == true
+            if (!held) {
+                val manager = getSystemService(PowerManager::class.java)
+                wakeLock = manager.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "Pig::Turn",
+                ).apply { setReferenceCounted(false) }
             }
-            handler.postDelayed(renewWakeLock, WAKE_LOCK_MS - 60_000L)
+            // A timeout, not an indefinite hold: a frozen or killed turn must
+            // never pin the CPU, so it is renewed while the turn keeps running.
+            wakeLock?.acquire(TURN_WAKE_LOCK_MS)
+            handler.postDelayed(renewWakeLock, TURN_WAKE_LOCK_MS / 2)
         }
     }
 
@@ -91,7 +108,6 @@ class KeepAliveService : Service() {
         }
         wakeLock = null
     }
-
     private fun buildNotification(): Notification {
         val manager = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -138,12 +154,19 @@ class KeepAliveService : Service() {
         private const val NOTIFICATION_ID = 101
         private const val ACTION_STOP = "com.linuxwff.pigapp.KEEPALIVE_STOP"
         private const val ACTION_SET_WAKE_LOCK = "com.linuxwff.pigapp.SET_WAKE_LOCK"
+        private const val ACTION_TURN_STATE = "com.linuxwff.pigapp.TURN_STATE"
         private const val EXTRA_ENABLED = "enabled"
+        private const val EXTRA_ACTIVE = "active"
         private const val PREF_WAKE_LOCK = "wakelock"
-        private const val WAKE_LOCK_MS = 30 * 60_000L
+        private const val TURN_WAKE_LOCK_MS = 2 * 60_000L
+        private const val TURN_GRACE_MS = 30_000L
 
         @Volatile
         private var running = false
+
+        /** True while pig is running a turn in this app. */
+        @Volatile
+        private var turnActive = false
 
         fun start(context: Context) {
             runCatching {
@@ -175,6 +198,24 @@ class KeepAliveService : Service() {
         fun stop(context: Context) {
             runCatching {
                 context.stopService(Intent(context, KeepAliveService::class.java))
+            }
+        }
+
+        /**
+         * Tell the service whether a turn is running. Only a turn needs the CPU
+         * awake; holding the lock for the whole service lifetime kept the device
+         * out of deep sleep while nothing was happening.
+         */
+        fun setTurnActive(context: Context, active: Boolean) {
+            if (turnActive == active) return
+            turnActive = active
+            if (!running) return
+            runCatching {
+                context.startService(
+                    Intent(context, KeepAliveService::class.java)
+                        .setAction(ACTION_TURN_STATE)
+                        .putExtra(EXTRA_ACTIVE, active),
+                )
             }
         }
     }
