@@ -112,6 +112,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.runtime.getValue
@@ -4556,12 +4557,17 @@ private fun MessageList(
         anySelection,
     ) {
         if (messages.isNotEmpty() && autoScroll && olderAnchor == null && !anySelection) {
-            runCatching {
-                // offset 0 aligns the item's *top* with the viewport; a
-                // long answer would then pin the head of the message and
-                // the newest tokens stayed below the fold.
+            // A finished message can land in one jump (the streaming text is
+            // replaced by the full one). The list still holds the height it
+            // measured for the shorter text at that instant, so a single
+            // scrollToItem stops short and the tail stays below the fold until
+            // something else scrolls. Re-pin after the item is measured, and
+            // stop as soon as the list is already at the bottom.
+            repeat(3) {
                 val last = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
-                listState.scrollToItem(last, Int.MAX_VALUE)
+                runCatching { listState.scrollToItem(last, Int.MAX_VALUE) }
+                withFrameNanos { }
+                if (!listState.canScrollForward) return@LaunchedEffect
             }
         }
     }
