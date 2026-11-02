@@ -3548,6 +3548,21 @@
           ]
         },
         {
+          "key": "inlineCodeSelectionAlpha",
+          "path": [
+            "chat",
+            "markdown",
+            "inlineCodeSelectionAlpha"
+          ],
+          "type": "float",
+          "label": "选中时代码底色",
+          "default": 0.45,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "desc": "选中文字时行内代码底色的不透明度；0 = 让位给选中色，1 = 完全盖住选中色"
+        },
+        {
           "key": "inlineCodeColor",
           "path": [
             "chat",

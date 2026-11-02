@@ -608,6 +608,7 @@ App 重启后优先级相同：pack 提供默认值，已保存的偏好（如�
 | --- | --- | --- |
 | `linkColor` | `secondary` | `[text](url)` |
 | `inlineCodeBackground` / `inlineCodeColor` | `surfaceVariant` / `onSurface` | `` `code` `` |
+| `inlineCodeSelectionAlpha` | 0.45 | 选中文字时行内代码底色的不透明度；0 = 让位给选中色，1 = 完全盖住选中色 |
 | `codeBlockBackground` / `codeBlockAlpha` | `background` / 0.6 | 围栏代码块 |
 | `codeBlockBorderColor` | `outline` | 围栏代码块边框（不透明度来自 `chat.codeBlockBorderAlpha`） |
 | `quoteTextColor` | `onSurfaceVariant` | `>` 引用块 |

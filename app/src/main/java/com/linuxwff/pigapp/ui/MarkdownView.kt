@@ -160,15 +160,18 @@ fun PigMarkdown(
     )
     val md = LocalUiPack.current.layout.markdown
     val pageBackground = MaterialTheme.colorScheme.background
+    val inlineCode = readableInlineCode(packColor(md.inlineCodeBackground), pageBackground)
     val colors = markdownColor(
         codeText = packColor(md.inlineCodeColor),
         inlineCodeText = packColor(md.inlineCodeColor),
         linkText = packColor(md.linkColor),
         codeBackground = packColor(md.codeBlockBackground).copy(alpha = md.codeBlockAlpha),
         inlineCodeBackground = if (selectionMode) {
-            Color.Transparent
+            // Keep a hint of the code background so the code span is still
+            // recognisable, but let the selection colour show through.
+            inlineCode.copy(alpha = md.inlineCodeSelectionAlpha)
         } else {
-            readableInlineCode(packColor(md.inlineCodeBackground), pageBackground)
+            inlineCode
         },
         dividerColor = packColor(md.hrColor),
     )

@@ -908,6 +908,10 @@ object UiPackParser {
         return UiMarkdownAppearance(
             linkColor = token("linkColor", d.linkColor),
             inlineCodeBackground = token("inlineCodeBackground", d.inlineCodeBackground),
+            inlineCodeSelectionAlpha = json.optDouble(
+                "inlineCodeSelectionAlpha",
+                d.inlineCodeSelectionAlpha.toDouble(),
+            ).toFloat().coerceIn(0f, 1f),
             inlineCodeColor = token("inlineCodeColor", d.inlineCodeColor),
             codeBlockBackground = token("codeBlockBackground", d.codeBlockBackground),
             codeBlockAlpha = json.optDouble("codeBlockAlpha", d.codeBlockAlpha.toDouble())

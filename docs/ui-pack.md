@@ -629,6 +629,7 @@ removed through `drawer.modules`.
 | --- | --- | --- |
 | `linkColor` | `secondary` | `[text](url)` |
 | `inlineCodeBackground` / `inlineCodeColor` | `surfaceVariant` / `onSurface` | `` `code` `` |
+| `inlineCodeSelectionAlpha` | 0.45 | opacity of the code background while text is selected; 0 lets the selection colour fill it, 1 covers it |
 | `codeBlockBackground` / `codeBlockAlpha` | `background` / 0.6 | fenced blocks |
 | `codeBlockBorderColor` | `outline` | fenced block border (opacity from `chat.codeBlockBorderAlpha`) |
 | `quoteTextColor` | `onSurfaceVariant` | `>` blocks |

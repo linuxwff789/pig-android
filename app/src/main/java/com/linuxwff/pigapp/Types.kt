@@ -214,6 +214,8 @@ data class UiChromeAppearance(
 data class UiMarkdownAppearance(
     val linkColor: String = "secondary",
     val inlineCodeBackground: String = "surfaceVariant",
+    /** Kept while a transcript selection is active so code stays recognisable. */
+    val inlineCodeSelectionAlpha: Float = 0.45f,
     val inlineCodeColor: String = "onSurface",
     val codeBlockBackground: String = "background",
     val codeBlockAlpha: Float = 0.6f,
