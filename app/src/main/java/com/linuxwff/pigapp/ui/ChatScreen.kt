@@ -80,6 +80,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.FilterChip
@@ -170,6 +171,7 @@ import com.linuxwff.pigapp.AppUiState
 import com.linuxwff.pigapp.AppViewModel
 import com.linuxwff.pigapp.BackupExporter
 import com.linuxwff.pigapp.ChatMsg
+import com.linuxwff.pigapp.ExtensionRow
 import com.linuxwff.pigapp.LocalPackInfo
 import com.linuxwff.pigapp.LogExporter
 import com.linuxwff.pigapp.PendingImage
@@ -209,6 +211,7 @@ fun PigApp(vm: AppViewModel) {
     LaunchedEffect(draftKey, draft) { vm.setDraft(draftKey, draft) }
     var showSettings by remember { mutableStateOf(false) }
     var showStats by remember { mutableStateOf(false) }
+    var showExtensions by remember { mutableStateOf(false) }
     var showPackManager by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
     var showWebDav by remember { mutableStateOf(false) }
@@ -333,6 +336,7 @@ fun PigApp(vm: AppViewModel) {
                             DrawerContent(
                                 vm = vm,
                                 ui = ui,
+                                open = open,
                                 onClose = { scope.launch { drawerState.close() } },
                                 onSettings = {
                                     scope.launch { drawerState.close() }
@@ -576,6 +580,11 @@ fun PigApp(vm: AppViewModel) {
                     vm.refreshStats()
                     showStats = true
                 },
+                onOpenExtensions = {
+                    showSettings = false
+                    vm.refreshExtensions(force = true)
+                    showExtensions = true
+                },
                 onOpenWebDav = {
                     showSettings = false
                     showWebDav = true
@@ -591,6 +600,9 @@ fun PigApp(vm: AppViewModel) {
         }
         if (showStats) {
             StatsDialog(ui, onRefresh = vm::refreshStats) { showStats = false }
+        }
+        if (showExtensions) {
+            ExtensionManagerDialog(ui, vm) { showExtensions = false }
         }
         if (showPackManager) {
             PackManagerDialog(vm, ui) { showPackManager = false }
@@ -1272,6 +1284,7 @@ private fun SettingsDialog(
     ui: AppUiState,
     onOpenPacks: () -> Unit,
     onOpenStats: () -> Unit,
+    onOpenExtensions: () -> Unit,
     onOpenWebDav: () -> Unit,
     onOpenArchive: () -> Unit,
     onDismiss: () -> Unit,
@@ -1940,6 +1953,25 @@ private fun SettingsDialog(
 
                 HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
                 Text(packText("settings.data", "数据"), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            packText("settings.plugins", "插件"),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            packText(
+                                "settings.pluginsHint",
+                                "已加载的扩展与技能：健康状态、启用/停用、卸载（改完自动重载）",
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = onOpenExtensions) {
+                        Text(packText("settings.manage", "管理"))
+                    }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -3057,6 +3089,7 @@ private fun DrawerContent(
     onClose: () -> Unit,
     onSettings: () -> Unit,
     onOpenPacks: () -> Unit,
+    open: Boolean,
 ) {
     val scheme = MaterialTheme.colorScheme
     val corner = ui.uiPack.theme.cornerRadius
@@ -3073,6 +3106,13 @@ private fun DrawerContent(
     var renameTarget by remember { mutableStateOf<SessionInfo?>(null) }
     var renameText by remember { mutableStateOf("") }
     var deleteTarget by remember { mutableStateOf<SessionInfo?>(null) }
+    // The drawer keeps its composition while closed, so a list left scrolled in a
+    // previous visit looked like it opened "somewhere in the middle". Every
+    // opening starts at the top, where the running sessions are.
+    val sessionListState = rememberLazyListState()
+    LaunchedEffect(open) {
+        if (open) sessionListState.scrollToItem(0)
+    }
     val shownSessions = remember(ui.sessions, sessionQuery) {
         val query = sessionQuery.trim()
         if (query.isEmpty()) {
@@ -3331,6 +3371,7 @@ private fun DrawerContent(
             ),
         )
         LazyColumn(
+            state = sessionListState,
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(3.dp),
             contentPadding = PaddingValues(vertical = 2.dp),
@@ -5347,6 +5388,7 @@ private fun MessageRow(
                                 codeBlockBorderAlpha = codeBlockBorderAlpha,
                                 codeToggleState = codeToggles,
                                 selectionMode = selecting,
+                                onCopy = onCopy,
                             )
                         }
                         if (message.images.isNotEmpty() || message.imagesOmitted > 0) {
@@ -7498,4 +7540,186 @@ private fun formatTokens(tokens: Int): String = when {
     tokens >= 1_000_000 -> "%.1f".format(tokens / 1_000_000f).removeSuffix(".0") + "M"
     tokens >= 1000 -> "${tokens / 1000}K"
     else -> "$tokens"
+}
+
+/**
+ * Plugin screen: what pig actually loaded, plus the two actions that need the
+ * Termux side (toggle a `settings.json` package entry, unregister one). Both are
+ * followed by a reload, because pig only rebuilds its tool list on `/reload`.
+ */
+@Composable
+private fun ExtensionManagerDialog(
+    ui: AppUiState,
+    vm: AppViewModel,
+    onDismiss: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    var confirmRemove by remember { mutableStateOf<ExtensionRow?>(null) }
+    var deleteFiles by remember { mutableStateOf(false) }
+    val groups = remember(ui.extensions) { ui.extensions.groupBy { it.kind } }
+    val enabled = ui.extensions.count { it.enabled }
+    val broken = ui.extensions.filter { it.health.isNotBlank() }
+
+    PackAlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(ui.uiPack.theme.cornerRadius.dp),
+        containerColor = scheme.surface,
+        title = { Text(packText("ext.title", "插件")) },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(packText("dialog.ok", "关闭")) }
+        },
+        dismissButton = {
+            TextButton(onClick = vm::reloadExtensions) {
+                Text(packText("ext.reload", "重新加载"))
+            }
+        },
+        text = {
+            Column(
+                Modifier
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    if (!ui.extensionsLoaded) {
+                        packText("ext.loading", "正在读取…")
+                    } else {
+                        buildString {
+                            append(
+                                packText("ext.summary", "{on} 启用 · {off} 停用")
+                                    .replace("{on}", enabled.toString())
+                                    .replace("{off}", (ui.extensions.size - enabled).toString()),
+                            )
+                            if (broken.isNotEmpty()) {
+                                append(" · ").append(
+                                    packText("ext.broken", "{n} 异常")
+                                        .replace("{n}", broken.size.toString()),
+                                )
+                            }
+                        }
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (broken.isEmpty()) scheme.onSurfaceVariant else scheme.error,
+                )
+                ui.extensionsError?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = scheme.error)
+                }
+                groups.forEach { (kind, rows) ->
+                    HorizontalDivider(color = scheme.outline.copy(alpha = 0.2f))
+                    Text(
+                        kind,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                    rows.forEach { row ->
+                        Column(Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        row.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        row.source,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = scheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                Switch(
+                                    checked = row.enabled,
+                                    onCheckedChange = { vm.setExtensionEnabled(row, it) },
+                                )
+                            }
+                            if (row.health.isNotBlank()) {
+                                Text(
+                                    row.health,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = scheme.error,
+                                )
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(onClick = { vm.copyText(row.path) }) {
+                                    Text(
+                                        packText("ext.copyPath", "复制路径"),
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                }
+                                if (!row.builtin) {
+                                    TextButton(onClick = {
+                                        deleteFiles = false
+                                        confirmRemove = row
+                                    }) {
+                                        Text(
+                                            packText("ext.uninstall", "卸载"),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = scheme.error,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    )
+
+    confirmRemove?.let { row ->
+        PackAlertDialog(
+            onDismissRequest = { confirmRemove = null },
+            shape = RoundedCornerShape(ui.uiPack.theme.cornerRadius.dp),
+            containerColor = scheme.surface,
+            title = {
+                Text(packText("ext.uninstallTitle", "卸载 {name}").replace("{name}", row.name))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.uninstallExtension(row, deleteFiles)
+                    confirmRemove = null
+                }) { Text(packText("ext.confirmUninstall", "卸载")) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRemove = null }) {
+                    Text(packText("dialog.cancel", "取消"))
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        packText(
+                            "ext.uninstallHint",
+                            "会从 settings.json 的 packages 里移除；pig 重新加载后不再加载它。",
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                    if (row.deletable) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = deleteFiles,
+                                onCheckedChange = { deleteFiles = it },
+                            )
+                            Text(
+                                packText("ext.deleteFiles", "同时删除目录 {path}")
+                                    .replace("{path}", row.path),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    } else {
+                        Text(
+                            packText(
+                                "ext.keepFiles",
+                                "目录不在 ~/.pig/agent/extensions 下：只移除配置，不删文件。",
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            },
+        )
+    }
 }

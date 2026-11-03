@@ -80,6 +80,11 @@ type session struct {
 
 	uiMu   sync.Mutex
 	uiHash string
+	// extMu guards the cached `pig status --json` answer behind the plugin screen.
+	extMu     sync.Mutex
+	extAt     time.Time
+	extErr    error
+	extCached pigStatus
 	// uiStat is a metadata-only fingerprint (path + size + mtime) of the pack
 	// directory. Comparing it is ~1000x cheaper than re-reading and hashing
 	// every file, which used to wake the SoC every 800ms while idle.
@@ -1464,6 +1469,10 @@ func (s *session) handleClientLine(line []byte) {
 		Model       string         `json:"model"`
 		Window      *int           `json:"contextWindow"`
 		Limit       *int           `json:"limit"`
+		Source      string         `json:"source"`
+		Enabled     *bool          `json:"enabled"`
+		Delete      *bool          `json:"delete"`
+		Force       bool           `json:"force"`
 		Entry       map[string]any `json:"entry"`
 		Sessions    *bool          `json:"sessions"`
 		UI          *bool          `json:"ui"`
@@ -1668,6 +1677,39 @@ func (s *session) handleClientLine(line []byte) {
 	case "relay_provider_models":
 		// A fetch can take seconds; do not block pings or the transcript.
 		go s.sendProviderModels(head.ID, head.Entry)
+	case "relay_ext_status":
+		// `pig status` spawns a second pig; keep it off the read loop.
+		go func(id any, force bool) {
+			status, err := s.extensionStatus(force)
+			if err != nil {
+				_ = s.send(frame{"type": "relay_ext_error", "id": id, "message": err.Error()})
+				return
+			}
+			_ = s.send(frame{"type": "relay_ext_status", "id": id, "status": status})
+		}(head.ID, head.Force)
+	case "relay_ext_toggle":
+		enabled := true
+		if head.Enabled != nil {
+			enabled = *head.Enabled
+		}
+		if err := s.setExtensionEnabled(head.Source, enabled); err != nil {
+			_ = s.send(frame{"type": "relay_ext_error", "id": head.ID, "message": err.Error()})
+			return
+		}
+		_ = s.send(frame{
+			"type": "relay_ext_changed", "id": head.ID,
+			"source": head.Source, "enabled": enabled,
+		})
+	case "relay_ext_remove":
+		deleted, err := s.removeExtension(head.Source, head.Delete != nil && *head.Delete)
+		if err != nil {
+			_ = s.send(frame{"type": "relay_ext_error", "id": head.ID, "message": err.Error()})
+			return
+		}
+		_ = s.send(frame{
+			"type": "relay_ext_changed", "id": head.ID,
+			"source": head.Source, "removed": true, "deleted": deleted,
+		})
 	case "relay_model_override":
 		handleModelOverride(s, head.ID, head.Provider, head.Model, head.Window)
 	case "relay_ui":

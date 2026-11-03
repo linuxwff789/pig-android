@@ -127,6 +127,22 @@ data class NavItem(
 
 data class UiCommand(val name: String, val description: String = "")
 
+/**
+ * One row of the plugin screen. [source] is what settings.json lists and what the
+ * toggle/uninstall frames send back; [builtin] entries ship inside the relay and
+ * may only be disabled, while [deletable] marks a directory that belongs to pig
+ * (a source checkout elsewhere must never be deleted from the app).
+ */
+data class ExtensionRow(
+    val kind: String,
+    val name: String,
+    val path: String,
+    val source: String,
+    val enabled: Boolean,
+    val health: String = "",
+    val builtin: Boolean = false,
+    val deletable: Boolean = false,
+)
 /** One `dataSources` entry in `layout/chat.json`. */
 data class UiDataSource(
     val rpc: String,
@@ -528,6 +544,12 @@ data class AppUiState(
     val contextCompacted: Boolean = false,
     /** Cumulative prompt-cache hit rate (cacheRead / (input + cacheRead + cacheWrite)). */
     val cacheHitRate: Double? = null,
+    /** Rows of the plugin screen, straight from `pig status --json`. */
+    val extensions: List<ExtensionRow> = emptyList(),
+    /** False until the first status answer arrives, so the screen can say so. */
+    val extensionsLoaded: Boolean = false,
+    val extensionsHealthy: Boolean = true,
+    val extensionsError: String? = null,
     /** Full-session counters, refreshed by `get_session_stats`. */
     val usage: SessionUsage = SessionUsage(),
     val cacheReadTokens: Long = 0,

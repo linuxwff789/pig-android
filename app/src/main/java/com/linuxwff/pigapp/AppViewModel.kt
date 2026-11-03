@@ -2551,8 +2551,7 @@ class AppViewModel @JvmOverloads constructor(
      * Returns true when the prompt was accepted (sent or held for a starting
      * session).
      */
-    fun sendPrompt(raw: String, steer: Boolean = true): Boolean {
-        val text = raw.trim()
+    fun sendPrompt(raw: String, steer: Boolean = true): Boolean {        val text = raw.trim()
         AppLog.event("prompt", text.take(400))
         val attachments = ui.attachments
         if (text.isEmpty() && attachments.isEmpty()) return false
@@ -3514,6 +3513,76 @@ class AppViewModel @JvmOverloads constructor(
         val id = "state-${nextId++}"
         lastStateRequestId = id
         client.send(JSONObject().put("id", id).put("type", "get_state"))
+    }
+
+    /**
+     * Plugin screen: one status frame carries every row, so the app never runs
+     * `pig status` itself (it cannot read ~/.pig) and never spawns a second pig.
+     */
+    private fun handleExtensionStatus(event: JSONObject) {
+        val status = event.optJSONObject("status")
+        val items = status?.optJSONObject("resources")?.optJSONArray("items")
+        val rows = buildList {
+            if (items != null) {
+                for (index in 0 until items.length()) {
+                    val item = items.optJSONObject(index) ?: continue
+                    val source = item.optString("source")
+                    if (source.isBlank()) continue
+                    add(
+                        ExtensionRow(
+                            kind = item.optString("kind").ifBlank { "extensions" },
+                            name = item.optString("name").ifBlank { source.substringAfterLast('/') },
+                            path = item.optString("path"),
+                            source = source,
+                            enabled = item.optBoolean("enabled", true),
+                            health = item.optString("health"),
+                            builtin = item.optBoolean("builtin", false),
+                            deletable = item.optBoolean("deletable", false),
+                        ),
+                    )
+                }
+            }
+        }
+        ui = ui.copy(
+            extensions = rows,
+            extensionsLoaded = true,
+            extensionsHealthy = status?.optBoolean("healthy", true) ?: true,
+            extensionsError = null,
+        )
+    }
+
+    fun refreshExtensions(force: Boolean = false) {
+        client.send(
+            JSONObject()
+                .put("type", "relay_ext_status")
+                .put("id", "ext-${nextId++}")
+                .put("force", force),
+        )
+    }
+
+    fun setExtensionEnabled(row: ExtensionRow, enabled: Boolean) {
+        client.send(
+            JSONObject()
+                .put("type", "relay_ext_toggle")
+                .put("id", "ext-${nextId++}")
+                .put("source", row.source)
+                .put("enabled", enabled),
+        )
+    }
+
+    fun uninstallExtension(row: ExtensionRow, deleteFiles: Boolean) {
+        client.send(
+            JSONObject()
+                .put("type", "relay_ext_remove")
+                .put("id", "ext-${nextId++}")
+                .put("source", row.source)
+                .put("delete", deleteFiles),
+        )
+    }
+
+    /** pig rebuilds its tool list only on reload, so both actions end with one. */
+    fun reloadExtensions() {
+        sendPrompt("/reload-runtime")
     }
 
     /**
@@ -5035,6 +5104,31 @@ class AppViewModel @JvmOverloads constructor(
                 AppLog.event("provider", "error: ${event.optString("op")} $message")
             }
             "relay_sessions" -> handleSessions(event)
+            "relay_ext_status" -> handleExtensionStatus(event)
+            "relay_ext_changed" -> {
+                val removed = event.optBoolean("removed", false)
+                val source = event.optString("source")
+                AppLog.event(
+                    "ext",
+                    if (removed) "removed $source" else "toggled $source enabled=${event.optBoolean("enabled", true)}",
+                )
+                ui = ui.copy(
+                    toast = if (removed) {
+                        str("toast.extRemoved", "已卸载 {name}").replace("{name}", source)
+                    } else {
+                        str("toast.extToggled", "已更新 {name}").replace("{name}", source)
+                    },
+                )
+                refreshExtensions(force = true)
+                // pig only rebuilds its tool list on reload, so a toggle that is
+                // not followed by one looks like it did nothing.
+                sendPrompt("/reload-runtime")
+            }
+            "relay_ext_error" -> {
+                val message = event.optString("message")
+                AppLog.event("ext", "error: $message")
+                ui = ui.copy(extensionsError = message, toast = message)
+            }
             "relay_archived_sessions" -> {
                 val array = event.optJSONArray("sessions") ?: JSONArray()
                 val visited = prefs.getStringSet("visitedSessions", emptySet()) ?: emptySet()

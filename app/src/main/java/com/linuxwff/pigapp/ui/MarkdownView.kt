@@ -431,6 +431,7 @@ fun AssistantMarkdown(
     // message to enter selection mode remounts the body, and state remembered
     // inside the block would snap back to collapsed.
     codeToggleState: SnapshotStateMap<Int, Boolean>? = null,
+    onCopy: ((String) -> Unit)? = null,
 ) {
     val localToggles = remember { mutableStateMapOf<Int, Boolean>() }
     val toggles = codeToggleState ?: localToggles
@@ -453,6 +454,7 @@ fun AssistantMarkdown(
                     borderAlpha = codeBlockBorderAlpha,
                     expanded = toggles[index] == true,
                     onToggle = { toggles[index] = toggles[index] != true },
+                    onCopy = onCopy,
                 )
             }
         }
@@ -468,6 +470,7 @@ private fun CollapsibleCode(
     borderAlpha: Float,
     expanded: Boolean,
     onToggle: () -> Unit,
+    onCopy: ((String) -> Unit)? = null,
 ) {
     val md = LocalUiPack.current.layout.markdown
     val scheme = MaterialTheme.colorScheme
@@ -497,6 +500,20 @@ private fun CollapsibleCode(
                 color = scheme.secondary,
                 modifier = Modifier.weight(1f),
             )
+            if (onCopy != null) {
+                // Copies the whole block, not the truncated preview shown here.
+                Icon(
+                    packIcon("copy", "copy"),
+                    contentDescription = packText("markdown.copyCode", "复制代码"),
+                    modifier = Modifier
+                        .size(15.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { onCopy(code) }
+                        .padding(1.dp),
+                    tint = scheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(7.dp))
+            }
             Text(
                 packText("markdown.lines", "{count} 行").replace("{count}", lineCount.toString()),
                 style = MaterialTheme.typography.labelSmall,
