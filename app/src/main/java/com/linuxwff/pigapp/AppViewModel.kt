@@ -2574,10 +2574,13 @@ class AppViewModel @JvmOverloads constructor(
         // First prompt in a fresh app process with no session yet: honour the
         // pinned default model before the turn starts. A restored transcript
         // keeps the model its session was using.
-        if (ui.sessionId.isBlank() && !ui.busy && ui.defaultModel.isNotBlank() &&
-            savedSession() == null
-        ) {
-            applyDefaultModel()
+        if (ui.sessionId.isBlank() && !ui.busy) {
+            if (ui.defaultModel.isNotBlank() && savedSession() == null) {
+                applyDefaultModel()
+            }
+            // The session pig is about to create starts on its settings default;
+            // keep the level the header is showing instead of silently resetting.
+            if (ui.thinkingLevel.isNotBlank()) setThinkingLevel(ui.thinkingLevel)
         }
         val wasBusy = ui.busy
         // Remembered on the queued entry: taking the message back has to remove
@@ -3788,6 +3791,19 @@ class AppViewModel @JvmOverloads constructor(
             cacheInputTokens = 0,
         )
         modelPickedWhileStarting = ""
+        // A fresh session comes up on pig's settings default ("off" here), which
+        // silently dropped the level the user was watching. Queue it so it lands
+        // on the runtime that replaces this one, in the same order as any other
+        // session setting (flushed when pig answers new_session).
+        val carryLevel = ui.thinkingLevel.trim()
+        if (carryLevel.isNotBlank()) {
+            sendSessionSetting(
+                JSONObject()
+                    .put("id", "think-carry-${nextId++}")
+                    .put("type", "set_thinking_level")
+                    .put("level", carryLevel),
+            )
+        }
         client.send(JSONObject().put("type", "new_session"))
         // New sessions always start on the model pinned in the picker, but
         // `new_session` only takes effect when pig answers it (it swaps the
