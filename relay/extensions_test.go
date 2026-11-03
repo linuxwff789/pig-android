@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -130,6 +131,37 @@ func TestResolveSourcePath(t *testing.T) {
 	for _, spec := range []string{"pigkit/x", "npm:foo", "git+https://x", "@scope/pkg"} {
 		if got := resolveSourcePath(agent, spec); got != "" {
 			t.Fatalf("%s should not resolve to a directory, got %q", spec, got)
+		}
+	}
+}
+
+// Integration check against the real binary: it catches a renamed field in
+// `pig status --json` that a fake fixture would happily keep passing. CI has no
+// pig, so it skips there.
+func TestExtensionStatusDecodesRealOutput(t *testing.T) {
+	pigBin, err := exec.LookPath("pig")
+	if err != nil {
+		t.Skip("pig is not installed here")
+	}
+	home := t.TempDir()
+	s := &session{
+		cwd:          home,
+		pigBin:       pigBin,
+		settingsPath: filepath.Join(home, ".pig", "agent", "settings.json"),
+	}
+	status, err := s.extensionStatus(true)
+	if err != nil {
+		t.Fatalf("status failed: %v", err)
+	}
+	if len(status.Resources.Items) == 0 {
+		t.Skip("no resources installed for this user")
+	}
+	for _, item := range status.Resources.Items {
+		if item.Kind == "" || item.Name == "" || item.Source == "" {
+			t.Fatalf("row lost its identity: %+v", item)
+		}
+		if item.Builtin && item.Deletable {
+			t.Fatalf("a built-in must not be deletable: %+v", item)
 		}
 	}
 }
