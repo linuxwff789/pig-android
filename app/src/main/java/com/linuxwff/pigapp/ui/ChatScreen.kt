@@ -555,6 +555,7 @@ fun PigApp(vm: AppViewModel) {
                         onToolModeAll = vm::setToolMode,
                         onLoadOlder = vm::loadOlderHistory,
                         onRetryHistory = vm::reloadHistory,
+                        onVerifyTail = vm::verifyLastAssistant,
                     )
                     }
                 }
@@ -4504,6 +4505,7 @@ private fun MessageList(
     onToolModeAll: (String) -> Unit,
     onLoadOlder: () -> Unit,
     onRetryHistory: () -> Unit,
+    onVerifyTail: () -> Unit,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -4632,6 +4634,53 @@ private fun MessageList(
         }
     }
 
+    // "Already at the bottom, keep dragging up" asks pig for the tail once. It is
+    // the manual fallback for a bubble showing less than the transcript holds,
+    // so it is armed per turn and only after the reader leaves the bottom again.
+    var pushArmed by remember { mutableStateOf(true) }
+    var pushed by remember { mutableStateOf(0f) }
+    LaunchedEffect(busy) {
+        pushed = 0f
+        pushArmed = !busy
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.canScrollForward }.collect { canForward ->
+            if (canForward) {
+                pushed = 0f
+                pushArmed = !busy
+            }
+        }
+    }
+    val tailVerifyConnection = remember(busy, pullThreshold) {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
+                if (busy || !pushArmed) return Offset.Zero
+                // A fling that merely reaches the end must not fire it: only
+                // dragging further once the list cannot move counts.
+                if (listState.canScrollForward) {
+                    pushed = 0f
+                    return Offset.Zero
+                }
+                if (available.y >= 0f) {
+                    pushed = 0f
+                    return Offset.Zero
+                }
+                pushed += -available.y
+                if (pushed >= pullThreshold) {
+                    pushed = 0f
+                    pushArmed = false
+                    onVerifyTail()
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
     if (messages.isEmpty()) {
         if (loadingHistory) {
             HistoryLoadingState(onRetry = onRetryHistory)
@@ -4657,7 +4706,8 @@ private fun MessageList(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .nestedScroll(olderPageConnection),
+                .nestedScroll(olderPageConnection)
+                .nestedScroll(tailVerifyConnection),
             contentPadding = PaddingValues(
                 start = chatPaddingH.dp,
                 end = chatPaddingH.dp,

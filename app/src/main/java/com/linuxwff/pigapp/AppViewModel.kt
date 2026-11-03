@@ -163,16 +163,12 @@ class AppViewModel @JvmOverloads constructor(
     private var packPinnedByUser = false
     private var autoReconnectJob: kotlinx.coroutines.Job? = null
     private var lastPongAt = 0L
-    /** Last live token; the stall watchdog measures silence against it. */
-    private var lastDeltaAt = 0L
-    /** Non-zero while a get_state probe is outstanding for a stalled stream. */
-    private var stallProbeAt = 0L
-    /** Last time a stalled stream was healed; keeps the resync from looping. */
-    private var lastStallHealAt = 0L
     /** Throttles the "delta had no target" log. */
     private var lastMissLogAt = 0L
-    /** Set by a heal so the resync re-seeds the live buffers from the transcript. */
-    private var seedLiveFromHistory = false
+    /** Set while a tail-verify request is in flight (one at a time). */
+    private var peekInFlight = false
+    /** Id of that request, so its response is recognised in the dispatcher. */
+    private var lastPeekRequestId = ""
     /** Wakes the keepalive loop so a foreground switch re-evaluates its cadence. */
     private val pingWake = Channel<Unit>(Channel.CONFLATED)
     private var desiredSessionPath: String? = null
@@ -326,17 +322,6 @@ class AppViewModel @JvmOverloads constructor(
                     continue
                 }
                 client.send(JSONObject().put("type", "relay_ping").put("id", "ping-${nextId++}"))
-            }
-        }
-        // A stream that loses its tail (a dropped message_end, a rebuild that
-        // replaced the live bubble) leaves the transcript in the raw-text
-        // streaming branch forever; switching sessions used to be the only way
-        // out. Probe pig's state when tokens stop and re-sync if it says the turn
-        // is over.
-        viewModelScope.launch {
-            while (true) {
-                delay(STREAM_STALL_TICK_MS)
-                checkStreamStall()
             }
         }
     }
@@ -3532,59 +3517,53 @@ class AppViewModel @JvmOverloads constructor(
     }
 
     /**
-     * Streaming is judged stalled when a bubble is still marked streaming but no
-     * token has arrived for [STREAM_STALL_MS]. A long tool call is silent too, so
-     * ask pig's state instead of guessing; one probe at a time and one heal per
-     * minute keeps a busy turn from being re-synced in a loop.
+     * Manual fallback, fired by "at the bottom, keep dragging up": ask for just
+     * the tail of the transcript and repair the last assistant bubble if pig has
+     * text this screen never received. One request per gesture; the caller owns
+     * re-arming.
      */
-    private fun checkStreamStall() {
-        if (ui.streamingId == null) {
-            stallProbeAt = 0L
-            lastDeltaAt = 0L
-            return
-        }
-        // Compose is not drawing while the app is away, so silence there is
-        // expected; the probe runs again as soon as the user is back.
-        if (!foreground) return
-        val now = System.currentTimeMillis()
-        if (lastDeltaAt == 0L) {
-            lastDeltaAt = now
-            return
-        }
-        if (stallProbeAt != 0L) {
-            // The probe never came back (dropped frame, dead socket). Let the
-            // next probe ask again instead of waiting forever.
-            if (now - stallProbeAt > STREAM_PROBE_TIMEOUT_MS) stallProbeAt = 0L
-            return
-        }
-        if (!client.connected.value) return
-        if (now - lastStallHealAt < STREAM_HEAL_COOLDOWN_MS) return
-        if (now - lastDeltaAt < STREAM_STALL_MS) return
-        stallProbeAt = now
-        requestState()
+    fun verifyLastAssistant() {
+        if (!client.connected.value || peekInFlight) return
+        peekInFlight = true
+        val id = "peek-${nextId++}"
+        lastPeekRequestId = id
+        AppLog.event("stream", "verify requested")
+        client.send(
+            JSONObject()
+                .put("id", id)
+                .put("type", "get_messages")
+                .put("limit", TAIL_VERIFY_LIMIT),
+        )
     }
 
-    /**
-     * pig answered that nothing is streaming, so the tail of the stream was lost:
-     * drop the stale live state and re-read the transcript it already wrote, which
-     * is what made switching sessions appear to "fix" a stuck answer.
-     */
-    private fun healStalledStream(source: String) {
-        val id = ui.streamingId ?: return
-        val now = System.currentTimeMillis()
-        val silentFor = if (lastDeltaAt > 0) now - lastDeltaAt else -1L
-        lastStallHealAt = now
-        stallProbeAt = 0L
-        lastDeltaAt = 0L
-        AppLog.event("stream", "heal ($source) assistant=$id silent=${silentFor}ms")
-        // The resync must survive the "a turn started while the history was
-        // building" guard, and bindResumedAssistant() only re-marks a bubble as
-        // streaming while busy is set.
-        liveActive = false
-        currentAssistant = null
-        seedLiveFromHistory = true
-        ui = ui.copy(streamingId = null, busy = false, status = "")
-        requestMessages()
+    private fun applyTailVerify(data: JSONObject) {
+        peekInFlight = false
+        val messages = data.optJSONArray("messages") ?: return
+        var latest: JSONObject? = null
+        for (index in messages.length() - 1 downTo 0) {
+            val entry = messages.optJSONObject(index) ?: continue
+            if (entry.optString("role") == "assistant") {
+                latest = entry
+                break
+            }
+        }
+        val tail = latest?.let { contentText(it) }.orEmpty()
+        if (tail.isBlank()) return
+        val target = ui.messages.lastOrNull { it.role == Role.ASSISTANT } ?: return
+        // Only ever lengthens: a shorter or different tail means the screen is
+        // showing a newer turn than the one pig just described.
+        if (tail.length <= target.text.length) return
+        if (!tail.startsWith(target.text)) {
+            AppLog.event("stream", "verify skipped: tail is a different message")
+            return
+        }
+        val added = tail.length - target.text.length
+        AppLog.event("stream", "manual repair +$added chars")
+        val thinking = latest?.let { contentThinking(it) }.orEmpty()
+        update(target.id) {
+            it.copy(text = tail, thinking = thinking.ifBlank { it.thinking })
+        }
+        ui = ui.copy(toast = str("toast.repaired", "已补全 {n} 字").replace("{n}", added.toString()))
     }
 
     private fun requestMessages() {
@@ -5286,6 +5265,17 @@ class AppViewModel @JvmOverloads constructor(
     private fun handleResponse(event: JSONObject) {
         val responseCommand = event.optString("command")
         val responseId = event.optString("id")
+        // The manual tail verify rides on get_messages but must not touch the
+        // transcript window, so it is answered here before any of that filtering.
+        if (responseId.isNotBlank() && responseId == lastPeekRequestId) {
+            lastPeekRequestId = ""
+            if (event.optBoolean("success", true)) {
+                event.optJSONObject("data")?.let { applyTailVerify(it) }
+            } else {
+                peekInFlight = false
+            }
+            return
+        }
         // The relay loads a restored session into its prewarmed pig before the
         // first prompt; that switch is internal, not the user's switch.
         if (responseId.startsWith("standby-")) return
@@ -5501,17 +5491,6 @@ class AppViewModel @JvmOverloads constructor(
                     ui.sessionFile.isNotBlank() && ui.sessionFile != reportedFile
                 val settledNow = !straggler &&
                     (!awaitingNewSession || newSessionSettled(reportedSessionId, reportedFile))
-                if (stallProbeAt != 0L) {
-                    // This reply answers the watchdog's question: pig says whether
-                    // the turn is still running. Silence plus "not streaming"
-                    // means the tail frame was lost.
-                    stallProbeAt = 0L
-                    if (!streaming && !data.optBoolean("isCompacting", false)) {
-                        healStalledStream("get_state")
-                    } else {
-                        lastDeltaAt = System.currentTimeMillis()
-                    }
-                }
                 val sessionId = if (settledNow) reportedSessionId else ui.sessionId
                 val sessionFile = if (settledNow) reportedFile else ui.sessionFile
                 val switched = sessionId.isNotBlank() &&
@@ -6278,25 +6257,26 @@ class AppViewModel @JvmOverloads constructor(
             liveBuffer.setLength(0)
             liveBuffer.append(it)
         }
-        if (seedLiveFromHistory) {
-            // A healed stream lost its tail; continue from what pig actually
-            // persisted instead of the truncated buffer this app kept.
-            seedLiveFromHistory = false
-            val last = build.items.lastOrNull { it.role == Role.ASSISTANT }
-            liveBuffer.setLength(0)
-            liveThinking.setLength(0)
-            if (last != null) {
-                liveBuffer.append(last.text)
-                liveThinking.append(last.thinking)
-            }
-            liveThinkingDirty = true
-        }
         currentAssistant = build.assistantId
             // A rebuild during a live turn can come back without an unfinished
             // assistant message; keeping the id the stream is still writing to
             // stops the final message_end from losing its bubble.
             ?: currentAssistant?.takeIf { live -> build.items.any { it.id == live } }
-        ui = ui.copy(messages = build.items)
+        var items = build.items
+        // The build used the text that existed when the request went out. Tokens
+        // that arrived meanwhile are newer than that snapshot, so put them back
+        // instead of letting the bubble drop back for a frame.
+        if (liveActive && currentAssistant != null) {
+            val liveId = currentAssistant!!
+            val text = liveBuffer.toString()
+            if (text.isNotEmpty()) {
+                val thinking = liveThinkingValue()
+                items = items.map {
+                    if (it.id == liveId) it.copy(text = text, thinking = thinking) else it
+                }
+            }
+        }
+        ui = ui.copy(messages = items)
         rememberHistory(path, window, hasOlder)
         bindResumedAssistant()
     }
@@ -6613,9 +6593,6 @@ class AppViewModel @JvmOverloads constructor(
      * each one is what made scrolling drop frames. Coalesce to ~20 fps.
      */
     private fun scheduleLiveFlush() {
-        // Every token passes through here, which makes it the one place the stall
-        // watchdog has to watch.
-        lastDeltaAt = System.currentTimeMillis()
         // Compose is not drawing while the app is in the background; rebuilding
         // the message list every 50ms only allocates. liveText keeps growing and
         // onForeground flushes it once.
@@ -6719,6 +6696,14 @@ class AppViewModel @JvmOverloads constructor(
                 return
             }
             AppLog.event("stream", "message_end had no bubble; adopted ${orphanText.length} chars")
+            // A replayed message_end can arrive after a resync put the same text
+            // on screen; adopting it again would show the answer twice.
+            if (ui.messages.lastOrNull { it.role == Role.ASSISTANT }?.text == orphanText) {
+                currentAssistant = null
+                clearLive()
+                ui = ui.copy(streamingId = null)
+                return
+            }
             val adopted = "a${nextId++}"
             append(
                 ChatMsg(
@@ -7162,11 +7147,8 @@ private const val MAX_IMAGE_B64_CHARS = 8_000_000
 private const val PING_FOREGROUND_MS = 4_000L
 private const val PING_BACKGROUND_MS = 30_000L
 
-/** How much token silence counts as a stalled stream, and how often to check. */
-private const val STREAM_STALL_MS = 10_000L
-private const val STREAM_STALL_TICK_MS = 2_000L
-private const val STREAM_PROBE_TIMEOUT_MS = 6_000L
-private const val STREAM_HEAL_COOLDOWN_MS = 60_000L
+/** How many messages the manual tail verify asks for. */
+private const val TAIL_VERIFY_LIMIT = 3
 
 /** How long a reconnect waits for the running relay before launching another. */
 private const val RELAY_RELAUNCH_GRACE_MS = 4_000L
