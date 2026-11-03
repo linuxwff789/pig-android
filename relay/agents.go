@@ -42,6 +42,9 @@ type agentProc struct {
 	busy     bool
 	// Last stderr lines, so a crash report says *why* instead of only a code.
 	stderr []string
+	// The last transition frame (message_end/agent_end) that no client received.
+	// Sent once on the next attach; see rememberEnd.
+	lastEnd json.RawMessage
 }
 
 type toolProgress struct {
@@ -179,6 +182,20 @@ func (s *session) sendRaw(payload []byte) error {
 	return out.sendRaw(payload)
 }
 
+// dropOutput closes the current client connection after a write failure. There
+// is no per-frame retry: the app learns about the gap by reconnecting, and the
+// relay_hello that follows makes it re-read the transcript.
+func (s *session) dropOutput(reason error) {
+	s.mu.Lock()
+	conn := s.conn
+	s.mu.Unlock()
+	if conn == nil {
+		return
+	}
+	log.Printf("dropping client after write failure: %v", reason)
+	_ = conn.Close()
+}
+
 func (s *session) activeAgent() *agentProc {
 	s.agentMu.Lock()
 	defer s.agentMu.Unlock()
@@ -212,6 +229,33 @@ func (a *agentProc) isBusy() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.busy
+}
+
+// transitionFrame reports whether a pig frame carries a state change the host
+// sends once: losing it leaves the client's bubble in its streaming branch until
+// something unrelated forces a transcript reload.
+func transitionFrame(kind string) bool {
+	switch kind {
+	case "message_end", "agent_end", "agent_settled":
+		return true
+	}
+	return false
+}
+
+// A transition frame larger than this carries image payloads; pinning it until
+// the next attach would cost more memory than the resync it saves, and the
+// reconnect's get_messages re-reads it anyway.
+const maxReplayedEnd = 16 << 20
+
+// rememberEnd keeps the last transition frame that did not reach a client.
+// Only the latest matters: it carries the complete text and the turn's outcome.
+func (a *agentProc) rememberEnd(kind string, payload []byte) {
+	if !transitionFrame(kind) || len(payload) > maxReplayedEnd {
+		return
+	}
+	a.mu.Lock()
+	a.lastEnd = payload
+	a.mu.Unlock()
 }
 
 func (a *agentProc) clearPending(id string) {
@@ -488,7 +532,18 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 			payload := append([]byte(nil), line...)
 			a.trackFrame(s, payload)
 			if s.isActive(a) {
-				_ = s.sendRaw(s.fitHistory(s.tagResponse(a, payload), s.agentPath(a)))
+				kind := frameTypeHead(payload)
+				frame := s.fitHistory(s.tagResponse(a, payload), s.agentPath(a))
+				if s.currentOut() == nil {
+					// Nobody is listening: the turn still finishes, so keep the
+					// frame that says so for the next attach.
+					a.rememberEnd(kind, frame)
+				} else if err := s.sendRaw(frame); err != nil {
+					// A refused write cannot be retried in place, and the client
+					// only re-reads its transcript after a fresh relay_hello.
+					a.rememberEnd(kind, frame)
+					s.dropOutput(err)
+				}
 			}
 		}
 		if err := scanner.Err(); err != nil {
@@ -742,6 +797,10 @@ func (s *session) replayAgent(a *agentProc) {
 	for key, raw := range a.statuses {
 		statuses[key] = raw
 	}
+	// A transition frame that the last client never received: replaying it is
+	// the only thing that unsticks a bubble parked in its streaming branch.
+	lastEnd := a.lastEnd
+	a.lastEnd = nil
 	a.mu.Unlock()
 
 	// Card and status frames first: the client drew them before the disconnect
@@ -769,6 +828,11 @@ func (s *session) replayAgent(a *agentProc) {
 			"toolName":      tool.Name,
 			"partialResult": tool.Partial,
 		})
+	}
+	// Last, so it wins over anything above: the turn really did end while no
+	// client was listening.
+	if lastEnd != nil {
+		_ = s.sendRaw(lastEnd)
 	}
 }
 

@@ -334,3 +334,62 @@ func TestTrackFrameForgetsClearedWidgetAndStatus(t *testing.T) {
 		t.Fatalf("cleared frames survived: %d widgets, %d statuses, title=%v", len(a.widgets), len(a.statuses), a.title)
 	}
 }
+
+// A turn that ends while no client is attached loses the frame that says so, and
+// the app then keeps that bubble in its streaming branch until something forces a
+// transcript reload. The relay keeps the last transition frame that nobody
+// received and replays it once, on the next attach.
+func TestReplayAgentReplaysUndeliveredTurnEnd(t *testing.T) {
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	s := &session{out: &connWriter{conn: server}}
+	a := &agentProc{
+		activeTools: map[string]toolProgress{},
+		pendingUI:   map[string]json.RawMessage{},
+		widgets:     map[string]json.RawMessage{},
+		statuses:    map[string]json.RawMessage{},
+	}
+	a.rememberEnd("message_end", []byte(`{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}`))
+	// Only transition frames count, and only the last one is kept.
+	a.rememberEnd("tool_execution_update", []byte(`{"type":"tool_execution_update"}`))
+
+	lines := make(chan string, 4)
+	go func() {
+		scanner := bufio.NewScanner(client)
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+		close(lines)
+	}()
+	s.replayAgent(a)
+
+	select {
+	case line := <-lines:
+		if !strings.Contains(line, `"type":"message_end"`) || !strings.Contains(line, `"text":"done"`) {
+			t.Fatalf("replayed %s, want the cached message_end", line)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the undelivered message_end was not replayed")
+	}
+
+	a.mu.Lock()
+	left := a.lastEnd
+	a.mu.Unlock()
+	if left != nil {
+		t.Fatalf("the cached frame was replayed twice: %s", left)
+	}
+}
+
+func TestTransitionFrameOnlyCoversStateChanges(t *testing.T) {
+	for _, kind := range []string{"message_end", "agent_end", "agent_settled"} {
+		if !transitionFrame(kind) {
+			t.Fatalf("%s must be replayed when it was missed", kind)
+		}
+	}
+	for _, kind := range []string{"", "message_start", "message_update", "tool_execution_end", "relay_pong"} {
+		if transitionFrame(kind) {
+			t.Fatalf("%s must not be cached", kind)
+		}
+	}
+}
