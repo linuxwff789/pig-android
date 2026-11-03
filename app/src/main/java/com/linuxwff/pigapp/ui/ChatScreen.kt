@@ -4536,8 +4536,12 @@ private fun MessageList(
     // pinned the view and made long answers look like they stopped halfway.
     val dragged by listState.interactionSource.collectIsDraggedAsState()
     LaunchedEffect(dragged) {
-        if (dragged) autoScroll = false
-        else if (!listState.canScrollForward) autoScroll = true
+        if (dragged) {
+            if (autoScroll) AppLog.event("scroll", "follow off (drag)")
+            autoScroll = false
+        } else if (!listState.canScrollForward) {
+            autoScroll = true
+        }
     }
     LaunchedEffect(listState) {
         launch {
@@ -4681,7 +4685,11 @@ private fun MessageList(
                         bubbleShadow = bubbleShadow,
                         onCopy = onCopy,
                         onToolModeAll = onToolModeAll,
-                        onUserRead = { autoScroll = false },
+                        // Expanding a tool card or a group is not a scroll: it must
+                        // not stop the transcript from following the answer. Only a
+                        // real drag pauses following (see the dragged effect above);
+                        // tapping "back to bottom" resumes it.
+                        onUserRead = {},
                     )
                     is ChatListItem.ToolGroup -> ToolGroupCard(
                         tools = item.tools,
@@ -4690,7 +4698,7 @@ private fun MessageList(
                         cornerRadius = cornerRadius,
                         showTimestamps = showTimestamps,
                         onToolModeAll = onToolModeAll,
-                        onUserRead = { autoScroll = false },
+                        onUserRead = {},
                     )
                 }
             }
@@ -4746,6 +4754,7 @@ private fun MessageList(
                 shadowElevation = packThemeValues.fabElevation.dp,
                 modifier = Modifier.clickable {
                     scope.launch {
+                        AppLog.event("scroll", "follow on (pill)")
                         autoScroll = true
                         runCatching {
                             listState.animateScrollToItem(
