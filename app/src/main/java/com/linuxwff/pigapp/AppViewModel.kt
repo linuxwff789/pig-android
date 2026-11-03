@@ -5154,6 +5154,13 @@ class AppViewModel @JvmOverloads constructor(
             }
             "turn_start" -> ui = ui.copy(status = "working")
             "agent_end", "agent_settled" -> {
+                // One line per turn: it says whether the bubble was still marked
+                // streaming when the turn closed, which is what tells a dropped
+                // message_end apart from a lost agent_end.
+                AppLog.event(
+                    "stream",
+                    "$type streaming=${ui.streamingId ?: "-"} busy=${ui.busy}",
+                )
                 ui = ui.copy(
                     busy = false,
                     status = "",
@@ -6285,6 +6292,10 @@ class AppViewModel @JvmOverloads constructor(
             liveThinkingDirty = true
         }
         currentAssistant = build.assistantId
+            // A rebuild during a live turn can come back without an unfinished
+            // assistant message; keeping the id the stream is still writing to
+            // stops the final message_end from losing its bubble.
+            ?: currentAssistant?.takeIf { live -> build.items.any { it.id == live } }
         ui = ui.copy(messages = build.items)
         rememberHistory(path, window, hasOlder)
         bindResumedAssistant()
@@ -6691,8 +6702,36 @@ class AppViewModel @JvmOverloads constructor(
             ui = ui.copy(busy = false, status = "", streamingId = null)
         }
         val id = currentAssistant
+            ?: ui.streamingId
+            ?: ui.messages.lastOrNull {
+                it.role == Role.ASSISTANT && it.text.isBlank() && it.thinking.isBlank()
+            }?.id
         if (id == null) {
+            // The bubble this frame belongs to is gone: a history rebuild that ran
+            // while the turn streamed replaced it. Dropping the frame left the last
+            // streamed snapshot on screen forever (raw, unfinished Markdown), so
+            // adopt the text into a fresh message instead; the next history read
+            // reconciles the ids.
+            val orphanText = contentText(message)
+            if (orphanText.isBlank()) {
+                AppLog.event("stream", "message_end had no bubble (no text)")
+                clearLive()
+                return
+            }
+            AppLog.event("stream", "message_end had no bubble; adopted ${orphanText.length} chars")
+            val adopted = "a${nextId++}"
+            append(
+                ChatMsg(
+                    id = adopted,
+                    role = Role.ASSISTANT,
+                    text = orphanText,
+                    thinking = contentThinking(message),
+                ),
+            )
+            attachImages(adopted, message)
+            currentAssistant = null
             clearLive()
+            ui = ui.copy(streamingId = null)
             return
         }
         val text = contentText(message)
