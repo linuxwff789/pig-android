@@ -4586,6 +4586,7 @@ private fun MessageList(
     val fabBackground = packColor(chrome.fabBackground).copy(alpha = chrome.fabBackgroundAlpha)
     val fabTint = packColor(chrome.fabTint).copy(alpha = chrome.fabTintAlpha)
     var autoScroll by remember { mutableStateOf(true) }
+    var lastUserMessageId by remember { mutableStateOf("") }
     // Rows currently in long-press selection mode. New tokens must not scroll
     // the text out from under the drag handles.
     val selectingRows = remember { mutableStateMapOf<String, Boolean>() }
@@ -4610,6 +4611,15 @@ private fun MessageList(
     // instead caught every programmatic scroll that was interrupted mid-way
     // (a new token arrives while the list is still animating), which silently
     // pinned the view and made long answers look like they stopped halfway.
+    // Sending is not a drag: the reader may have scrolled up to re-read
+    // something, and the new bubble must still come into view.
+    LaunchedEffect(last?.id) {
+        val latest = messages.lastOrNull() ?: return@LaunchedEffect
+        if (latest.role == Role.USER && latest.id != lastUserMessageId) {
+            lastUserMessageId = latest.id
+            autoScroll = true
+        }
+    }
     val dragged by listState.interactionSource.collectIsDraggedAsState()
     LaunchedEffect(dragged) {
         if (dragged) {
