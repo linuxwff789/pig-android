@@ -93,7 +93,10 @@ class AppViewModel @JvmOverloads constructor(
     private var packAssets: Map<String, String> = emptyMap()
     private var packAssetHashes: Map<String, String> = emptyMap()
     private val imageCache = mutableStateMapOf<String, ImageBitmap>()
-    private val packImageLru = LinkedHashMap<String, Unit>()
+    // key -> byteCount, access-ordered; a 1024 px ARGB bitmap is ~4 MB, so
+    // counting entries (48) bounded pixels at ~192 MB instead of memory.
+    private val packImageLru = LinkedHashMap<String, Int>()
+    private var packImageBytes = 0
     private val imageLoading = mutableSetOf<String>()
     private val formValues = mutableStateMapOf<String, String>() // "windowId/fieldId" -> value
 
@@ -4405,13 +4408,20 @@ class AppViewModel @JvmOverloads constructor(
             }
             imageLoading.remove(key)
             if (image != null) {
+                val bytes = runCatching { image.asAndroidBitmap().byteCount }.getOrDefault(0)
                 imageCache[key] = image
-                packImageLru[key] = Unit
-                while (packImageLru.size > PACK_IMAGE_CACHE_ENTRIES) {
+                packImageLru.remove(key)
+                packImageLru[key] = bytes
+                packImageBytes += bytes
+                while ((packImageBytes > PACK_IMAGE_CACHE_BYTES ||
+                        packImageLru.size > PACK_IMAGE_CACHE_ENTRIES) &&
+                    packImageLru.size > 1
+                ) {
                     val oldest = packImageLru.keys.firstOrNull() ?: break
-                    packImageLru.remove(oldest)
+                    packImageBytes -= packImageLru.remove(oldest) ?: 0
                     if (oldest != key) imageCache.remove(oldest)
                 }
+                if (packImageBytes < 0) packImageBytes = 0
             }
         }
     }
@@ -4766,12 +4776,20 @@ class AppViewModel @JvmOverloads constructor(
                 historyWindow = HISTORY_PAGE
                 historyTotal = 0
                 restartInFlight = false
-                // A reconnect settles whatever was pending; the new-session
-                // hint must not outlive the connection that showed it. Prompts
-                // typed into that session are delivered rather than lost.
-                awaitingNewSession = false
-                flushPendingPrompts()
-                flushSessionSettings()
+                // A reconnect may have swallowed the `new_session` frame: the
+                // relay is then still attached to the previous session, and
+                // flushing now would deliver the queued prompt and the pending
+                // session settings there. Nothing has been sent yet, so the new
+                // conversation is still empty - asking for it again cannot lose
+                // anything. The get_state reply handler flushes once it has
+                // confirmed the runtime actually changed (see settledNow).
+                if (awaitingNewSession) {
+                    newSessionAt = System.currentTimeMillis()
+                    client.send(JSONObject().put("type", "new_session"))
+                } else {
+                    flushPendingPrompts()
+                    flushSessionSettings()
+                }
                 clearLive()
                 ui = ui.copy(
                     streamingId = null,
@@ -4886,7 +4904,14 @@ class AppViewModel @JvmOverloads constructor(
                 clearLive()
                 pendingToolPartials.clear()
                 client.close()
-                if (foreground) startAutoReconnect()
+                if (foreground) {
+                    startAutoReconnect()
+                } else if (ui.keepAlive) {
+                    // The keep-alive service exists to stay attached while the
+                    // app is away: without this a pig crash in the background
+                    // left the session silently dead until the next onResume.
+                    client.connect()
+                }
             }
             "relay_log" -> handleRelayLog(
                 event.optString("source", "relay"),
@@ -5635,6 +5660,10 @@ class AppViewModel @JvmOverloads constructor(
                     if (!liveActive) currentAssistant = null
                     adoptPendingDraft(sessionFile)
                     flushPendingPrompts()
+                    // Session-scoped settings (thinking level, compaction) were
+                    // held while the runtime was being replaced; they belong to
+                    // the runtime that now owns the new session.
+                    flushSessionSettings()
                 }
                 // A conversation that opened without any session file kept its
                 // draft under the placeholder key; adopt the file as soon as pig
@@ -7446,6 +7475,8 @@ private const val PACK_IMAGE_MAX_DIM = 1024
 
 /** How many decoded pack images stay resident. */
 private const val PACK_IMAGE_CACHE_ENTRIES = 48
+/** ~10 full-size (1024 px ARGB) pack images; entries alone bounded 192 MB. */
+private const val PACK_IMAGE_CACHE_BYTES = 40 * 1024 * 1024
 
 /** Hard limits for a pack imported from a zip or a folder. */
 private const val PACK_IMPORT_MAX_BYTES = 24L * 1024 * 1024

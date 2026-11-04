@@ -1,5 +1,6 @@
 package com.linuxwff.pigapp
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.ImageBitmap
 import org.json.JSONObject
 
@@ -12,6 +13,7 @@ enum class Role { USER, ASSISTANT, TOOL, NOTICE }
  * Images are decoded while the transcript is built (off the main thread) and
  * downsampled, so a long session does not keep base64 blobs in memory.
  */
+@Immutable
 data class ChatImage(
     val bitmap: ImageBitmap,
     /** Wire media type, e.g. `image/png`. */
@@ -46,6 +48,7 @@ data class QueuedMessage(
     val isSteer: Boolean get() = kind == "steer"
 }
 
+@Immutable
 data class ChatMsg(
     val id: String,
     val role: Role,

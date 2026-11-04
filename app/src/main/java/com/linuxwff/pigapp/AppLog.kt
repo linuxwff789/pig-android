@@ -5,6 +5,7 @@ import android.os.Build
 import android.util.Log
 import org.json.JSONObject
 import java.io.File
+import java.io.BufferedWriter
 import java.io.FileOutputStream
 import java.io.OutputStreamWriter
 import java.io.Writer
@@ -26,10 +27,17 @@ import java.util.Locale
  */
 object AppLog {
     private const val MAX_ENTRIES = 6000
+    // 6000 x 2400 chars was up to ~28 MB of UTF-16 held for the whole session.
+    // The buffer is bounded by memory instead: ~1 MB of characters.
+    private const val MAX_CHARS = 512 * 1024
     private const val FRAME_CHARS = 2400
     private const val FILE_BYTES = 2L * 1024 * 1024
+    // Diagnostics must not turn every frame into a write() syscall; 16 lines
+    // (a few KB) is small enough that a crash still leaves the last seconds.
+    private const val FLUSH_EVERY = 16
 
     private val entries = ArrayDeque<String>()
+    private var entryChars = 0
     private val facts = LinkedHashMap<String, String>()
     private val stamp = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US)
     private val lock = Any()
@@ -52,7 +60,10 @@ object AppLog {
                 val dir = File(context.filesDir, "logs").apply { mkdirs() }
                 val file = File(dir, "app.log")
                 sinkFile = file
-                sink = OutputStreamWriter(FileOutputStream(file, true), Charsets.UTF_8)
+                sink = BufferedWriter(
+                    OutputStreamWriter(FileOutputStream(file, true), Charsets.UTF_8),
+                    32 * 1024,
+                )
                 writeLocked("app", "session start · app ${appVersion(context)}")
             }.onFailure { Log.w("AppLog", "attach failed", it) }
         }
@@ -166,12 +177,16 @@ object AppLog {
         // string can carry a key just as easily as a frame can.
         val line = "${stamp.format(Date())} [$tag] ${redact(message)}"
         entries.addLast(line)
-        while (entries.size > MAX_ENTRIES) entries.removeFirst()
+        entryChars += line.length
+        while (entries.size > MAX_ENTRIES || (entryChars > MAX_CHARS && entries.size > 1)) {
+            entryChars -= entries.removeFirst().length
+        }
+        if (entryChars < 0) entryChars = 0
         runCatching {
             sink?.apply {
                 write(line)
                 write("\n")
-                flush()
+                if (writes % FLUSH_EVERY == 0) flush()
             }
         }
         writes++
@@ -181,13 +196,19 @@ object AppLog {
     /** Called with [lock] held. */
     private fun rotateIfNeeded() {
         val file = sinkFile ?: return
+        // The buffer holds the newest lines; flush before asking the file how
+        // big it is, or rotation waits an extra 500 writes.
+        runCatching { sink?.flush() }
         if (file.length() < FILE_BYTES) return
         runCatching { sink?.close() }
         val previous = File(file.parentFile, "app.1.log")
         previous.delete()
         file.renameTo(previous)
         sink = runCatching {
-            OutputStreamWriter(FileOutputStream(file, true), Charsets.UTF_8)
+            BufferedWriter(
+                OutputStreamWriter(FileOutputStream(file, true), Charsets.UTF_8),
+                32 * 1024,
+            )
         }.getOrNull()
     }
 

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,7 +31,7 @@ type agentProc struct {
 	startedAt time.Time
 
 	mu          sync.Mutex
-	streamText  string
+	streamText  strings.Builder
 	activeTools map[string]toolProgress
 	pendingUI   map[string]json.RawMessage
 	// The host pushes setWidget/setStatus/setTitle once and never repeats them,
@@ -106,6 +107,9 @@ type session struct {
 
 	// One backup/restore at a time; see backup.go.
 	transfer transferState
+	// Metadata of the session files listed in the drawer, keyed by path and
+	// invalidated by size/mtime; see listSessions.
+	metaCache sessionMetaCache
 	// The first install gates agent RPCs until the installer is done; see
 	// install.go.
 	install *installGate
@@ -338,7 +342,7 @@ func (a *agentProc) trackFrame(s *session, payload []byte) {
 	case "agent_end", "agent_settled", "error":
 		a.mu.Lock()
 		a.busy = false
-		a.streamText = ""
+		a.streamText.Reset()
 		a.activeTools = map[string]toolProgress{}
 		a.mu.Unlock()
 		if !s.isActive(a) {
@@ -347,19 +351,23 @@ func (a *agentProc) trackFrame(s *session, payload []byte) {
 	case "message_start":
 		if head.Message.Role == "assistant" {
 			a.mu.Lock()
-			a.streamText = ""
+			a.streamText.Reset()
 			a.mu.Unlock()
 		}
 	case "message_update":
 		if head.AssistantMessageEvent.Type == "text_delta" && head.AssistantMessageEvent.Delta != "" {
 			a.mu.Lock()
-			a.streamText += head.AssistantMessageEvent.Delta
+			// The replay buffer only covers the gap until the client's next
+			// get_messages; a long answer must not grow without bound.
+			if a.streamText.Len() < maxStreamText {
+				a.streamText.WriteString(head.AssistantMessageEvent.Delta)
+			}
 			a.mu.Unlock()
 		}
 	case "message_end":
 		if head.Message.Role == "assistant" {
 			a.mu.Lock()
-			a.streamText = ""
+			a.streamText.Reset()
 			a.mu.Unlock()
 		}
 	case "tool_execution_start":
@@ -788,7 +796,7 @@ func (s *session) replayAgent(a *agentProc) {
 	for _, raw := range a.pendingUI {
 		pending = append(pending, raw)
 	}
-	resume := a.streamText
+	resume := a.streamText.String()
 	tools := make(map[string]toolProgress, len(a.activeTools))
 	for id, tool := range a.activeTools {
 		tools[id] = tool
@@ -1089,19 +1097,57 @@ func (s *session) syntheticMessages(id any) frame {
 // message that opened its first turn.
 const historyAlignSlack = 24
 
+// maxStreamText caps the assistant text replayed to a reconnecting client.
+// Anything longer is re-read from the session file by get_messages.
+const maxStreamText = 1 << 20
+
+// historyByteBudget bounds a history page by content, not only by message
+// count. A single message can carry a few megabytes of base64 screenshots, so
+// "the newest 200 messages" was not a bound on what crossed the socket and was
+// parsed on the phone.
+const historyByteBudget = 8 << 20
+
 // clipHistory keeps the newest `limit` messages of a transcript. The window is
 // moved back to the start of the turn that opened it, so a page does not begin
 // with a tool result whose call sits on the previous page.
 func clipHistory(messages []json.RawMessage, limit int) ([]json.RawMessage, int) {
-	if limit <= 0 || len(messages) <= limit {
+	if len(messages) == 0 {
 		return messages, 0
 	}
-	start := len(messages) - limit
+	start := 0
+	if limit > 0 && len(messages) > limit {
+		start = len(messages) - limit
+	}
+	// Byte budget: walk back from the newest message while the page still fits.
+	// One message is always kept, even when it alone exceeds the budget.
+	total := 0
+	byteStart := len(messages)
+	for i := len(messages) - 1; i >= 0; i-- {
+		if total+len(messages[i]) > historyByteBudget && i < len(messages)-1 {
+			break
+		}
+		total += len(messages[i])
+		byteStart = i
+	}
+	if byteStart > start {
+		start = byteStart
+	}
+	// Move the window back to the user message that opened the turn, but do not
+	// let the alignment blow past the byte budget (24 tool results can be
+	// tens of megabytes).
+	windowBytes := 0
+	for i := start; i < len(messages); i++ {
+		windowBytes += len(messages[i])
+	}
 	for i := 0; i < historyAlignSlack && start > 0; i++ {
 		if messageRole(messages[start]) == "user" {
 			break
 		}
+		if windowBytes+len(messages[start-1]) > historyByteBudget*3/2 {
+			break
+		}
 		start--
+		windowBytes += len(messages[start])
 	}
 	return messages[start:], start
 }
@@ -1110,21 +1156,48 @@ func clipHistory(messages []json.RawMessage, limit int) ([]json.RawMessage, int)
 // has that are newer than the file (typically the partial assistant message of
 // a running turn). Byte equality is enough: both sides carry pig's raw JSON.
 func mergeHistory(disk, tail []json.RawMessage) []json.RawMessage {
-	seen := make(map[string]bool, len(disk))
-	out := make([]json.RawMessage, 0, len(disk)+len(tail))
-	for _, message := range disk {
-		key := string(message)
-		if !seen[key] {
-			seen[key] = true
-			out = append(out, message)
+	if len(disk) == 0 {
+		return tail
+	}
+	if len(tail) == 0 {
+		return disk
+	}
+	// Session files are append-only, so the runtime tail is almost always a
+	// suffix of the file (or the whole file plus one streaming message).
+	// Finding the common suffix first turns the common case into O(1) slice
+	// returns instead of hashing every message of a 18 MB transcript.
+	common := 0
+	for common < len(disk) && common < len(tail) {
+		if !bytes.Equal(disk[len(disk)-1-common], tail[len(tail)-1-common]) {
+			break
 		}
+		common++
+	}
+	if common == len(tail) {
+		return disk
+	}
+	if common == len(disk) {
+		return tail
+	}
+	// Compaction can leave a tail whose head overlaps the middle of the file.
+	// Only the unaligned parts need a content check, and a fixed-size digest
+	// keeps multi-megabyte messages out of the map (string(message) copied
+	// every message and held it for the life of the call).
+	seen := make(map[[32]byte]bool, len(disk)+len(tail))
+	out := make([]json.RawMessage, 0, len(disk)+len(tail)-common)
+	add := func(message json.RawMessage) {
+		key := sha256.Sum256(message)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, message)
+	}
+	for _, message := range disk[:len(disk)-common] {
+		add(message)
 	}
 	for _, message := range tail {
-		key := string(message)
-		if !seen[key] {
-			seen[key] = true
-			out = append(out, message)
-		}
+		add(message)
 	}
 	return out
 }
@@ -1533,7 +1606,7 @@ func (s *session) handleClientLine(line []byte) {
 		}
 		_ = s.send(frame{"type": "relay_projects", "id": head.ID, "root": root, "projects": listProjects(root)})
 	case "relay_sessions":
-		sessions := listSessions(s.sessionsDir)
+		sessions := listSessions(s.sessionsDir, &s.metaCache)
 		s.agentMu.Lock()
 		for _, item := range sessions {
 			path, _ := item["path"].(string)

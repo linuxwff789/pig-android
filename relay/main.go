@@ -151,8 +151,55 @@ type sessionFile struct {
 	info os.FileInfo
 }
 
+// sessionMetaCache keeps the metadata parsed from a session file's head and
+// tail. Listing 40-60 multi-megabyte sessions used to read ~30 MB per
+// relay_sessions request, and the app asks for that list after every turn and
+// on every switch.
+type sessionMetaCache struct {
+	mu      sync.Mutex
+	entries map[string]sessionMetaEntry
+}
+
+type sessionMetaEntry struct {
+	size  int64
+	mtime time.Time
+	meta  map[string]any
+}
+
+// metaFor returns a copy of the cached metadata, or reads it when the file
+// changed. The copy matters: callers decorate the map with live/busy flags.
+func (c *sessionMetaCache) metaFor(path string, info os.FileInfo) map[string]any {
+	if c == nil {
+		return readSessionMeta(path, info)
+	}
+	c.mu.Lock()
+	entry, ok := c.entries[path]
+	c.mu.Unlock()
+	if !ok || entry.size != info.Size() || !entry.mtime.Equal(info.ModTime()) {
+		entry = sessionMetaEntry{size: info.Size(), mtime: info.ModTime(), meta: readSessionMeta(path, info)}
+		c.mu.Lock()
+		if c.entries == nil {
+			c.entries = map[string]sessionMetaEntry{}
+		}
+		// Deleted and archived files must not accumulate forever.
+		if len(c.entries) >= 256 {
+			for key := range c.entries {
+				delete(c.entries, key)
+				break
+			}
+		}
+		c.entries[path] = entry
+		c.mu.Unlock()
+	}
+	out := make(map[string]any, len(entry.meta))
+	for key, value := range entry.meta {
+		out[key] = value
+	}
+	return out
+}
+
 // listSessions returns the most recently updated Session files, newest first.
-func listSessions(dir string) []map[string]any {
+func listSessions(dir string, cache *sessionMetaCache) []map[string]any {
 	var files []sessionFile
 	projects, err := os.ReadDir(dir)
 	if err != nil {
@@ -185,7 +232,7 @@ func listSessions(dir string) []map[string]any {
 	}
 	out := make([]map[string]any, 0, len(files))
 	for _, file := range files {
-		out = append(out, readSessionMeta(file.path, file.info))
+		out = append(out, cache.metaFor(file.path, file.info))
 	}
 	return out
 }

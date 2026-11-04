@@ -38,8 +38,8 @@ func TestTrackFrameState(t *testing.T) {
 		t.Fatal("agent_start did not mark busy")
 	}
 	a.mu.Lock()
-	if a.streamText != "hi" {
-		t.Fatalf("streamText: %q", a.streamText)
+	if got := a.streamText.String(); got != "hi" {
+		t.Fatalf("streamText: %q", got)
 	}
 	if a.activeTools["t1"].Name != "bash" || len(a.activeTools["t1"].Partial) == 0 {
 		t.Fatalf("tool progress: %#v", a.activeTools)
@@ -59,8 +59,8 @@ func TestTrackFrameState(t *testing.T) {
 		t.Fatal("error did not clear busy")
 	}
 	a.mu.Lock()
-	if a.streamText != "" || len(a.activeTools) != 0 {
-		t.Fatalf("message/tool state: %q %#v", a.streamText, a.activeTools)
+	if a.streamText.Len() != 0 || len(a.activeTools) != 0 {
+		t.Fatalf("message/tool state: %q %#v", a.streamText.String(), a.activeTools)
 	}
 	a.mu.Unlock()
 

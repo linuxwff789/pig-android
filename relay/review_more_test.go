@@ -610,7 +610,7 @@ func TestReplayAgentFrames(t *testing.T) {
 	a.widgets["w"] = json.RawMessage(`{"type":"extension_ui_request","method":"setWidget","widgetKey":"w","widgetLines":["x"]}`)
 	a.statuses["s"] = json.RawMessage(`{"type":"extension_ui_request","method":"setStatus","statusKey":"s","statusText":"S"}`)
 	a.pendingUI["p"] = json.RawMessage(`{"type":"extension_ui_request","id":"p","method":"confirm"}`)
-	a.streamText = "partial"
+	a.streamText.WriteString("partial")
 	a.activeTools["t1"] = toolProgress{Name: "bash", Partial: json.RawMessage(`{"x":1}`)}
 
 	go s.replayAgent(a)

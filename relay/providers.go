@@ -13,6 +13,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -380,7 +381,10 @@ func (s *session) sendProviderModels(id any, entry map[string]any) {
 		def["api"] = api
 	}
 	if key := providerString(entry, "apiKey"); key != "" {
-		def["apiKey"] = key
+		// A draft arrives over the socket, so it must never spawn a process:
+		// `!command` is only honoured for values already written to the user's
+		// own custom-endpoints.json (see literalProviderValue).
+		def["apiKey"] = literalProviderValue(key)
 	}
 	if modelsURL := providerString(entry, "modelsUrl"); modelsURL != "" {
 		def["modelsUrl"] = modelsURL
@@ -605,16 +609,52 @@ func expandProviderValue(raw string) string {
 	return strings.ReplaceAll(value, bang, "!")
 }
 
+// literalProviderValue neutralizes the `!command` form for a value that came
+// from a client frame. `$!` is the escape expandProviderValue understands: it
+// expands to a literal `!`, so the text is used as an API key instead of being
+// executed. Values read from custom-endpoints.json keep the shell semantics -
+// that is a configuration the user wrote on the Termux side.
+func literalProviderValue(raw string) string {
+	if strings.HasPrefix(raw, "!") {
+		return "$" + raw
+	}
+	return raw
+}
+
+// providerShellMaxOutput bounds what a `!command` may return. The result ends
+// up in an HTTP header, and Output() used to buffer whatever the command
+// printed; a runaway script could cost hundreds of megabytes.
+const providerShellMaxOutput = 64 << 10
+
+// cappedBuffer keeps the first limit bytes and discards the rest while still
+// reporting a full write, so a chatty child never blocks on a full pipe.
+type cappedBuffer struct {
+	buf   bytes.Buffer
+	limit int
+}
+
+func (b *cappedBuffer) Write(p []byte) (int, error) {
+	if remain := b.limit - b.buf.Len(); remain > 0 {
+		if len(p) > remain {
+			p = p[:remain]
+		}
+		_, _ = b.buf.Write(p)
+	}
+	return len(p), nil
+}
+
 func providerRunShell(command string) string {
 	// CommandContext kills the shell (and waits for it) when the limit is hit;
 	// the old timer returned "" but left the child and its own children alive.
 	ctx, cancel := context.WithTimeout(context.Background(), providerResolveLimit)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "sh", "-c", command).Output()
-	if err != nil {
+	out := &cappedBuffer{limit: providerShellMaxOutput}
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	cmd.Stdout = out
+	if err := cmd.Run(); err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(out))
+	return strings.TrimSpace(out.buf.String())
 }
 
 func providerOffline() bool {

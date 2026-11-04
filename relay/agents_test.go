@@ -393,3 +393,76 @@ func TestTransitionFrameOnlyCoversStateChanges(t *testing.T) {
 		}
 	}
 }
+
+func TestMergeHistoryUsesTheAppendOnlyFastPath(t *testing.T) {
+	disk := historyEntries("user", "assistant", "user", "assistant")
+
+	// The runtime still holds a suffix of the file: nothing new to append.
+	if got := mergeHistory(disk, disk[2:]); len(got) != len(disk) {
+		t.Fatalf("suffix tail: got %d messages, want %d", len(got), len(disk))
+	}
+
+	// The runtime holds the whole file plus the partial message of a running
+	// turn.
+	partial := json.RawMessage(`{"role":"assistant","content":"partial"}`)
+	if got := mergeHistory(disk, append(append([]json.RawMessage{}, disk...), partial)); len(got) != len(disk)+1 {
+		t.Fatalf("grown tail: got %d messages, want %d", len(got), len(disk)+1)
+	}
+
+	// Compaction leaves a tail whose head overlaps the middle of the file: the
+	// unaligned parts are deduplicated, the order is disk then tail.
+	tail := append(append([]json.RawMessage{}, disk[2:]...), partial)
+	got := mergeHistory(disk, tail)
+	if len(got) != len(disk)+1 {
+		t.Fatalf("overlapping tail: got %d messages, want %d", len(got), len(disk)+1)
+	}
+	if messageRole(got[len(got)-1]) != "assistant" {
+		t.Fatalf("last message = %q", messageRole(got[len(got)-1]))
+	}
+}
+
+func TestClipHistoryHonoursTheByteBudget(t *testing.T) {
+	big := make([]json.RawMessage, 0, 4)
+	payload := bytes.Repeat([]byte("x"), 5<<20)
+	for i := 0; i < 4; i++ {
+		big = append(big, json.RawMessage(`{"role":"user","content":"`+string(payload)+`"}`))
+	}
+	window, _ := clipHistory(big, 4)
+	if len(window) != 1 {
+		t.Fatalf("window = %d messages (%d bytes), want 1", len(window), len(window[0]))
+	}
+}
+
+func TestListSessionsCachesMetaAndReturnsCopies(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "project")
+	if err := os.MkdirAll(project, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(project, "s1.jsonl")
+	if err := os.WriteFile(path, []byte(`{"id":"s1","cwd":"/home"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cache := &sessionMetaCache{}
+	first := listSessions(dir, cache)
+	if len(first) != 1 || first[0]["id"] != "s1" {
+		t.Fatalf("first list = %v", first)
+	}
+	first[0]["live"] = true
+	second := listSessions(dir, cache)
+	if _, ok := second[0]["live"]; ok {
+		t.Fatal("cached metadata was mutated by the caller")
+	}
+	// A changed file must be re-read, not served from the cache.
+	if err := os.WriteFile(path, []byte(`{"id":"s2","cwd":"/home"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+	third := listSessions(dir, cache)
+	if third[0]["id"] != "s2" {
+		t.Fatalf("after rewrite id = %v, want s2", third[0]["id"])
+	}
+}

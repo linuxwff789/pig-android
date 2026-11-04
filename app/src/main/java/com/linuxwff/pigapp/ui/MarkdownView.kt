@@ -220,17 +220,31 @@ private fun MarkdownTable(model: MarkdownComponentModel, cornerRadius: Int) {
     val headerNode = model.node.findChildOfType(GFMElementTypes.HEADER)
     val separator = model.node.findChildOfType(GFMTokenTypes.TABLE_SEPARATOR)
 
-    val headerCells = headerNode?.children.orEmpty()
-        .filter { it.type == GFMTokenTypes.CELL }
-    val rows = model.node.children
-        .filter { it.type == GFMElementTypes.ROW }
-        .map { row ->
-            row.children.filter { it.type == GFMTokenTypes.CELL }
-        }
-
-    val columns = maxOf(headerCells.size, rows.maxOfOrNull { it.size } ?: 0)
+    // Walking the AST and parsing the separator used to happen on every
+    // recomposition (a streaming answer recomposes ~20 times a second).
+    val table = remember(model.node, content) {
+        val cells = headerNode?.children.orEmpty()
+            .filter { it.type == GFMTokenTypes.CELL }
+        val body = model.node.children
+            .filter { it.type == GFMElementTypes.ROW }
+            .map { row -> row.children.filter { it.type == GFMTokenTypes.CELL } }
+        val count = maxOf(cells.size, body.maxOfOrNull { it.size } ?: 0)
+        TableShape(
+            headerCells = cells,
+            rows = body,
+            columns = count,
+            alignments = if (count == 0) {
+                emptyList()
+            } else {
+                parseAlignments(separator?.getTextInNode(content)?.toString(), count)
+            },
+        )
+    }
+    val headerCells = table.headerCells
+    val rows = table.rows
+    val columns = table.columns
     if (columns == 0) return
-    val alignments = parseAlignments(separator?.getTextInNode(content)?.toString(), columns)
+    val alignments = table.alignments
 
     Column(
         Modifier
@@ -331,6 +345,13 @@ private fun TableRow(
     }
 }
 
+private data class TableShape(
+    val headerCells: List<ASTNode>,
+    val rows: List<List<ASTNode>>,
+    val columns: Int,
+    val alignments: List<TextAlign>,
+)
+
 @Composable
 private fun TableCell(
     content: String,
@@ -342,10 +363,12 @@ private fun TableCell(
     color: Color = Color.Unspecified,
     maxLines: Int = 6,
 ) {
-    val text = buildAnnotatedString {
-        if (bold) pushStyle(SpanStyle(fontWeight = FontWeight.SemiBold))
-        if (node != null) buildMarkdownAnnotatedString(content, node)
-        if (bold) pop()
+    val text = remember(content, node, bold) {
+        buildAnnotatedString {
+            if (bold) pushStyle(SpanStyle(fontWeight = FontWeight.SemiBold))
+            if (node != null) buildMarkdownAnnotatedString(content, node)
+            if (bold) pop()
+        }
     }
     Text(
         text,

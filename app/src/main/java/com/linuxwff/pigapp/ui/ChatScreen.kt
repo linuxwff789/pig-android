@@ -112,6 +112,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -4286,6 +4288,7 @@ private fun SessionRow(
     }
 }
 
+@Immutable
 private sealed interface ChatListItem {
     val key: String
     val contentType: String
@@ -4309,8 +4312,33 @@ private sealed interface ChatListItem {
 /** Cards rendered at once when a tool group is expanded. */
 private const val GROUP_PAGE = 25
 
-private fun buildChatListItems(messages: List<ChatMsg>, group: Boolean): List<ChatListItem> {
-    if (!group) return messages.map { ChatListItem.Single(it) }
+/**
+ * Reuses the [ChatListItem.Single] of messages whose [ChatMsg] instance did not
+ * change. `messages` gets a new list every 50 ms while an answer streams, and a
+ * fresh wrapper per message made every visible row recompose even though all
+ * but the last message were untouched.
+ */
+private fun buildChatListItems(
+    messages: List<ChatMsg>,
+    group: Boolean,
+    singles: MutableMap<String, ChatListItem.Single>? = null,
+): List<ChatListItem> {
+    fun single(message: ChatMsg): ChatListItem {
+        if (singles == null) return ChatListItem.Single(message)
+        val cached = singles[message.id]
+        if (cached != null && cached.message === message) return cached
+        return ChatListItem.Single(message).also { singles[message.id] = it }
+    }
+    if (!group) {
+        val out = ArrayList<ChatListItem>(messages.size)
+        val live = HashSet<String>(messages.size)
+        for (message in messages) {
+            live.add(message.id)
+            out.add(single(message))
+        }
+        if (singles != null && singles.size > live.size) singles.keys.retainAll(live)
+        return out
+    }
     val out = mutableListOf<ChatListItem>()
     var index = 0
     while (index < messages.size) {
@@ -4344,8 +4372,11 @@ private fun buildChatListItems(messages: List<ChatMsg>, group: Boolean): List<Ch
                 continue
             }
         }
-        out.add(ChatListItem.Single(message))
+        out.add(single(message))
         index++
+    }
+    if (singles != null && singles.size > messages.size) {
+        singles.keys.retainAll(messages.mapTo(HashSet(messages.size)) { it.id })
     }
     return out
 }
@@ -4558,7 +4589,9 @@ private fun MessageList(
     // Rows currently in long-press selection mode. New tokens must not scroll
     // the text out from under the drag handles.
     val selectingRows = remember { mutableStateMapOf<String, Boolean>() }
-    val anySelection = selectingRows.values.any { it }
+    // Derived so scrolling (which recycles rows) does not read the whole map on
+    // every recomposition; a row that was never selected holds no entry.
+    val anySelection by remember { derivedStateOf { selectingRows.isNotEmpty() } }
     // Where the reader was before an older page was prepended.
     var olderAnchor by remember { mutableStateOf<OlderAnchor?>(null) }
     var pulled by remember { mutableStateOf(0f) }
@@ -4731,8 +4764,9 @@ private fun MessageList(
         return
     }
 
+    val singleItems = remember { HashMap<String, ChatListItem.Single>() }
     val displayItems = remember(messages, toolGroups, showTyping) {
-        buildChatListItems(messages, toolGroups).filterNot { item ->
+        buildChatListItems(messages, toolGroups, singleItems).filterNot { item ->
             // The empty assistant placeholder and TypingRow are the same turn;
             // rendering both showed "…" plus animated dots.
             showTyping && item is ChatListItem.Single &&
@@ -4771,7 +4805,13 @@ private fun MessageList(
                         hideThinking = hideThinking,
                         showTimestamps = showTimestamps,
                         selecting = selectingRows[item.message.id] == true,
-                        onSelectingChange = { on -> selectingRows[item.message.id] = on },
+                        onSelectingChange = { on ->
+                            if (on) {
+                                selectingRows[item.message.id] = true
+                            } else {
+                                selectingRows.remove(item.message.id)
+                            }
+                        },
                         avatarShadow = avatarShadow,
                         bubbleShadow = bubbleShadow,
                         onCopy = onCopy,
