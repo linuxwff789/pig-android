@@ -403,7 +403,7 @@ sealed interface MarkdownSegment {
     data class Code(val language: String, val code: String) : MarkdownSegment
 }
 
-private val fenceRegex = Regex("""^\s*(```|~~~)(.*)$""")
+private val fenceRegex = Regex("""^\s*(`{3,}|~{3,})(.*)$""")
 
 /**
  * CommonMark closing fence: at most three spaces of indent, at least as many
