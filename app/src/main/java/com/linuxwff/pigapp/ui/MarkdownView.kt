@@ -405,6 +405,25 @@ sealed interface MarkdownSegment {
 
 private val fenceRegex = Regex("""^\s*(```|~~~)(.*)$""")
 
+/**
+ * CommonMark closing fence: at most three spaces of indent, at least as many
+ * fence characters as the opener, then only whitespace. `startsWith(fence)`
+ * used to close a ``` block at the first ```` inside it (a common way to show
+ * fenced markdown), cutting the code block in half.
+ */
+private fun closesFence(line: String, ch: Char, length: Int): Boolean {
+    var i = 0
+    while (i < line.length && line[i] == ' ') i++
+    if (i > 3) return false
+    var run = 0
+    while (i < line.length && line[i] == ch) {
+        i++
+        run++
+    }
+    if (run < length) return false
+    return line.substring(i).isBlank()
+}
+
 fun splitCodeFences(text: String): List<MarkdownSegment> {
     val lines = text.lines()
     val out = mutableListOf<MarkdownSegment>()
@@ -428,7 +447,7 @@ fun splitCodeFences(text: String): List<MarkdownSegment> {
         val language = match.groupValues[2].trim()
         val code = StringBuilder()
         index++
-        while (index < lines.size && !lines[index].trimStart().startsWith(fence)) {
+        while (index < lines.size && !closesFence(lines[index], fence[0], fence.length)) {
             if (code.isNotEmpty()) code.append('\n')
             code.append(lines[index])
             index++

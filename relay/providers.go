@@ -354,10 +354,22 @@ func (s *session) deleteProvider(id any, entry map[string]any) {
 	_ = s.send(frame{"type": "relay_provider_deleted", "id": id, "op": "delete", "provider": pid})
 }
 
+// providerFetchSlots bounds concurrent /models fetches. Every client frame
+// used to spawn a goroutine and an HTTP request, so a fast sender could open
+// dozens of 20 s connections (and as many pig status processes elsewhere).
+var providerFetchSlots = make(chan struct{}, 2)
+
 // sendProviderModels fetches a draft provider's model list without saving it.
 func (s *session) sendProviderModels(id any, entry map[string]any) {
 	fail := func(message string) {
 		_ = s.send(frame{"type": "relay_provider_error", "id": id, "op": "refresh", "message": message})
+	}
+	select {
+	case providerFetchSlots <- struct{}{}:
+		defer func() { <-providerFetchSlots }()
+	default:
+		fail("正在刷新另一个供应商，请稍后再试")
+		return
 	}
 	if providerOffline() {
 		fail("离线模式下无法刷新模型列表")

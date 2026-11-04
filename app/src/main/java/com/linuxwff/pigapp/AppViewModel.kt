@@ -2568,7 +2568,9 @@ class AppViewModel @JvmOverloads constructor(
      * session).
      */
     fun sendPrompt(raw: String, steer: Boolean = true): Boolean {        val text = raw.trim()
-        AppLog.event("prompt", text.take(400))
+        // No prompt text in the log: it is user content that can carry keys,
+        // and the file is exportable. Length is enough to spot truncation.
+        AppLog.event("prompt", "chars=${text.length}")
         val attachments = ui.attachments
         if (text.isEmpty() && attachments.isEmpty()) return false
         if (text.startsWith("/")) {
@@ -4499,6 +4501,9 @@ class AppViewModel @JvmOverloads constructor(
             val stored = formValues[formKey(windowId, node.fieldId)]
             val value = stored ?: when (node.type) {
                 "toggle" -> node.checked.toString()
+                // The select UI shows the first option when nothing was picked;
+                // submitting initialValue (usually "") sent an empty choice.
+                "select" -> node.options.firstOrNull()?.value ?: node.initialValue
                 else -> node.initialValue
             }
             values.put(node.fieldId, value)
@@ -6270,7 +6275,8 @@ class AppViewModel @JvmOverloads constructor(
             val stamp = message.optString("timestamp").ifBlank { "i$index" }
             val at = parseMessageTime(stamp)
             var slot = 0
-            fun itemId(): String = "h$stamp-${slot++}"
+            // index in the id: two messages can share a millisecond stamp
+            fun itemId(): String = "h$stamp-$index-${slot++}"
             when (message.optString("role")) {
                 "user" -> {
                     val text = contentText(message)
@@ -7291,7 +7297,9 @@ class AppViewModel @JvmOverloads constructor(
         // with a second relay connection; onResume reconnects and restores the
         // session file.
         client.close()
-        KeepAliveService.stop(getApplication())
+        // Do not stop KeepAliveService here: the Activity can be destroyed by
+        // the system while the user expects the background session to stay
+        // connected. The service follows the user's setting (onForeground).
         super.onCleared()
     }
 

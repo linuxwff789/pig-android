@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
@@ -313,11 +314,21 @@ func settingsPackages(path string) []string {
 // runPigInstall registers the extracted extension with pig. It also builds it,
 // so a broken copy is reported here instead of failing the next session.
 func runPigInstall(pigBin, dir string) error {
-	cmd := exec.Command(pigBin, "install", dir)
+	// A pig install that hangs (missing Go toolchain, a lock held by another
+	// build) used to block extReady forever: the relay never answered a prompt.
+	ctx, cancel := context.WithTimeout(context.Background(), embeddedInstallTO)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, pigBin, "install", dir)
 	cmd.Dir = filepath.Dir(dir)
-	out, err := cmd.CombinedOutput()
+	out := &cappedBuffer{limit: 64 << 10}
+	cmd.Stdout = out
+	cmd.Stderr = out
+	err := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("pig install timed out after %s", embeddedInstallTO)
+	}
 	if err != nil {
-		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("%v: %s", err, strings.TrimSpace(out.buf.String()))
 	}
 	return nil
 }
