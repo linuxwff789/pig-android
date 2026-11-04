@@ -532,7 +532,14 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 		statuses:    map[string]json.RawMessage{},
 	}
 
+	// Both pipes must be drained before Wait: os/exec closes StdoutPipe and
+	// StderrPipe inside Wait, and a read that races with that close surfaced as
+	// "pig frame too large" plus a bogus relay_exit on every normal exit.
+	var readers sync.WaitGroup
+	readers.Add(2)
+
 	go func() {
+		defer readers.Done()
 		scanner := bufio.NewScanner(stdout)
 		// Image blocks make `get_messages` frames large; the cap has to cover a
 		// transcript with screenshots or pig blocks on a full stdout pipe.
@@ -577,6 +584,7 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 	}()
 
 	go func() {
+		defer readers.Done()
 		scanner := bufio.NewScanner(stderr)
 		scanner.Buffer(make([]byte, 16*1024), 4*1024*1024)
 		for scanner.Scan() {
@@ -595,6 +603,7 @@ func (s *session) startAgent(path string, load bool) (*agentProc, error) {
 	}()
 
 	go func() {
+		readers.Wait()
 		err := cmd.Wait()
 		close(pig.dead)
 		code := 0

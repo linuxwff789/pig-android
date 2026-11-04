@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
@@ -82,6 +83,15 @@ class AppViewModel @JvmOverloads constructor(
     var ui by mutableStateOf(AppUiState())
         private set
 
+    /**
+     * The transcript is the only state that changes at streaming rate (every
+     * 50 ms). Keeping it inside [ui] made each such update produce a new
+     * AppUiState and invalidate every composition that reads any field; on its
+     * own it only invalidates the transcript.
+     */
+    var messages by mutableStateOf<List<ChatMsg>>(emptyList())
+        private set
+
     private val windowPositions = mutableStateMapOf<String, WindowPos>()
     private val dismissedWindows = mutableMapOf<String, String>() // pack path -> window id
     private val knownWindows = mutableMapOf<String, AppWindow>() // window id -> last parsed definition
@@ -119,6 +129,9 @@ class AppViewModel @JvmOverloads constructor(
      * the session: the first page is small, pulling at the top doubles it.
      */
     private var historyWindow = HISTORY_PAGE
+    /** Backoff retries for a failed get_messages; reset by a successful one. */
+    private var historyRetries = 0
+    private var historyRetryJob: Job? = null
     /** Messages the relay says the whole session has; clamps the next page at
      *  the end so a 200-message pull never asks past the transcript. */
     private var historyTotal = 0
@@ -2673,7 +2686,7 @@ class AppViewModel @JvmOverloads constructor(
         client.send(JSONObject().put("id", "q${nextId++}").put("type", "clear_queue"))
         val dropped = ui.queuedMessages.mapNotNull { it.msgId.takeIf(String::isNotBlank) }.toSet()
         if (dropped.isNotEmpty()) {
-            ui = ui.copy(messages = ui.messages.filterNot { it.id in dropped })
+            messages = messages.filterNot { it.id in dropped }
         }
         ui = ui.copy(queuedMessages = emptyList(), pendingMessages = 0)
     }
@@ -3613,10 +3626,10 @@ class AppViewModel @JvmOverloads constructor(
 
     private fun applyTailVerify(data: JSONObject) {
         peekInFlight = false
-        val messages = data.optJSONArray("messages") ?: return
+        val entries = data.optJSONArray("messages") ?: return
         var latest: JSONObject? = null
-        for (index in messages.length() - 1 downTo 0) {
-            val entry = messages.optJSONObject(index) ?: continue
+        for (index in entries.length() - 1 downTo 0) {
+            val entry = entries.optJSONObject(index) ?: continue
             if (entry.optString("role") == "assistant") {
                 latest = entry
                 break
@@ -3624,7 +3637,7 @@ class AppViewModel @JvmOverloads constructor(
         }
         val tail = latest?.let { contentText(it) }.orEmpty()
         if (tail.isBlank()) return
-        val target = ui.messages.lastOrNull { it.role == Role.ASSISTANT } ?: return
+        val target = messages.lastOrNull { it.role == Role.ASSISTANT } ?: return
         // Only ever lengthens: a shorter or different tail means the screen is
         // showing a newer turn than the one pig just described.
         if (tail.length <= target.text.length) return
@@ -3656,6 +3669,24 @@ class AppViewModel @JvmOverloads constructor(
                 // each time it reaches the top.
                 .put("limit", historyWindow),
         )
+    }
+
+    /**
+     * A failed get_messages used to leave the transcript empty until something
+     * else happened to issue a new request (a turn ending, a reconnect). Retry
+     * a few times with backoff, but never for a request a newer one replaced.
+     */
+    private fun scheduleHistoryRetry(failedId: String) {
+        if (failedId.isBlank() || failedId != lastMessagesRequestId) return
+        if (historyRetries >= HISTORY_RETRIES) return
+        historyRetries++
+        historyRetryJob?.cancel()
+        historyRetryJob = viewModelScope.launch {
+            delay(500L * historyRetries)
+            if (!client.connected.value) return@launch
+            if (failedId != lastMessagesRequestId) return@launch
+            requestMessages()
+        }
     }
 
     /** Pull the next older page; the transcript stays a suffix of the session. */
@@ -3765,13 +3796,13 @@ class AppViewModel @JvmOverloads constructor(
         // as soon as it is ready. The banner explains the wait.
         awaitingNewSession = true
         pendingNewSessionPrompts.clear()
+        messages = emptyList()
         ui = ui.copy(
             readOnly = false,
             busy = false,
             streamingId = null,
             status = "starting",
             pendingMessages = 0,
-            messages = emptyList(),
             historyHasOlder = false,
             historyLoading = false,
             historyLoadingOlder = false,
@@ -4057,7 +4088,8 @@ class AppViewModel @JvmOverloads constructor(
     }
 
     fun clearLocal() {
-        ui = ui.copy(messages = emptyList(), extensionStatuses = emptyMap())
+        messages = emptyList()
+        ui = ui.copy(extensionStatuses = emptyMap())
     }
 
     /**
@@ -4480,7 +4512,7 @@ class AppViewModel @JvmOverloads constructor(
     }
 
     private fun append(message: ChatMsg) {
-        ui = ui.copy(messages = ui.messages + message)
+        messages = messages + message
     }
 
     /** True between `relay_restart` and its `relay_restarted` reply. */
@@ -4586,7 +4618,7 @@ class AppViewModel @JvmOverloads constructor(
         fun stale(candidate: String) = candidate.isNotBlank() && markers.any { candidate.contains(it) }
         resolvedNotices.addAll(markers)
         noticesCache = null
-        ui = ui.copy(messages = ui.messages.filterNot { it.role == Role.NOTICE && stale(it.text) })
+        messages = messages.filterNot { it.role == Role.NOTICE && stale(it.text) }
         val key = noticeKey() ?: return
         val file = File(noticesDir, "$key.jsonl")
         if (!file.isFile) return
@@ -4636,7 +4668,7 @@ class AppViewModel @JvmOverloads constructor(
 
     private fun update(id: String, block: (ChatMsg) -> ChatMsg) {
         var found = false
-        val next = ui.messages.map {
+        val next = messages.map {
             if (it.id == id) {
                 found = true
                 block(it)
@@ -4655,11 +4687,11 @@ class AppViewModel @JvmOverloads constructor(
             }
             return
         }
-        ui = ui.copy(messages = next)
+        messages = next
     }
 
     private fun remove(id: String) {
-        ui = ui.copy(messages = ui.messages.filterNot { it.id == id })
+        messages = messages.filterNot { it.id == id }
     }
 
     private fun handle(event: JSONObject) {
@@ -4796,7 +4828,7 @@ class AppViewModel @JvmOverloads constructor(
                     pendingMessages = 0,
                     // Nothing on screen yet: say we are reading it rather than
                     // showing the "no messages" empty state.
-                    historyLoading = ui.messages.isEmpty(),
+                    historyLoading = messages.isEmpty(),
                 )
                 pendingToolPartials.clear()
                 // The relay may have kept the previous pig alive (mid-turn
@@ -5288,7 +5320,7 @@ class AppViewModel @JvmOverloads constructor(
                 refreshCommands()
                 refreshDataSources("agent_end")
                 if (type == "agent_settled" && !event.optBoolean("aborted", false) && ui.notifyDone) {
-                    val last = ui.messages.lastOrNull { it.role == Role.ASSISTANT }?.text.orEmpty()
+                    val last = messages.lastOrNull { it.role == Role.ASSISTANT }?.text.orEmpty()
                     notifySession(
                         SessionNotifications.Kind.DONE,
                         str("notification.done", "回复完成") + " · " + sessionLabel(),
@@ -5439,6 +5471,7 @@ class AppViewModel @JvmOverloads constructor(
             if (command == "get_messages") {
                 // Don't leave the "reading history" spinner up over a failure.
                 ui = ui.copy(historyLoading = false, historyLoadingOlder = false)
+                scheduleHistoryRetry(responseId)
             }
             if (command == "set_model") {
                 modelSwitchAccepted = false
@@ -5561,8 +5594,8 @@ class AppViewModel @JvmOverloads constructor(
             // nothing visibly changes).
             val cachedShown = switchingToFile &&
                 desiredSessionPath?.let { showCachedHistory(it) } == true
+            if (switchingToFile && !cachedShown) messages = emptyList()
             ui = ui.copy(
-                messages = if (switchingToFile && !cachedShown) emptyList() else ui.messages,
                 historyHasOlder = if (cachedShown) ui.historyHasOlder else false,
                 historyLoading = switchingToFile,
                 historyLoadingOlder = false,
@@ -5655,6 +5688,7 @@ class AppViewModel @JvmOverloads constructor(
                 // new one (the user may have typed into it), so only the banner
                 // goes away. A reply from the runtime being replaced does not
                 // count, or the queued prompt would run in the old session.
+                if (switched) messages = emptyList()
                 if (awaitingNewSession && settledNow) {
                     awaitingNewSession = false
                     if (!liveActive) currentAssistant = null
@@ -5737,7 +5771,7 @@ class AppViewModel @JvmOverloads constructor(
                 // describe the session being replaced, and its messageCount
                 // would pull the old transcript into the empty conversation.
                 if (!historyHealTried && !restorePending && !awaitingNewSession &&
-                    ui.messages.isEmpty() && data.optInt("messageCount", -1) > 0 &&
+                    messages.isEmpty() && data.optInt("messageCount", -1) > 0 &&
                     System.currentTimeMillis() - lastMessagesRequestAt > 2500
                 ) {
                     historyHealTried = true
@@ -5764,7 +5798,7 @@ class AppViewModel @JvmOverloads constructor(
                     readOnly = !live,
                     // A new session already cleared the list when it opened;
                     // anything on screen here was typed into it.
-                    messages = if (switched) emptyList() else ui.messages,
+
                     contextWindow = effectiveContextWindow(
                         model?.optInt("contextWindow", ui.contextWindow) ?: ui.contextWindow,
                         label,
@@ -5892,7 +5926,7 @@ class AppViewModel @JvmOverloads constructor(
                 }
                 val historyStart = data.optInt("historyStart", 0)
                 historyTotal = maxOf(data.optInt("historyTotal", 0), history.length())
-                val foreignEmpty = history.length() == 0 && ui.messages.isNotEmpty() &&
+                val foreignEmpty = history.length() == 0 && messages.isNotEmpty() &&
                     (taggedPath.isBlank() || taggedPath == ui.sessionFile)
                 if (foreignEmpty) {
                     // The relay has no session attached yet; keep what is on
@@ -5901,6 +5935,8 @@ class AppViewModel @JvmOverloads constructor(
                 } else {
                     needsHistory = false
                     historyHealTried = true
+                    historyRetries = 0
+                    historyRetryJob?.cancel()
                     val requestId = responseId
                     val epochAtRequest = lastMessagesEpoch
                     val windowAtRequest = historyWindow
@@ -6415,7 +6451,7 @@ class AppViewModel @JvmOverloads constructor(
                 }
             }
         }
-        ui = ui.copy(messages = items)
+        messages = items
         rememberHistory(path, window, hasOlder)
         bindResumedAssistant()
     }
@@ -6431,9 +6467,9 @@ class AppViewModel @JvmOverloads constructor(
     private val historyCache = LinkedHashMap<String, CachedHistory>(8, 0.75f, true)
 
     private fun rememberHistory(path: String, window: Int, hasOlder: Boolean) {
-        if (path.isBlank() || ui.messages.isEmpty()) return
+        if (path.isBlank() || messages.isEmpty()) return
         synchronized(historyCache) {
-            historyCache[path] = CachedHistory(ui.messages, window, hasOlder)
+            historyCache[path] = CachedHistory(messages, window, hasOlder)
             while (historyCache.size > HISTORY_CACHE_SESSIONS) {
                 val oldest = historyCache.keys.firstOrNull() ?: break
                 historyCache.remove(oldest)
@@ -6447,10 +6483,11 @@ class AppViewModel @JvmOverloads constructor(
      * does not shrink what the reader already had.
      */
     private fun showCachedHistory(path: String): Boolean {
-        if (path.isBlank() || ui.messages.isNotEmpty()) return false
+        if (path.isBlank() || messages.isNotEmpty()) return false
         val cached = synchronized(historyCache) { historyCache[path] } ?: return false
         historyWindow = cached.window
-        ui = ui.copy(messages = cached.items, historyHasOlder = cached.hasOlder)
+        messages = cached.items
+        ui = ui.copy(historyHasOlder = cached.hasOlder)
         return true
     }
 
@@ -6798,7 +6835,7 @@ class AppViewModel @JvmOverloads constructor(
     /** Reattach a reconnecting client to the assistant message that is still streaming. */
     private fun bindResumedAssistant() {
         if (!ui.busy || currentAssistant != null) return
-        val last = ui.messages.lastOrNull() ?: return
+        val last = messages.lastOrNull() ?: return
         if (last.role == Role.ASSISTANT) {
             currentAssistant = last.id
             ui = ui.copy(streamingId = last.id)
@@ -6813,13 +6850,13 @@ class AppViewModel @JvmOverloads constructor(
         // only after the next reconnect, when the transcript was read again.
         val failure = failureText(message)
         if (failure.isNotBlank()) {
-            val tail = ui.messages.lastOrNull()
+            val tail = messages.lastOrNull()
             if (tail?.role != Role.NOTICE || tail.text != failure) appendNotice(failure)
             ui = ui.copy(busy = false, status = "", streamingId = null)
         }
         val id = currentAssistant
             ?: ui.streamingId
-            ?: ui.messages.lastOrNull {
+            ?: messages.lastOrNull {
                 it.role == Role.ASSISTANT && it.text.isBlank() && it.thinking.isBlank()
             }?.id
         if (id == null) {
@@ -6837,7 +6874,7 @@ class AppViewModel @JvmOverloads constructor(
             AppLog.event("stream", "message_end had no bubble; adopted ${orphanText.length} chars")
             // A replayed message_end can arrive after a resync put the same text
             // on screen; adopting it again would show the answer twice.
-            if (ui.messages.lastOrNull { it.role == Role.ASSISTANT }?.text == orphanText) {
+            if (messages.lastOrNull { it.role == Role.ASSISTANT }?.text == orphanText) {
                 currentAssistant = null
                 clearLive()
                 ui = ui.copy(streamingId = null)
@@ -6880,7 +6917,7 @@ class AppViewModel @JvmOverloads constructor(
         // Tool-call-only assistant messages have no text; the tool card is the
         // visible representation, so drop the empty bubble. An image-only
         // assistant message still has something to show.
-        val finished = ui.messages.firstOrNull { it.id == id }
+        val finished = messages.firstOrNull { it.id == id }
         if (finished != null && finished.text.isBlank() && finished.thinking.isBlank() &&
             finished.images.isEmpty() && !hasImages(message)
         ) {
@@ -6981,11 +7018,9 @@ class AppViewModel @JvmOverloads constructor(
             toolMsgIds[callId]?.let { byMessage[it] = text }
         }
         if (byMessage.isEmpty()) return
-        ui = ui.copy(
-            messages = ui.messages.map { message ->
-                byMessage[message.id]?.let { message.copy(toolResult = it) } ?: message
-            },
-        )
+        messages = messages.map { message ->
+            byMessage[message.id]?.let { message.copy(toolResult = it) } ?: message
+        }
     }
 
     private fun handleToolEnd(event: JSONObject) {
@@ -7441,6 +7476,8 @@ internal fun compareVersionNames(left: String, right: String): Int? {
 
 /** Messages in the first history page; each pull at the top adds one more. */
 private const val HISTORY_PAGE = 200
+/** get_messages retries before the empty-state retry button is the only way out. */
+private const val HISTORY_RETRIES = 3
 /** Older messages added by one pull at the top. */
 private const val HISTORY_PAGE_STEP = 200
 

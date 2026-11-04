@@ -533,7 +533,7 @@ fun PigApp(vm: AppViewModel) {
                     // switch must open the new one at its newest message.
                     key(ui.sessionFile) {
                     MessageList(
-                        messages = ui.messages,
+                        messages = vm.messages,
                         busy = ui.busy,
                         loadingHistory = ui.historyLoading,
                         loadingOlder = ui.historyLoadingOlder,

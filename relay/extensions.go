@@ -214,40 +214,59 @@ func indexOf(list []string, value string) int {
 	return -1
 }
 
+// withSettingsLock serializes a read-modify-write of settings.json. Callers
+// must not call registerPigkitPackages or handleSettings inside fn: the lock is
+// not reentrant.
+func withSettingsLock(fn func() error) error {
+	settingsWriteMu.Lock()
+	defer settingsWriteMu.Unlock()
+	return fn()
+}
+
 // setExtensionEnabled toggles a package entry. It mirrors what `pig config`
 // persists: membership in settings.json `packages`.
 func (s *session) setExtensionEnabled(source string, enabled bool) error {
 	if source == "" {
 		return fmt.Errorf("empty source")
 	}
-	doc, packages, err := s.settingsPackages()
+	// The settings page (handleSettings) and the embedded-extension installer
+	// write the same file. Without this lock one read-modify-write silently
+	// replaced the other: a disabled extension came back, or a new setting was
+	// lost.
+	err := withSettingsLock(func() error {
+		doc, packages, err := s.settingsPackages()
+		if err != nil {
+			return err
+		}
+		stash := s.readStash()
+		if enabled {
+			if indexOf(packages, source) >= 0 {
+				return nil
+			}
+			packages = append(packages, source)
+			if index := indexOf(stash, source); index >= 0 {
+				stash = append(stash[:index], stash[index+1:]...)
+			}
+		} else {
+			index := indexOf(packages, source)
+			if index < 0 {
+				return nil
+			}
+			packages = append(packages[:index], packages[index+1:]...)
+			if indexOf(stash, source) < 0 {
+				stash = append(stash, source)
+			}
+		}
+		if err := s.writeSettingsPackages(doc, packages); err != nil {
+			return err
+		}
+		return s.writeStash(stash)
+	})
 	if err != nil {
 		return err
 	}
-	stash := s.readStash()
-	if enabled {
-		if indexOf(packages, source) >= 0 {
-			return nil
-		}
-		packages = append(packages, source)
-		if index := indexOf(stash, source); index >= 0 {
-			stash = append(stash[:index], stash[index+1:]...)
-		}
-	} else {
-		index := indexOf(packages, source)
-		if index < 0 {
-			return nil
-		}
-		packages = append(packages[:index], packages[index+1:]...)
-		if indexOf(stash, source) < 0 {
-			stash = append(stash, source)
-		}
-	}
-	if err := s.writeSettingsPackages(doc, packages); err != nil {
-		return err
-	}
 	s.invalidateExtensions()
-	return s.writeStash(stash)
+	return nil
 }
 
 // removeExtension unregisters a package and, when asked, deletes its directory.
@@ -260,20 +279,26 @@ func (s *session) removeExtension(source string, deleteFiles bool) (string, erro
 	if strings.HasPrefix(source, "pigkit/") {
 		return "", fmt.Errorf("内置扩展不能卸载，只能停用")
 	}
-	doc, packages, err := s.settingsPackages()
+	err := withSettingsLock(func() error {
+		doc, packages, err := s.settingsPackages()
+		if err != nil {
+			return err
+		}
+		index := indexOf(packages, source)
+		if index < 0 {
+			return fmt.Errorf("不在 package 列表里")
+		}
+		packages = append(packages[:index], packages[index+1:]...)
+		if err := s.writeSettingsPackages(doc, packages); err != nil {
+			return err
+		}
+		if stash := s.readStash(); indexOf(stash, source) >= 0 {
+			_ = s.writeStash(append(stash[:indexOf(stash, source)], stash[indexOf(stash, source)+1:]...))
+		}
+		return nil
+	})
 	if err != nil {
 		return "", err
-	}
-	index := indexOf(packages, source)
-	if index < 0 {
-		return "", fmt.Errorf("不在 package 列表里")
-	}
-	packages = append(packages[:index], packages[index+1:]...)
-	if err := s.writeSettingsPackages(doc, packages); err != nil {
-		return "", err
-	}
-	if stash := s.readStash(); indexOf(stash, source) >= 0 {
-		_ = s.writeStash(append(stash[:indexOf(stash, source)], stash[indexOf(stash, source)+1:]...))
 	}
 	s.invalidateExtensions()
 

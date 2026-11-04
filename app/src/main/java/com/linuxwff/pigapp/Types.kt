@@ -504,7 +504,6 @@ data class UiRequest(
 data class AppUiState(
     val connected: Boolean = false,
     val busy: Boolean = false,
-    val messages: List<ChatMsg> = emptyList(),
     val status: String = "",
 
     /** Status lines pinned by extensions, keyed by `statusKey`. */
