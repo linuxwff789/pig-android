@@ -107,19 +107,24 @@ func runShell(command string) string {
 // provider is one raw provider definition. Unknown keys are ignored; model
 // objects are passed through verbatim so no provider field is lost.
 type provider struct {
-	Name           string            `json:"name"`
-	BaseURL        string            `json:"baseUrl"`
-	APIKey         string            `json:"apiKey"`
-	API            string            `json:"api"`
-	Headers        map[string]string `json:"headers"`
-	Defaults       map[string]any    `json:"defaults"`
-	Models         json.RawMessage   `json:"models"`
-	FetchModels    any               `json:"fetchModels"`
-	ModelsURL      string            `json:"modelsUrl"`
-	ModelsHeaders  map[string]string `json:"modelsHeaders"`
-	RefreshTTLMs   *float64          `json:"refreshTtlMs"`
-	RefreshOnStart *bool             `json:"refreshOnStart"`
-	OAuth          map[string]any    `json:"oauth"`
+	Name     string            `json:"name"`
+	BaseURL  string            `json:"baseUrl"`
+	APIKey   string            `json:"apiKey"`
+	API      string            `json:"api"`
+	Headers  map[string]string `json:"headers"`
+	Defaults map[string]any    `json:"defaults"`
+	Models   json.RawMessage   `json:"models"`
+	// ModelOverrides corrects capabilities a gateway reports wrongly (e.g. an
+	// image-capable model listed as text-only). Keyed by model id; merged over
+	// the fetched/declared model object, so it travels with the provider config
+	// and survives a fresh install that has no models.json.
+	ModelOverrides map[string]map[string]any `json:"modelOverrides"`
+	FetchModels    any                       `json:"fetchModels"`
+	ModelsURL      string                    `json:"modelsUrl"`
+	ModelsHeaders  map[string]string         `json:"modelsHeaders"`
+	RefreshTTLMs   *float64                  `json:"refreshTtlMs"`
+	RefreshOnStart *bool                     `json:"refreshOnStart"`
+	OAuth          map[string]any            `json:"oauth"`
 }
 
 // auto reports whether the provider's model list is fetched from the endpoint.
@@ -693,6 +698,39 @@ func (r *registry) load(cwd string) {
 	}
 }
 
+// applyModelOverrides merges provider-level overrides over the model objects
+// before they are handed to pig. A gateway that lists an image-capable model as
+// `input: ["text"]` cannot be corrected anywhere else: pig filters the picture
+// out of the request based on this metadata.
+func applyModelOverrides(models []any, overrides map[string]map[string]any) []any {
+	if len(overrides) == 0 || len(models) == 0 {
+		return models
+	}
+	out := make([]any, 0, len(models))
+	for _, item := range models {
+		model, ok := item.(map[string]any)
+		if !ok {
+			out = append(out, item)
+			continue
+		}
+		id, _ := model["id"].(string)
+		override, ok := overrides[id]
+		if !ok || len(override) == 0 {
+			out = append(out, item)
+			continue
+		}
+		merged := make(map[string]any, len(model)+len(override))
+		for key, value := range model {
+			merged[key] = value
+		}
+		for key, value := range override {
+			merged[key] = value
+		}
+		out = append(out, merged)
+	}
+	return out
+}
+
 // register hands one provider to the host.
 func (r *registry) register(id string, def provider, models []any) {
 	config := sdk.ProviderConfig{
@@ -711,6 +749,7 @@ func (r *registry) register(id string, def provider, models []any) {
 		}
 		config["headers"] = headers
 	}
+	models = applyModelOverrides(models, def.ModelOverrides)
 	if len(models) > 0 {
 		config["models"] = models
 	}

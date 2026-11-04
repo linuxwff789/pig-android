@@ -5313,7 +5313,7 @@ private fun MessageRow(
                             imageRefs = message.imageRefs,
                             onNeedImages = onNeedImages,
                             cornerRadius = theme.bubbleRadius ?: cornerRadius,
-                            maxHeight = 240.dp,
+                            maxHeight = 380.dp,
                         )
                         if (message.text.isNotBlank()) {
                             if (message.images.isNotEmpty()) Spacer(Modifier.height(5.dp))
@@ -5925,7 +5925,7 @@ private fun ToolCard(
                     omitted = message.imagesOmitted,
                     imageRefs = message.imageRefs,
                     onNeedImages = onNeedImages,
-                    maxHeight = 200.dp,
+                    maxHeight = 320.dp,
                     cornerRadius = cornerRadius,
                 )
             }

@@ -83,7 +83,7 @@ fun ChatImageStrip(
     imageRefs: List<ImageRef> = emptyList(),
     onNeedImages: () -> Unit = {},
     modifier: Modifier = Modifier,
-    maxHeight: Dp = 220.dp,
+    maxHeight: Dp = 360.dp,
     cornerRadius: Int = 12,
 ) {
     // The row is only composed while it is visible (LazyColumn), so this is the
@@ -100,6 +100,10 @@ fun ChatImageStrip(
                 contentDescription = packText("a11y.image", "图片"),
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
+                    // Fill the bubble width: an image used to keep its intrinsic
+                    // width, so a wide screenshot showed up as a small thumbnail
+                    // inside a full-width card.
+                    .fillMaxWidth()
                     .padding(vertical = 3.dp)
                     .heightIn(max = maxHeight)
                     .clip(RoundedCornerShape(cornerRadius.dp))
