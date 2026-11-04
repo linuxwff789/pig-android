@@ -363,12 +363,12 @@ private fun TableCell(
     color: Color = Color.Unspecified,
     maxLines: Int = 6,
 ) {
-    val text = remember(content, node, bold) {
-        buildAnnotatedString {
-            if (bold) pushStyle(SpanStyle(fontWeight = FontWeight.SemiBold))
-            if (node != null) buildMarkdownAnnotatedString(content, node)
-            if (bold) pop()
-        }
+    // buildMarkdownAnnotatedString is @Composable, so this cannot be remembered;
+    // the AST walk in MarkdownTable (the expensive part) is.
+    val text = buildAnnotatedString {
+        if (bold) pushStyle(SpanStyle(fontWeight = FontWeight.SemiBold))
+        if (node != null) buildMarkdownAnnotatedString(content, node)
+        if (bold) pop()
     }
     Text(
         text,
