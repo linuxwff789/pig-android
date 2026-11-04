@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.linuxwff.pigapp.ChatImage
+import com.linuxwff.pigapp.ImageRef
 import com.linuxwff.pigapp.PendingImage
 
 /** One picture opened in the full-screen viewer. */
@@ -78,11 +80,19 @@ object ImageViewer {
 fun ChatImageStrip(
     images: List<ChatImage>,
     omitted: Int,
+    imageRefs: List<ImageRef> = emptyList(),
+    onNeedImages: () -> Unit = {},
     modifier: Modifier = Modifier,
     maxHeight: Dp = 220.dp,
     cornerRadius: Int = 12,
 ) {
-    if (images.isEmpty() && omitted <= 0) return
+    // The row is only composed while it is visible (LazyColumn), so this is the
+    // point where a hash-backed picture is fetched and decoded.
+    val missing = imageRefs.isNotEmpty() && images.size < imageRefs.size
+    if (missing) {
+        LaunchedEffect(imageRefs.size, images.size) { onNeedImages() }
+    }
+    if (images.isEmpty() && omitted <= 0 && !missing) return
     Column(modifier) {
         images.forEach { image ->
             Image(
@@ -94,6 +104,14 @@ fun ChatImageStrip(
                     .heightIn(max = maxHeight)
                     .clip(RoundedCornerShape(cornerRadius.dp))
                     .clickable { ImageViewer.show(image.bitmap, image.mimeType) },
+            )
+        }
+        if (missing) {
+            Text(
+                packText("chat.imagesLoading", "图片加载中…"),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
         if (omitted > 0) {

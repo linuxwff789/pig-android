@@ -140,7 +140,7 @@ func BenchmarkHistoryLoad(b *testing.B) {
 		s := &session{historyLimits: map[string]int{}}
 		b.SetBytes(int64(len(payload)))
 		for i := 0; i < b.N; i++ {
-			s.wantHistory("m1", 40)
+			s.wantHistory("m1", 40, "")
 			s.fitHistory(payload)
 		}
 	})
@@ -205,7 +205,7 @@ func TestFitHistoryTrimsForwardedReply(t *testing.T) {
 	}
 	payload := []byte(`{"type":"response","id":"msgs-7","command":"get_messages","success":true,` +
 		`"data":{"messages":` + string(raw) + `}}`)
-	s.wantHistory("msgs-7", 2)
+	s.wantHistory("msgs-7", 2, "")
 	out := s.fitHistory(payload)
 	var env struct {
 		Data struct {
@@ -244,7 +244,7 @@ func TestSyntheticMessagesPages(t *testing.T) {
 		activePath:    path,
 	}
 	// No agent attached: answered from the disk cache.
-	s.wantHistory("m1", 3)
+	s.wantHistory("m1", 3, "")
 	reply := s.syntheticMessages("m1")
 	data := reply["data"].(frame)
 	window := data["messages"].([]json.RawMessage)

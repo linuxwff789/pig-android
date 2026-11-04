@@ -562,6 +562,7 @@ fun PigApp(vm: AppViewModel) {
                         onLoadOlder = vm::loadOlderHistory,
                         onRetryHistory = vm::reloadHistory,
                         onVerifyTail = vm::verifyLastAssistant,
+                        onLoadImages = { vm.requestImageRefs(it) },
                     )
                     }
                 }
@@ -4389,6 +4390,7 @@ private fun ToolGroupCard(
     cornerRadius: Int,
     showTimestamps: Boolean,
     onToolModeAll: (String) -> Unit,
+    onLoadImages: (ChatMsg) -> Unit = {},
     /**
      * The reader opened a card: stop auto-following the transcript. An opened
      * card is taller than the viewport, so the next tool result would scroll
@@ -4530,7 +4532,15 @@ private fun ToolGroupCard(
                 val limit = if (showAll) tools.size else GROUP_PAGE
                 tools.take(limit).forEachIndexed { index, tool ->
                     if (index > 0) Spacer(Modifier.height(6.dp))
-                    ToolCard(tool, toolMode, cornerRadius, showTimestamps, onToolModeAll, onUserRead)
+                    ToolCard(
+                        tool,
+                        toolMode,
+                        cornerRadius,
+                        showTimestamps,
+                        onToolModeAll,
+                        onUserRead,
+                        onNeedImages = { onLoadImages(tool) },
+                    )
                 }
                 if (!showAll && tools.size > limit) {
                     TextButton(onClick = { showAll = true }) {
@@ -4578,6 +4588,7 @@ private fun MessageList(
     onLoadOlder: () -> Unit,
     onRetryHistory: () -> Unit,
     onVerifyTail: () -> Unit,
+    onLoadImages: (ChatMsg) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -4840,6 +4851,7 @@ private fun MessageList(
                         showTimestamps = showTimestamps,
                         onToolModeAll = onToolModeAll,
                         onUserRead = {},
+                        onLoadImages = onLoadImages,
                     )
                 }
             }
@@ -5205,6 +5217,7 @@ private fun MessageRow(
     onCopy: (String) -> Unit,
     onToolModeAll: (String) -> Unit,
     onUserRead: () -> Unit = {},
+    onNeedImages: () -> Unit = {},
 ) {
     val components = packComponents()
     val theme = packTheme()
@@ -5296,6 +5309,8 @@ private fun MessageRow(
                         ChatImageStrip(
                             images = message.images,
                             omitted = message.imagesOmitted,
+                            imageRefs = message.imageRefs,
+                            onNeedImages = onNeedImages,
                             cornerRadius = theme.bubbleRadius ?: cornerRadius,
                             maxHeight = 240.dp,
                         )
@@ -5441,10 +5456,14 @@ private fun MessageRow(
                                 onCopy = onCopy,
                             )
                         }
-                        if (message.images.isNotEmpty() || message.imagesOmitted > 0) {
+                        if (message.images.isNotEmpty() || message.imagesOmitted > 0 ||
+                            message.imageRefs.isNotEmpty()
+                        ) {
                             ChatImageStrip(
                                 images = message.images,
                                 omitted = message.imagesOmitted,
+                                imageRefs = message.imageRefs,
+                                onNeedImages = onNeedImages,
                                 modifier = Modifier.padding(top = 6.dp),
                                 cornerRadius = cornerRadius,
                             )
@@ -5513,7 +5532,15 @@ private fun MessageRow(
         }
 
         Role.TOOL -> Column(Modifier.fillMaxWidth().padding(start = 33.dp)) {
-            ToolCard(message, toolMode, cornerRadius, showTimestamps, onToolModeAll, onUserRead)
+            ToolCard(
+                message,
+                toolMode,
+                cornerRadius,
+                showTimestamps,
+                onToolModeAll,
+                onUserRead,
+                onNeedImages = onNeedImages,
+            )
         }
 
         Role.NOTICE -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -5578,6 +5605,7 @@ private fun ToolCard(
     showTimestamps: Boolean,
     onToolModeAll: (String) -> Unit,
     onUserRead: () -> Unit = {},
+    onNeedImages: () -> Unit = {},
 ) {
     var viewMode by remember(message.id, mode) {
         mutableStateOf(
@@ -5887,11 +5915,15 @@ private fun ToolCard(
             }
             // Output images (`read` on a picture, screenshots, image models)
             // are the point of the card, so show them in every mode.
-            if (message.images.isNotEmpty() || message.imagesOmitted > 0) {
+            if (message.images.isNotEmpty() || message.imagesOmitted > 0 ||
+                message.imageRefs.isNotEmpty()
+            ) {
                 Spacer(Modifier.height(6.dp))
                 ChatImageStrip(
                     images = message.images,
                     omitted = message.imagesOmitted,
+                    imageRefs = message.imageRefs,
+                    onNeedImages = onNeedImages,
                     maxHeight = 200.dp,
                     cornerRadius = cornerRadius,
                 )

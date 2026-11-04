@@ -13,6 +13,16 @@ enum class Role { USER, ASSISTANT, TOOL, NOTICE }
  * Images are decoded while the transcript is built (off the main thread) and
  * downsampled, so a long session does not keep base64 blobs in memory.
  */
+/**
+ * A transcript image the relay serves by content hash. Decoded only when its
+ * row is composed, then kept in the ViewModel's pixel-budgeted cache.
+ */
+@Immutable
+data class ImageRef(
+    val ref: String,
+    val mimeType: String = "image/png",
+)
+
 @Immutable
 data class ChatImage(
     val bitmap: ImageBitmap,
@@ -66,6 +76,8 @@ data class ChatMsg(
     val expanded: Boolean = true,
     /** Inline images carried by this message (see [ChatImage]). */
     val images: List<ChatImage> = emptyList(),
+    /** Images the relay returned by hash; decoded on demand when the row is composed. */
+    val imageRefs: List<ImageRef> = emptyList(),
     /** Image blocks dropped by the size/count caps. */
     val imagesOmitted: Int = 0,
     /** Session-file timestamp (epoch ms); 0 when unknown/live. Used to place

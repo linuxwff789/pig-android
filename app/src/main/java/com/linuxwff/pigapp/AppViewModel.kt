@@ -103,6 +103,14 @@ class AppViewModel @JvmOverloads constructor(
     private var packAssets: Map<String, String> = emptyMap()
     private var packAssetHashes: Map<String, String> = emptyMap()
     private val imageCache = mutableStateMapOf<String, ImageBitmap>()
+    // Decoded transcript images served by hash. Pixel-budgeted, shared by every
+    // message that references the same picture (the relay dedupes by content).
+    private val transcriptImages = object : LruCache<String, ChatImage>(HISTORY_IMAGE_CACHE_PIXELS) {
+        override fun sizeOf(key: String, value: ChatImage): Int =
+            value.bitmap.width * value.bitmap.height
+    }
+    private data class PendingImageRef(val messageIds: MutableSet<String>, val mimeType: String)
+    private val pendingImageRefs = HashMap<String, PendingImageRef>()
     // key -> byteCount, access-ordered; a 1024 px ARGB bitmap is ~4 MB, so
     // counting entries (48) bounded pixels at ~192 MB instead of memory.
     private val packImageLru = LinkedHashMap<String, Int>()
@@ -3669,7 +3677,10 @@ class AppViewModel @JvmOverloads constructor(
                 // The relay answers with the newest `limit` messages plus
                 // historyStart/historyTotal; the reader pulls another page
                 // each time it reaches the top.
-                .put("limit", historyWindow),
+                .put("limit", historyWindow)
+                // Ask for image hashes instead of inline base64. An older
+                // relay ignores the field and sends base64 as before.
+                .put("imageMode", "ref"),
         )
     }
 
@@ -3688,6 +3699,78 @@ class AppViewModel @JvmOverloads constructor(
             if (!client.connected.value) return@launch
             if (failedId != lastMessagesRequestId) return@launch
             requestMessages()
+        }
+    }
+
+    /**
+     * Decode the images of a message the reader can actually see. The row calls
+     * this when it enters composition; the relay serves the bytes by hash and
+     * the decoded bitmaps stay in a pixel-budgeted cache.
+     */
+    fun requestImageRefs(message: ChatMsg) {
+        if (message.imageRefs.isEmpty()) return
+        val missing = ArrayList<ImageRef>()
+        message.imageRefs.forEach { ref ->
+            val cached = transcriptImages.get(ref.ref)
+            if (cached == null) {
+                missing.add(ref)
+            } else if (message.images.none { it.bitmap === cached.bitmap }) {
+                update(message.id) { it.copy(images = it.images + cached) }
+            }
+        }
+        if (missing.isEmpty()) return
+        missing.forEach { ref ->
+            val pending = pendingImageRefs.getOrPut(ref.ref) {
+                PendingImageRef(mutableSetOf(), ref.mimeType)
+            }
+            pending.messageIds.add(message.id)
+        }
+        // Older relays ignore this frame's type (they only know the pig ones),
+        // but they also never send refs, so this path is unreachable there.
+        missing.map { it.ref }.chunked(MAX_IMAGE_REFS_PER_REQUEST).forEach { chunk ->
+            val refs = JSONArray()
+            chunk.forEach { refs.put(it) }
+            client.send(
+                JSONObject()
+                    .put("id", "img-${nextId++}")
+                    .put("type", "relay_image_get")
+                    .put("refs", refs),
+            )
+        }
+    }
+
+    private fun handleImageData(event: JSONObject) {
+        val images = event.optJSONArray("images") ?: return
+        if (images.length() == 0) return
+        val entries = ArrayList<Pair<String, String>>(images.length())
+        for (index in 0 until images.length()) {
+            val entry = images.optJSONObject(index) ?: continue
+            val ref = entry.optString("ref")
+            val data = entry.optString("data")
+            if (ref.isBlank() || data.isBlank()) continue
+            entries.add(ref to data)
+        }
+        if (entries.isEmpty()) return
+        viewModelScope.launch {
+            val decoded = withContext(Dispatchers.Default) {
+                entries.mapNotNull { (ref, data) ->
+                    val mime = pendingImageRefs[ref]?.mimeType ?: "image/png"
+                    decodeChatImage(data, mime, null)?.let { ref to it }
+                }
+            }
+            decoded.forEach { (ref, image) -> transcriptImages.put(ref, image) }
+            val touched = HashSet<String>()
+            decoded.forEach { (ref, _) ->
+                pendingImageRefs.remove(ref)?.messageIds?.let(touched::addAll)
+            }
+            touched.forEach { id ->
+                update(id) { message ->
+                    val ordered = message.imageRefs.mapNotNull { ref ->
+                        transcriptImages.get(ref.ref)
+                    }
+                    message.copy(images = ordered)
+                }
+            }
         }
     }
 
@@ -4950,6 +5033,7 @@ class AppViewModel @JvmOverloads constructor(
                     client.connect()
                 }
             }
+            "relay_image_data" -> handleImageData(event)
             "relay_log" -> handleRelayLog(
                 event.optString("source", "relay"),
                 event.optString("level", "info"),
@@ -6288,6 +6372,7 @@ class AppViewModel @JvmOverloads constructor(
                                 Role.USER,
                                 text = text,
                                 images = decoded.images,
+                                imageRefs = decoded.refs,
                                 imagesOmitted = decoded.omitted,
                                 at = at,
                             ),
@@ -6306,6 +6391,7 @@ class AppViewModel @JvmOverloads constructor(
                                 text = text,
                                 thinking = thinking,
                                 images = decoded.images,
+                                imageRefs = decoded.refs,
                                 imagesOmitted = decoded.omitted,
                                 at = at,
                             ),
@@ -6367,6 +6453,7 @@ class AppViewModel @JvmOverloads constructor(
                             toolDurationMs = durationMs,
                             isError = message.optBoolean("isError", false),
                             images = decoded.images,
+                            imageRefs = decoded.refs,
                             imagesOmitted = decoded.omitted,
                         )
                     } else {
@@ -6380,6 +6467,7 @@ class AppViewModel @JvmOverloads constructor(
                                 toolDurationMs = durationMs,
                                 isError = message.optBoolean("isError", false),
                                 images = decoded.images,
+                                imageRefs = decoded.refs,
                                 imagesOmitted = decoded.omitted,
                                 at = at,
                             ),
@@ -7164,15 +7252,25 @@ class AppViewModel @JvmOverloads constructor(
     // ─── Images ──────────────────────────────────────────────────────────
 
     /** Raw image blocks of a message, before decoding. */
-    private fun imageBlocks(message: JSONObject?): List<Pair<String, String>> {
+    /** One image block: either inline base64 (old relay) or a content hash. */
+    private data class ImageBlock(val data: String?, val ref: String?, val mimeType: String)
+
+    private fun imageBlocks(message: JSONObject?): List<ImageBlock> {
         val blocks = message?.optJSONArray("content") ?: return emptyList()
-        val out = ArrayList<Pair<String, String>>()
+        val out = ArrayList<ImageBlock>()
         for (index in 0 until blocks.length()) {
             val block = blocks.optJSONObject(index) ?: continue
             if (block.optString("type") != "image") continue
             val data = block.optString("data")
-            if (data.isEmpty()) continue
-            out.add(data to block.optString("mimeType", "image/png"))
+            val ref = block.optString("ref")
+            if (data.isEmpty() && ref.isEmpty()) continue
+            out.add(
+                ImageBlock(
+                    data.ifEmpty { null },
+                    ref.ifEmpty { null },
+                    block.optString("mimeType", "image/png"),
+                ),
+            )
         }
         return out
     }
@@ -7199,7 +7297,11 @@ class AppViewModel @JvmOverloads constructor(
                 value.bitmap.width * value.bitmap.height
         }
 
-    private data class DecodedImages(val images: List<ChatImage>, val omitted: Int)
+    private data class DecodedImages(
+        val images: List<ChatImage>,
+        val omitted: Int,
+        val refs: List<ImageRef> = emptyList(),
+    )
 
     /**
      * Decode a pig image block. Images above [MAX_IMAGE_B64_CHARS] and images
@@ -7241,8 +7343,16 @@ class AppViewModel @JvmOverloads constructor(
         val blocks = imageBlocks(message)
         var omitted = (blocks.size - MAX_IMAGES_PER_MESSAGE).coerceAtLeast(0)
         val images = ArrayList<ChatImage>()
+        val refs = ArrayList<ImageRef>()
         blocks.take(MAX_IMAGES_PER_MESSAGE).forEachIndexed { index, block ->
-            val (data, mime) = block
+            if (block.ref != null) {
+                // The relay stored the bytes; the row decodes it when it becomes
+                // visible (see requestImageRefs).
+                refs.add(ImageRef(block.ref, block.mimeType))
+                transcriptImages.get(block.ref)?.let { images.add(it) }
+                return@forEachIndexed
+            }
+            val data = block.data ?: return@forEachIndexed
             val key = cacheKey?.let { "$it#$index" }
             val cached = key?.let { historyImageCache.get(it) }
             if (cached != null) {
@@ -7250,7 +7360,7 @@ class AppViewModel @JvmOverloads constructor(
                 images.add(cached)
                 return@forEachIndexed
             }
-            val image = decodeChatImage(data, mime, budget)
+            val image = decodeChatImage(data, block.mimeType, budget)
             if (image == null) {
                 omitted++
             } else {
@@ -7258,7 +7368,7 @@ class AppViewModel @JvmOverloads constructor(
                 if (key != null) historyImageCache.put(key, image)
             }
         }
-        return DecodedImages(images, omitted)
+        return DecodedImages(images, omitted, refs)
     }
 
     /** Decode off the main thread, then attach to an already-rendered message. */
@@ -7324,6 +7434,8 @@ private const val BUNDLED_PACK_ROOT = "ui-packs"
 
 /** Largest base64 payload accepted from pig (~6 MiB of image bytes). */
 private const val MAX_IMAGE_B64_CHARS = 8_000_000
+/** Refs per relay_image_get; the relay answers at most eight. */
+private const val MAX_IMAGE_REFS_PER_REQUEST = 8
 
 /** Keepalive cadence: fast while the user is watching, slow in the background. */
 private const val PING_FOREGROUND_MS = 4_000L

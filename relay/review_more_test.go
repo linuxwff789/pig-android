@@ -428,7 +428,7 @@ func TestFitHistoryClipsToWindow(t *testing.T) {
 	s := newTestSession(t)
 	payload := `{"type":"response","id":"h1","command":"get_messages","success":true,"data":{"messages":[` +
 		`{"role":"user","content":"a"},{"role":"user","content":"b"},{"role":"user","content":"c"},{"role":"user","content":"d"}]}}`
-	s.wantHistory("h1", 2)
+	s.wantHistory("h1", 2, "")
 	out := s.fitHistory([]byte(payload))
 	var env struct {
 		Data struct {
@@ -447,7 +447,7 @@ func TestFitHistoryClipsToWindow(t *testing.T) {
 	// that means returning more than the requested limit.
 	aligned := `{"type":"response","id":"h2","command":"get_messages","success":true,"data":{"messages":[` +
 		`{"role":"user"},{"role":"assistant"},{"role":"assistant"}]}}`
-	s.wantHistory("h2", 2)
+	s.wantHistory("h2", 2, "")
 	out = s.fitHistory([]byte(aligned))
 	if err := json.Unmarshal(out, &env); err != nil {
 		t.Fatal(err)

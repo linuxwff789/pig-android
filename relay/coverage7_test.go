@@ -27,7 +27,7 @@ func TestFitHistoryMergesDiskUnderPigTail(t *testing.T) {
 	payload := `{"type":"response","id":"h1","command":"get_messages","success":true,"data":{"messages":[` +
 		`{"role":"user","content":[{"type":"text","text":"m2"}]},` +
 		`{"role":"user","content":[{"type":"text","text":"m3"}]}]}}`
-	s.wantHistory("h1", 10)
+	s.wantHistory("h1", 10, "")
 	out := s.fitHistory([]byte(payload))
 	var env struct {
 		Data struct {
@@ -46,7 +46,7 @@ func TestFitHistoryMergesDiskUnderPigTail(t *testing.T) {
 	live := `{"type":"response","id":"h2","command":"get_messages","success":true,"data":{"messages":[` +
 		`{"role":"user","content":[{"type":"text","text":"m3"}]},` +
 		`{"role":"assistant","content":[{"type":"text","text":"live"}]}]}}`
-	s.wantHistory("h2", 10)
+	s.wantHistory("h2", 10, "")
 	out = s.fitHistory([]byte(live))
 	if err := json.Unmarshal(out, &env); err != nil {
 		t.Fatal(err)

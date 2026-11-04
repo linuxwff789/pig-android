@@ -98,6 +98,9 @@ type session struct {
 	// client asked for; the reply (pig's or the disk cache's) is cut to it.
 	historyMu     sync.Mutex
 	historyLimits map[string]int
+	// imageModes keeps the imageMode of a pending get_messages request
+	// ("ref" asks for hashes instead of inline base64).
+	imageModes map[string]string
 
 	// Recent relay/pig log lines. The app cannot read Termux's stderr, and the
 	// interesting ones (a failed extension build, a pig crash) happen before
@@ -132,6 +135,7 @@ func newSession(token, cwd, uiDir, sessionsDir, pigBin string) *session {
 		agents:        map[string]*agentProc{},
 		msgCache:      map[string]msgCacheEntry{},
 		historyLimits: map[string]int{},
+		imageModes:    map[string]string{},
 		stopped:       make(chan struct{}),
 		extReady:      make(chan struct{}),
 		install:       newInstallGate(),
@@ -1080,13 +1084,16 @@ func (s *session) syntheticState(id any) frame {
 }
 
 func (s *session) syntheticMessages(id any) frame {
-	limit, limited := s.takeHistoryLimit(id)
+	limit, imageMode, limited := s.takeHistoryLimit(id)
 	activePath := s.activePathValue()
 	all := s.cachedMessages(activePath)
 	start := 0
 	window := all
 	if limited {
 		window, start = clipHistory(all, limit)
+	}
+	if imageMode == "ref" {
+		window = s.rewriteHistoryImages(window)
 	}
 	return frame{
 		"type":        "response",
@@ -1219,25 +1226,36 @@ func messageRole(raw json.RawMessage) string {
 	return head.Role
 }
 
-// wantHistory records the page size requested for a get_messages id. The reply
-// is cut when it arrives, whoever produces it.
-func (s *session) wantHistory(id any, limit int) {
+// wantHistory records the page size (and optional image mode) requested for a
+// get_messages id. The reply is cut when it arrives, whoever produces it.
+func (s *session) wantHistory(id any, limit int, imageMode string) {
 	key := fmt.Sprint(id)
 	s.historyMu.Lock()
 	defer s.historyMu.Unlock()
 	if s.historyLimits == nil || len(s.historyLimits) > 32 {
 		s.historyLimits = map[string]int{}
+		s.imageModes = map[string]string{}
 	}
 	s.historyLimits[key] = limit
+	if imageMode == "ref" {
+		if s.imageModes == nil {
+			s.imageModes = map[string]string{}
+		}
+		s.imageModes[key] = imageMode
+	} else {
+		delete(s.imageModes, key)
+	}
 }
 
-func (s *session) takeHistoryLimit(id any) (int, bool) {
+func (s *session) takeHistoryLimit(id any) (int, string, bool) {
 	key := fmt.Sprint(id)
 	s.historyMu.Lock()
 	defer s.historyMu.Unlock()
 	limit, ok := s.historyLimits[key]
+	mode := s.imageModes[key]
 	delete(s.historyLimits, key)
-	return limit, ok
+	delete(s.imageModes, key)
+	return limit, mode, ok
 }
 
 // fitHistory trims a forwarded get_messages reply to the window the app asked
@@ -1270,7 +1288,7 @@ func (s *session) fitHistory(payload []byte, paths ...string) []byte {
 	}
 	var id any
 	_ = json.Unmarshal(env.ID, &id)
-	limit, ok := s.takeHistoryLimit(id)
+	limit, imageMode, ok := s.takeHistoryLimit(id)
 	if !ok || limit <= 0 {
 		return payload
 	}
@@ -1295,6 +1313,9 @@ func (s *session) fitHistory(payload []byte, paths ...string) []byte {
 		return payload
 	}
 	window, start := clipHistory(messages, limit)
+	if imageMode == "ref" {
+		window = s.rewriteHistoryImages(window)
+	}
 	out, err := json.Marshal(struct {
 		Type        string          `json:"type"`
 		ID          json.RawMessage `json:"id"`
@@ -1561,6 +1582,8 @@ func (s *session) handleClientLine(line []byte) {
 		Size        int64          `json:"size"`
 		Sha256      string         `json:"sha256"`
 		Data        string         `json:"data"`
+		ImageMode   string         `json:"imageMode"`
+		Refs        []string       `json:"refs"`
 	}
 	if err := json.Unmarshal(line, &head); err != nil {
 		_ = s.send(frame{"type": "relay_error", "message": "invalid json: " + err.Error()})
@@ -1568,7 +1591,7 @@ func (s *session) handleClientLine(line []byte) {
 	}
 
 	if head.Type == "get_messages" && head.Limit != nil && *head.Limit > 0 {
-		s.wantHistory(head.ID, *head.Limit)
+		s.wantHistory(head.ID, *head.Limit, head.ImageMode)
 	}
 
 	if !strings.HasPrefix(head.Type, "relay_") {
@@ -1580,6 +1603,8 @@ func (s *session) handleClientLine(line []byte) {
 	case "relay_auth":
 	case "relay_ping":
 		_ = s.send(frame{"type": "relay_pong", "id": head.ID})
+	case "relay_image_get":
+		go s.sendImages(head.ID, head.Refs)
 	case "relay_restart":
 		a := s.activeAgent()
 		if a != nil && a.isBusy() {
