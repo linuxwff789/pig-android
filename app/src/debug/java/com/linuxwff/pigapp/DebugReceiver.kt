@@ -214,7 +214,7 @@ class DebugReceiver : BroadcastReceiver() {
                 val state = vm.ui
                 val summary = "connected=${state.connected} busy=${state.busy} " +
                     "model=${state.model} sessionId=${state.sessionId} " +
-                    "messages=${state.messages.size} context=${state.contextPercent}% " +
+                    "messages=${vm.messages.size} context=${state.contextPercent}% " +
                     "used=${state.contextTokens}/${state.contextWindow} " +
                     "actualWindow=${state.contextWindowActual} " +
                     "pendingRestart=${state.pendingAgentRestart} " +
@@ -228,7 +228,13 @@ class DebugReceiver : BroadcastReceiver() {
                 Thread {
                     runCatching {
                         val dir = context.getExternalFilesDir(null) ?: context.filesDir
-                        File(dir, "state.txt").writeText(state.toString())
+                        File(dir, "state.txt").writeText(
+                            buildString {
+                                append(state.toString())
+                                append("\n\nmessages:\n")
+                                vm.messages.forEach { append(it).append('\n') }
+                            },
+                        )
                     }.onFailure { Log.w(TAG, "state file: ${it.message}") }
                 }.start()
             }
