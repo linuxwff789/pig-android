@@ -501,7 +501,11 @@ internal fun UiNodeView(
                 ) {
                     Text(
                         node.alt.ifBlank {
-                            if (node.src.isBlank()) "no image" else node.src.substringAfterLast('/')
+                            if (node.src.isBlank()) {
+                                packText("window.noImage", "无图片")
+                            } else {
+                                node.src.substringAfterLast('/')
+                            }
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -634,11 +638,17 @@ internal fun UiNodeView(
         }
 
         "table" -> Column(pad.fillMaxWidth()) {
+            // Every row gets `columns` cells: a short row used to spend all the
+            // width on its few cells and drift out of line with the header.
+            val columns = maxOf(
+                node.headers.size,
+                node.rows.maxOfOrNull { it.size } ?: 0,
+            )
             if (node.headers.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth()) {
-                    node.headers.forEach { cell ->
+                    repeat(columns) { index ->
                         Text(
-                            cell,
+                            node.headers.getOrNull(index).orEmpty(),
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -655,9 +665,9 @@ internal fun UiNodeView(
                         .fillMaxWidth()
                         .padding(vertical = 4.dp),
                 ) {
-                    row.forEach { cell ->
+                    repeat(columns) { index ->
                         Text(
-                            cell,
+                            row.getOrNull(index).orEmpty(),
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 2,
@@ -676,7 +686,8 @@ internal fun UiNodeView(
         "spacer" -> Spacer(Modifier.size(node.size.dp))
 
         else -> Text(
-            "[unsupported: ${node.type}]",
+            packText("window.unsupported", "不支持的元素：{type}")
+                .replace("{type}", node.type),
             modifier = pad,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.error,
