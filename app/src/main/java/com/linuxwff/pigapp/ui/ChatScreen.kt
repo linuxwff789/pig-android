@@ -4837,6 +4837,7 @@ private fun MessageList(
                         bubbleShadow = bubbleShadow,
                         onCopy = onCopy,
                         onToolModeAll = onToolModeAll,
+                        onNeedImages = { onLoadImages(item.message) },
                         // Expanding a tool card or a group is not a scroll: it must
                         // not stop the transcript from following the answer. Only a
                         // real drag pauses following (see the dragged effect above);
