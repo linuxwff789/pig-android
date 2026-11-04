@@ -300,6 +300,7 @@ func (s *session) saveProvider(id any, entry map[string]any) {
 			return
 		}
 	}
+	s.syncProviderAuth()
 	done := frame{
 		"type":     "relay_provider_saved",
 		"id":       id,
@@ -351,6 +352,7 @@ func (s *session) deleteProvider(id any, entry map[string]any) {
 	cache, _ := readJSONObjectFile(cachePath)
 	delete(cache, pid)
 	_ = writeJSONAtomic(cachePath, cache)
+	s.removeProviderAuth(pid)
 	_ = s.send(frame{"type": "relay_provider_deleted", "id": id, "op": "delete", "provider": pid})
 }
 

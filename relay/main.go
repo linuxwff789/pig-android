@@ -746,6 +746,9 @@ func main() {
 	log.Printf("pig-relay %s %s on %s (cwd=%s ui=%s pig=%s)", protocol, buildVersion, listener.Addr(), *cwd, *uiDir, *pigBin)
 
 	agent := newSession(*token, *cwd, *uiDir, sessionsDir, *pigBin)
+	// Make the custom providers' keys visible to pig's credential store before
+	// any set_model can reach it (see syncProviderAuth).
+	agent.syncProviderAuth()
 	// Read the installer's status before accepting clients: when it says
 	// "running", agent requests are held until the installer is done.
 	agent.initInstallGate()
