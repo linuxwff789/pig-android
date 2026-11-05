@@ -48,10 +48,28 @@ func (s *session) syncProviderAuth(ids ...string) {
 			continue
 		}
 		key := expandProviderValue(providerString(entry, "apiKey"))
+		existing, _ := auth[id].(map[string]any)
 		if key == "" {
+			// Only a save prunes (wanted non-empty): on startup a provider
+			// without an apiKey may still have a credential the user created
+			// with `pig login`, and deleting that would break their login.
+			// A plain api_key entry is the mirror this function wrote, so
+			// clearing the key in the app removes it instead of leaving a
+			// working credential behind.
+			if len(wanted) > 0 && existing != nil {
+				if kind, _ := existing["type"].(string); kind == "api_key" {
+					delete(auth, id)
+					changed++
+				}
+			}
 			continue
 		}
-		if existing, _ := auth[id].(map[string]any); existing != nil {
+		if existing != nil {
+			// Never rewrite an OAuth (or other) credential as an api_key:
+			// pig resolves it through its own login flow.
+			if kind, _ := existing["type"].(string); kind != "" && kind != "api_key" {
+				continue
+			}
 			if current, _ := existing["key"].(string); current == key {
 				continue
 			}

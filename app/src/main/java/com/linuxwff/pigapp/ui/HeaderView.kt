@@ -70,7 +70,11 @@ fun CustomPigHeader(
             .fillMaxWidth()
             .statusBarsPadding()
             .padding(horizontal = header.marginH.dp, vertical = header.marginTop.dp)
-            .shadow(2.dp, shape)
+            .then(
+                // A flat full-width header (cornerRadius 0) has nothing to
+                // lift: the 2dp shadow only drew a seam under it.
+                if (header.cornerRadius > 0) Modifier.shadow(2.dp, shape) else Modifier,
+            )
             .clip(shape)
             .background(base)
             .then(
@@ -100,8 +104,10 @@ fun CustomPigHeader(
                 .fillMaxWidth()
                 .heightIn(min = header.heightDp.dp)
                 .padding(
-                    horizontal = header.paddingH.coerceAtLeast(12).dp,
-                    vertical = header.paddingV.coerceAtLeast(6).dp,
+                    // The pack's own values, not a floor: the editor exposes
+                    // 0–64 and a tight header is a legitimate choice.
+                    horizontal = header.paddingH.dp,
+                    vertical = header.paddingV.dp,
                 ),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {

@@ -3044,13 +3044,18 @@ class AppViewModel @JvmOverloads constructor(
 
     fun setThinkingLevel(level: String) {
         if (level.isBlank()) return
+        // An explicit tap wins over the level the previous run of this model
+        // remembered: the set_model reply applies that one afterwards and
+        // would otherwise overwrite the user's choice a moment later.
+        pendingThinkingRestore = null
         // While new_session is replacing the runtime, ui.model still names the
-        // session being left. Remember the level under the model the fresh
-        // session will actually use.
-        val key = if (awaitingNewSession) {
-            modelPickedWhileStarting.ifBlank { ui.defaultModel.ifBlank { ui.model } }
-        } else {
-            ui.model
+        // session being left. The same is true while a switch is in flight, so
+        // remember the level under the model that is about to become current.
+        val key = when {
+            awaitingNewSession ->
+                modelPickedWhileStarting.ifBlank { ui.defaultModel.ifBlank { ui.model } }
+            ui.modelSwitchPending && ui.pendingModel.isNotBlank() -> ui.pendingModel
+            else -> ui.model
         }
         if (key.isNotBlank() && key != "/") {
             thinkingByModel = thinkingByModel + (key to level)
@@ -3824,11 +3829,17 @@ class AppViewModel @JvmOverloads constructor(
                 }
                 touched.forEach { id ->
                     update(id) { message ->
-                        val ordered = message.imageRefs.mapNotNull { ref ->
+                        val refImages = message.imageRefs.mapNotNull { ref ->
                             transcriptImages.get(ref.ref)
                         }
+                        // A message whose image blocks were only partly
+                        // rewritten keeps the rest inline; rebuilding from
+                        // imageRefs alone used to drop those.
+                        val inline = message.images.filter { image ->
+                            refImages.none { it.bitmap === image.bitmap }
+                        }
                         message.copy(
-                            images = ordered,
+                            images = inline + refImages,
                             failedRefs = if (message.failedRefs.isEmpty()) {
                                 message.failedRefs
                             } else {

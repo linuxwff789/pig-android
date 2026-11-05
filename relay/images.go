@@ -15,7 +15,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 const (
@@ -28,14 +31,24 @@ const (
 	maxImageRefBytes = 6_000_000
 	// A single relay_image_get answers at most this many pictures.
 	maxImageRefsPerRequest = 8
-	// One relay_image_data frame stays under this many base64 bytes; pictures
+	// maxImageFrameBytes ... stay under this many base64 bytes; pictures
 	// past the budget spill into a follow-up frame. The worst single picture
-	// (maxImageRefBytes) is ~11.2 MB of base64 and always gets a frame of its
+	// (maxImageRefBytes) is ~8 MB of base64 and always gets a frame of its
 	// own — a frame is the split granularity. The app reads frames with an
 	// unbounded readLine and the JSON parser copies the line again, so an
 	// unbounded frame can OOM either end.
 	maxImageFrameBytes = 8 << 20
+	// The cache is a convenience, not a source of truth (pig keeps the bytes
+	// inline in the session file), so old pictures can be dropped and are
+	// recreated on the next get_messages. This bounds what a long transcript
+	// leaves on a phone's storage.
+	maxImageCacheBytes = 128 << 20
+	// Pruning stats the whole directory, so do it once per this many writes
+	// instead of after every picture.
+	imageCachePruneEvery = 64
 )
+
+var imageCacheWrites atomic.Int64
 
 // imageSendMu serializes relay_image_get answers: assembling a batch holds
 // the raw bytes, the base64 string and the marshalled frame at the same
@@ -81,6 +94,9 @@ func (s *session) storeImage(data, mimeType string) (map[string]any, bool) {
 		if err := writeFileAtomic(path, raw); err != nil {
 			return nil, false
 		}
+		if imageCacheWrites.Add(1)%imageCachePruneEvery == 0 {
+			s.pruneImageCache()
+		}
 	}
 	if mimeType == "" {
 		mimeType = "image/png"
@@ -109,6 +125,38 @@ func (s *session) rewriteHistoryImages(messages []json.RawMessage) []json.RawMes
 }
 
 func (s *session) rewriteMessageImages(message json.RawMessage) json.RawMessage {
+	// A page overlaps the previous one (the window only grows), so the same
+	// inline base64 blocks were decoded and hashed again on every page. The
+	// rewrite is a pure function of the message bytes, so memoizing by content
+	// digest turns the O(n²) re-hash into one pass per message.
+	sum := sha256.Sum256(message)
+	rewriteCacheMu.Lock()
+	cached, ok := rewriteCache[sum]
+	rewriteCacheMu.Unlock()
+	if ok {
+		return cached
+	}
+	out := s.rewriteMessageImagesFresh(message)
+	rewriteCacheMu.Lock()
+	if len(rewriteCache) >= rewriteCacheEntries {
+		// Reset instead of an LRU: the next page refills it and a transcript
+		// this large is already paging.
+		rewriteCache = map[[32]byte]json.RawMessage{}
+	}
+	rewriteCache[sum] = out
+	rewriteCacheMu.Unlock()
+	return out
+}
+
+var (
+	rewriteCacheMu sync.Mutex
+	rewriteCache   = map[[32]byte]json.RawMessage{}
+)
+
+// Bounded so a huge session cannot pin every rewritten message in memory.
+const rewriteCacheEntries = 512
+
+func (s *session) rewriteMessageImagesFresh(message json.RawMessage) json.RawMessage {
 	// RawMessage per key keeps every field this build does not model (usage,
 	// timestamps, odd provider extras) byte-for-byte, unlike map[string]any.
 	var doc map[string]json.RawMessage
@@ -221,4 +269,57 @@ func (s *session) imageCacheBytes() int64 {
 		}
 	}
 	return total
+}
+
+// pruneImageCache evicts the oldest files once the cache is over budget. Pig
+// still has every picture inline in its session file, so an evicted ref is
+// rebuilt on the next get_messages rather than lost.
+func (s *session) pruneImageCache() {
+	s.pruneImageCacheTo(maxImageCacheBytes)
+}
+
+// pruneImageCacheTo is the testable form: everything under limit stays.
+func (s *session) pruneImageCacheTo(limit int64) {
+	dir := s.imageCacheDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	type fileEntry struct {
+		name string
+		size int64
+		mod  time.Time
+	}
+	files := make([]fileEntry, 0, len(entries))
+	var total int64
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, fileEntry{entry.Name(), info.Size(), info.ModTime()})
+		total += info.Size()
+	}
+	if total <= limit {
+		return
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].mod.Before(files[j].mod) })
+	// One prune leaves headroom so the next few dozen writes are free.
+	target := limit * 8 / 10
+	removed := 0
+	for _, file := range files {
+		if total <= target {
+			break
+		}
+		if os.Remove(filepath.Join(dir, file.name)) == nil {
+			total -= file.size
+			removed++
+		}
+	}
+	if removed > 0 {
+		logf("image cache: pruned %d file(s), now %d bytes", removed, total)
+	}
 }

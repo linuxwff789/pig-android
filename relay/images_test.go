@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func imageMessage(data string) json.RawMessage {
@@ -247,6 +248,50 @@ func TestSendImagesSmallBatchStaysOneFrame(t *testing.T) {
 	images, _ := frame["images"].([]any)
 	if len(images) != 2 {
 		t.Fatalf("images = %d, want 2 in a single frame", len(images))
+	}
+}
+
+func TestPruneImageCacheDropsOldestFirst(t *testing.T) {
+	s := newTestSession(t)
+	dir := s.imageCacheDir()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Three 100-byte files with distinct ages.
+	for i, name := range []string{"old", "mid", "new"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, make([]byte, 100), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		stamp := time.Now().Add(time.Duration(i-3) * time.Hour)
+		if err := os.Chtimes(path, stamp, stamp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Budget 250 bytes: prune to 200, which can only drop the oldest file.
+	s.pruneImageCacheTo(250)
+	if _, err := os.Stat(filepath.Join(dir, "old")); !os.IsNotExist(err) {
+		t.Fatal("oldest file survived pruning")
+	}
+	for _, name := range []string{"mid", "new"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("%s was pruned: %v", name, err)
+		}
+	}
+}
+
+func TestPruneImageCacheLeavesSmallCacheAlone(t *testing.T) {
+	s := newTestSession(t)
+	dir := s.imageCacheDir()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "one"), make([]byte, 10), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.pruneImageCacheTo(1 << 20)
+	if _, err := os.Stat(filepath.Join(dir, "one")); err != nil {
+		t.Fatalf("small cache was pruned: %v", err)
 	}
 }
 
