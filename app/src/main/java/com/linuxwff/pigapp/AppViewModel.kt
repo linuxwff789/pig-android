@@ -2952,7 +2952,10 @@ class AppViewModel @JvmOverloads constructor(
         // Restore the level this model was last used with. The set_model reply
         // sends it after the switch is confirmed, so it cannot be applied to
         // the previous model by mistake.
+        // A model with no recorded level inherits the level the user is looking
+        // at instead of falling back to pig's settings default (usually "off").
         pendingThinkingRestore = thinkingByModel["${model.provider}/${model.id}"]
+            ?: ui.thinkingLevel.takeIf { it.isNotBlank() && it != "—" }
         ui = ui.copy(
             modelSwitchPending = true,
             pendingModel = "${model.provider}/${model.id}",
