@@ -1,6 +1,7 @@
 package com.linuxwff.pigapp.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -61,6 +64,7 @@ fun CustomPigHeader(
     Box(
         Modifier
             .fillMaxWidth()
+            .shadow(2.dp)
             .background(base)
             .statusBarsPadding(),
     ) {
@@ -82,7 +86,10 @@ fun CustomPigHeader(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = header.heightDp.dp)
-                .padding(horizontal = header.paddingH.dp, vertical = header.paddingV.dp),
+                .padding(
+                    horizontal = header.paddingH.coerceAtLeast(12).dp,
+                    vertical = header.paddingV.coerceAtLeast(6).dp,
+                ),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             val body = header.body
@@ -193,6 +200,10 @@ private fun HeaderElement(
     val label = bindText ?: element.text.ifBlank { element.label }
     val color = headerColor(element.color, scheme)
     val action = element.action
+    // Larger touch targets than the pack's 22 dp artwork: a header icon was
+    // both the visual size and the hit area, which is below the 48 dp guideline.
+    val iconSize = (element.size.takeIf { it > 0 } ?: 24).coerceAtLeast(22)
+    val buttonSize = (iconSize + 18).coerceAtLeast(40)
     val clickable = Modifier.then(
         if (action.isNotBlank()) {
             Modifier.clickable {
@@ -205,9 +216,9 @@ private fun HeaderElement(
     when (element.type) {
         "menu" -> IconButton(
             onClick = onMenu,
-            modifier = modifier.size((element.size.takeIf { it > 0 } ?: 22).dp),
+            modifier = modifier.size(buttonSize.dp),
         ) {
-            Icon(packIcon(element.icon.ifBlank { "menu" }, "menu"), null, modifier = Modifier.size((element.size.takeIf { it > 0 } ?: 22).dp))
+            Icon(packIcon(element.icon.ifBlank { "menu" }, "menu"), null, modifier = Modifier.size(iconSize.dp))
         }
 
         "brand" -> Row(
@@ -221,7 +232,7 @@ private fun HeaderElement(
             Column {
                 Text(
                     label.ifBlank { ui.titleOverride ?: packText("header.title", "Pig") },
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -243,14 +254,18 @@ private fun HeaderElement(
         "title" -> Text(
             label.ifBlank { ui.titleOverride ?: packText("header.title", "Pig") },
             modifier = modifier,
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
 
         "model" -> Row(
-            modifier.then(clickable),
+            modifier
+                .clip(RoundedCornerShape(9.dp))
+                .background(scheme.surfaceVariant.copy(alpha = 0.45f))
+                .padding(horizontal = 9.dp, vertical = 3.dp)
+                .then(clickable),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -305,30 +320,30 @@ private fun HeaderElement(
 
         "stop" -> IconButton(
             onClick = onStop,
-            modifier = modifier.size((element.size.takeIf { it > 0 } ?: 22).dp),
+            modifier = modifier.size(buttonSize.dp),
         ) {
-            Icon(packIcon(element.icon.ifBlank { "stop" }, "stop"), null, modifier = Modifier.size((element.size.takeIf { it > 0 } ?: 22).dp), tint = scheme.error)
+            Icon(packIcon(element.icon.ifBlank { "stop" }, "stop"), null, modifier = Modifier.size(iconSize.dp), tint = scheme.error)
         }
 
         "reconnect" -> IconButton(
             onClick = onReconnect,
-            modifier = modifier.size((element.size.takeIf { it > 0 } ?: 22).dp),
+            modifier = modifier.size(buttonSize.dp),
         ) {
-            Icon(packIcon(element.icon.ifBlank { "refresh" }, "refresh"), null, modifier = Modifier.size((element.size.takeIf { it > 0 } ?: 22).dp), tint = color)
+            Icon(packIcon(element.icon.ifBlank { "refresh" }, "refresh"), null, modifier = Modifier.size(iconSize.dp), tint = color)
         }
 
         "settings" -> IconButton(
             onClick = onSettings,
-            modifier = modifier.size((element.size.takeIf { it > 0 } ?: 22).dp),
+            modifier = modifier.size(buttonSize.dp),
         ) {
-            Icon(packIcon(element.icon.ifBlank { "settings" }, "settings"), null, modifier = Modifier.size((element.size.takeIf { it > 0 } ?: 22).dp), tint = color)
+            Icon(packIcon(element.icon.ifBlank { "settings" }, "settings"), null, modifier = Modifier.size(iconSize.dp), tint = color)
         }
 
         "newSession" -> IconButton(
             onClick = onNewSession,
-            modifier = modifier.size((element.size.takeIf { it > 0 } ?: 22).dp),
+            modifier = modifier.size(buttonSize.dp),
         ) {
-            Icon(packIcon(element.icon.ifBlank { "add" }, "add"), null, modifier = Modifier.size((element.size.takeIf { it > 0 } ?: 22).dp), tint = color)
+            Icon(packIcon(element.icon.ifBlank { "add" }, "add"), null, modifier = Modifier.size(iconSize.dp), tint = color)
         }
 
         "icon" -> Icon(
@@ -430,7 +445,7 @@ private fun headerColor(name: String, scheme: androidx.compose.material3.ColorSc
 @Composable
 private fun headerTextStyle(style: String) = when (style) {
     "body" -> MaterialTheme.typography.bodySmall
-    "heading" -> MaterialTheme.typography.titleSmall
+    "heading" -> MaterialTheme.typography.titleMedium
     "mono" -> MaterialTheme.typography.labelMedium.copy(fontFamily = packCodeFont())
     "muted" -> MaterialTheme.typography.labelSmall
     "danger" -> MaterialTheme.typography.labelSmall

@@ -292,11 +292,13 @@ fun PigApp(vm: AppViewModel) {
 
     Box(Modifier.fillMaxSize()) {
         val drawerAppearance = ui.uiPack.layout.drawer
-        val drawerCorner = if (drawerAppearance.cornerRadius >= 0) {
+        // A little more rounded than the pack default: the sheet reads as a
+        // panel instead of a full-height slab.
+        val drawerCorner = (if (drawerAppearance.cornerRadius >= 0) {
             drawerAppearance.cornerRadius
         } else {
             ui.uiPack.theme.cornerRadius
-        }
+        }).coerceAtLeast(14)
         val drawerScheme = MaterialTheme.colorScheme
         val drawerBackground = when (drawerAppearance.background) {
             "surface" -> drawerScheme.surface
@@ -3099,11 +3101,10 @@ private fun DrawerContent(
     val appearance = ui.uiPack.layout.drawer
     val modules = appearance.modules
     val buttonCorner = if (appearance.buttonRadius >= 0) appearance.buttonRadius else corner
-    val buttonHeight = if (appearance.buttonHeight > 0) {
-        Modifier.heightIn(min = appearance.buttonHeight.dp)
-    } else {
-        Modifier
-    }
+    // 46 dp is the Material minimum for a comfortable row; the shipped pack
+    // used 34, which made the drawer buttons hard to hit.
+    val buttonIcon = appearance.buttonIconSize.coerceAtLeast(18)
+    val buttonHeight = Modifier.heightIn(min = appearance.buttonHeight.coerceAtLeast(46).dp)
     val components = packComponents()
     var sessionQuery by remember { mutableStateOf("") }
     var renameTarget by remember { mutableStateOf<SessionInfo?>(null) }
@@ -3134,7 +3135,7 @@ private fun DrawerContent(
             .fillMaxHeight()
             .padding(horizontal = appearance.paddingH.dp)
             .padding(top = appearance.paddingV.dp),
-        verticalArrangement = Arrangement.spacedBy(appearance.spacing.dp),
+        verticalArrangement = Arrangement.spacedBy(appearance.spacing.coerceAtLeast(8).dp),
     ) {
         if (components.showDrawerBrand && "brand" in modules) Box(
             Modifier
@@ -3196,7 +3197,7 @@ private fun DrawerContent(
             text = packText("drawer.newSession", "新会话"),
             icon = packIcon("add", "add"),
             cornerRadius = buttonCorner,
-            iconSize = appearance.buttonIconSize,
+            iconSize = buttonIcon,
             modifier = Modifier.fillMaxWidth().then(buttonHeight),
         ) {
             vm.newSession()
@@ -3213,7 +3214,7 @@ private fun DrawerContent(
             Icon(
                 packIcon("settings", "settings"),
                 null,
-                modifier = Modifier.size(appearance.buttonIconSize.dp),
+                modifier = Modifier.size(buttonIcon.dp),
             )
             Spacer(Modifier.width(8.dp))
             Text(packText("drawer.settings", "设置"))
@@ -3234,7 +3235,7 @@ private fun DrawerContent(
                 Spacer(Modifier.width(5.dp))
                 SectionLabel(
                     packText("skin.title", "皮肤"),
-                    size = appearance.sectionLabelSize,
+                    size = appearance.sectionLabelSize.coerceAtLeast(10),
                     uppercase = appearance.sectionLabelUppercase,
                 )
             }
@@ -3262,7 +3263,7 @@ private fun DrawerContent(
                 Icon(
                     packIcon("folder", "folder"),
                     null,
-                    modifier = Modifier.size(appearance.buttonIconSize.dp),
+                    modifier = Modifier.size(buttonIcon.dp),
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
@@ -3289,7 +3290,7 @@ private fun DrawerContent(
         if ("panels" in modules && components.showPanels && drawerNav.isNotEmpty()) {
             SectionLabel(
                 packText("drawer.panels", "面板"),
-                size = appearance.sectionLabelSize,
+                size = appearance.sectionLabelSize.coerceAtLeast(10),
                 uppercase = appearance.sectionLabelUppercase,
             )
             drawerNav.forEach { item ->
@@ -3304,7 +3305,7 @@ private fun DrawerContent(
                     Icon(
                         navIcon(item.icon),
                         contentDescription = null,
-                        modifier = Modifier.size(appearance.buttonIconSize.dp),
+                        modifier = Modifier.size(buttonIcon.dp),
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(item.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -3322,7 +3323,7 @@ private fun DrawerContent(
             SectionLabel(
                 packText("drawer.recent", "最近会话"),
                 Modifier.weight(1f),
-                size = appearance.sectionLabelSize,
+                size = appearance.sectionLabelSize.coerceAtLeast(10),
                 uppercase = appearance.sectionLabelUppercase,
             )
             IconButton(
@@ -3383,11 +3384,11 @@ private fun DrawerContent(
                 SessionRow(
                     session = session,
                     current = session.path == ui.sessionFile,
-                    cornerRadius = if (appearance.sessionRowRadius >= 0) {
+                    cornerRadius = (if (appearance.sessionRowRadius >= 0) {
                         appearance.sessionRowRadius
                     } else {
                         corner
-                    },
+                    }).coerceAtLeast(10),
                     selectedAlpha = appearance.sessionSelectedAlpha,
                     showId = appearance.showSessionId,
                     showTime = appearance.showSessionTime,
@@ -4181,7 +4182,7 @@ private fun SessionRow(
                 if (current) scheme.primary.copy(alpha = selectedAlpha) else Color.Transparent,
             )
             .clickable(onClick = onClick)
-            .padding(start = 8.dp, end = 2.dp, top = 7.dp, bottom = 7.dp),
+            .padding(start = 10.dp, end = 4.dp, top = 9.dp, bottom = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -4197,7 +4198,7 @@ private fun SessionRow(
                 title,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 color = if (current) scheme.primary else scheme.onSurface,
             )
             val meta = buildList {
