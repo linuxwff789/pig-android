@@ -1282,6 +1282,9 @@ object UiPackParser {
             heightDp = json.optInt("height", d.heightDp).coerceIn(0, 200),
             paddingH = json.optInt("paddingH", d.paddingH).coerceIn(0, 48),
             paddingV = json.optInt("paddingV", d.paddingV).coerceIn(0, 32),
+            cornerRadius = json.optInt("cornerRadius", d.cornerRadius).coerceIn(0, 32),
+            marginH = json.optInt("marginH", d.marginH).coerceIn(0, 24),
+            marginTop = json.optInt("marginTop", d.marginTop).coerceIn(0, 24),
             background = background.takeIf { it in backgrounds } ?: d.background,
             gradientAlpha = json.optDouble("gradientAlpha", d.gradientAlpha.toDouble())
                 .toFloat().coerceIn(0f, 1f),

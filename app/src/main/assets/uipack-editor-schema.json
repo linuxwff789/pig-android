@@ -4998,6 +4998,45 @@
           "step": 1
         },
         {
+          "key": "cornerRadius",
+          "path": [
+            "header",
+            "cornerRadius"
+          ],
+          "type": "int",
+          "label": "全局圆角",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "marginH",
+          "path": [
+            "header",
+            "marginH"
+          ],
+          "type": "int",
+          "label": "水平外边距",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "key": "marginTop",
+          "path": [
+            "header",
+            "marginTop"
+          ],
+          "type": "int",
+          "label": "marginTop",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "step": 1
+        },
+        {
           "key": "background",
           "path": [
             "header",

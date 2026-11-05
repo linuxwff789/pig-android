@@ -397,6 +397,10 @@ data class UiHeader(
     val heightDp: Int = 0,
     val paddingH: Int = 12,
     val paddingV: Int = 2,
+    /** 0 keeps the flat full-width header; >0 draws a rounded card. */
+    val cornerRadius: Int = 0,
+    val marginH: Int = 0,
+    val marginTop: Int = 0,
     /** gradient | surface | transparent */
     val background: String = "gradient",
     val gradientAlpha: Float = 0.13f,

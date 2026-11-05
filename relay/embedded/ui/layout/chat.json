@@ -176,9 +176,9 @@
   "header": {
     "show": true,
     "height": 0,
-    "paddingH": 14,
+    "paddingH": 18,
     "paddingV": 6,
-    "background": "gradient",
+    "background": "surface",
     "gradientAlpha": 0.16,
     "divider": true,
     "rows": [
@@ -252,6 +252,9 @@
           }
         ]
       }
-    ]
+    ],
+    "cornerRadius": 18,
+    "marginH": 8,
+    "marginTop": 4
   }
 }

@@ -1,6 +1,7 @@
 package com.linuxwff.pigapp.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -61,12 +62,24 @@ fun CustomPigHeader(
         "transparent" -> Color.Transparent
         else -> scheme.background
     }
+    // A pack can turn the header into a rounded card: the margins keep it off
+    // the screen edges and `cornerRadius` rounds all four corners.
+    val shape = RoundedCornerShape(header.cornerRadius.dp)
     Box(
         Modifier
             .fillMaxWidth()
-            .shadow(2.dp)
+            .statusBarsPadding()
+            .padding(horizontal = header.marginH.dp, vertical = header.marginTop.dp)
+            .shadow(2.dp, shape)
+            .clip(shape)
             .background(base)
-            .statusBarsPadding(),
+            .then(
+                if (header.cornerRadius > 0) {
+                    Modifier.border(1.dp, scheme.outline.copy(alpha = 0.18f), shape)
+                } else {
+                    Modifier
+                },
+            ),
     ) {
         if (header.background == "gradient") {
             Box(
