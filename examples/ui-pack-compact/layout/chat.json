@@ -111,7 +111,7 @@
       "radius": 8,
       "paddingH": 8,
       "paddingV": 5,
-      "maxHeight": 200,
+      "maxHeight": 480,
       "italic": false
     },
     "chrome": {
@@ -163,33 +163,33 @@
     "placement": "both"
   },
   "drawer": {
-    "cornerRadius": 10,
-    "spacing": 6,
-    "buttonHeight": 34,
-    "buttonRadius": 6,
-    "sectionLabelSize": 9,
-    "sessionRowRadius": 6,
-    "searchRadius": 8,
-    "brandAvatarSize": 28,
-    "buttonIconSize": 13
+    "cornerRadius": 16,
+    "spacing": 8,
+    "buttonHeight": 48,
+    "buttonRadius": 10,
+    "sectionLabelSize": 11,
+    "sessionRowRadius": 10,
+    "searchRadius": 12,
+    "brandAvatarSize": 32,
+    "buttonIconSize": 20
   },
   "header": {
     "show": true,
     "height": 0,
-    "paddingH": 10,
-    "paddingV": 3,
+    "paddingH": 14,
+    "paddingV": 6,
     "background": "gradient",
-    "gradientAlpha": 0.1,
+    "gradientAlpha": 0.16,
     "divider": true,
     "rows": [
       {
-        "spacing": 6,
+        "spacing": 8,
         "align": "start",
         "elements": [
           {
-            "type": "icon",
+            "type": "menu",
             "icon": "menu",
-            "size": 22,
+            "size": 30,
             "action": "header:menu",
             "color": "onSurface",
             "padding": 2
@@ -206,30 +206,29 @@
           {
             "type": "icon",
             "icon": "refresh",
-            "size": 18,
+            "size": 24,
             "action": "header:reconnect",
             "when": "offline"
           }
         ]
       },
       {
-        "spacing": 5,
+        "spacing": 7,
         "align": "start",
         "elements": [
           {
-            "type": "text",
+            "type": "pill",
             "bind": "state.model",
-            "format": "{id}",
             "text": "点击选择模型",
             "action": "header:model",
-            "style": "mono",
             "color": "onSurfaceVariant",
-            "weight": 1.0
+            "weight": 1.0,
+            "format": "{id}"
           },
           {
             "type": "icon",
             "icon": "chevronDown",
-            "size": 12,
+            "size": 16,
             "action": "header:model"
           },
           {
