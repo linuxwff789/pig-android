@@ -5008,7 +5008,8 @@
           "default": 0,
           "min": 0,
           "max": 64,
-          "step": 1
+          "step": 1,
+          "desc": "四角圆角半径（dp）；0 保持原来的平铺满宽头部"
         },
         {
           "key": "marginH",

@@ -369,6 +369,9 @@ replaces the whole top bar and every element is explicit.
   "height": 74,
   "paddingH": 12,
   "paddingV": 3,
+  "cornerRadius": 18,
+  "marginH": 8,
+  "marginTop": 4,
   "background": "gradient",
   "gradientAlpha": 0.24,
   "divider": true,
@@ -407,6 +410,8 @@ Container keys:
 | `show` | true | `false` removes the header entirely |
 | `height` | 0 | minimum height in dp (0 = wrap rows) |
 | `paddingH` / `paddingV` | 12 / 2 | inner padding, clamped |
+| `cornerRadius` | 0 | rounds all four corners in dp; `0` keeps the flat full-width header |
+| `marginH` / `marginTop` | 0 / 0 | outer margin around the rounded card (use with `cornerRadius`) |
 | `background` | `gradient` | `gradient`, `surface`, `transparent` |
 | `gradientAlpha` | 0.13 | only for `gradient` |
 | `divider` | false | bottom divider |
@@ -509,6 +514,7 @@ Element keys:
 | `size` | icon/divider size in dp |
 | `weight` | row weight (0 = natural size) |
 | `padding` | outer padding |
+| `hitSize` | touch target for icon buttons in dp; `0` = icon size + 18 (min 40) |
 | `icon` | icon name override |
 | `label` / `text` | static fallback text |
 | `style` | `label` (default), `body`, `heading`, `mono`, `muted`, `danger` |
@@ -519,7 +525,8 @@ Element keys:
 | `lines` | max lines for `text` (1–4, default 2); use `1` for titles that must not wrap |
 
 The header is rendered inside `statusBarsPadding()`, so `paddingV` is added
-below the system status bar.
+below the system status bar. Setting `cornerRadius` turns the header into a
+rounded card inset by `marginH` / `marginTop`, with a 1 dp outline.
 
 ## drawer / chat appearance
 

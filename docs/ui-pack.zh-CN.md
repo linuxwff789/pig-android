@@ -350,6 +350,9 @@ App 重启后优先级相同：pack 提供默认值，已保存的偏好（如�
   "height": 74,
   "paddingH": 12,
   "paddingV": 3,
+  "cornerRadius": 18,
+  "marginH": 8,
+  "marginTop": 4,
   "background": "gradient",
   "gradientAlpha": 0.24,
   "divider": true,
@@ -388,6 +391,8 @@ App 重启后优先级相同：pack 提供默认值，已保存的偏好（如�
 | `show` | true | `false` 会完全移除头部 |
 | `height` | 0 | 最小高度，单位 dp（0 = 由行内容包裹） |
 | `paddingH` / `paddingV` | 12 / 2 | 内边距，会被限制范围 |
+| `cornerRadius` | 0 | 四角圆角半径（dp）；`0` 保持原来的平铺满宽头部 |
+| `marginH` / `marginTop` | 0 / 0 | 圆角卡片外部的左右 / 上边距（与 `cornerRadius` 配合） |
 | `background` | `gradient` | `gradient`、`surface`、`transparent` |
 | `gradientAlpha` | 0.13 | 仅用于 `gradient` |
 | `divider` | false | 底部分隔线 |
@@ -490,6 +495,7 @@ App 重启后优先级相同：pack 提供默认值，已保存的偏好（如�
 | `size` | 图标/分隔线尺寸，单位 dp |
 | `weight` | 行权重（0 = 自然尺寸） |
 | `padding` | 外边距 |
+| `hitSize` | 图标按钮的触摸区直径（dp）；`0` = 图标尺寸 + 18（最小 40） |
 | `icon` | 覆盖图标名称 |
 | `label` / `text` | 静态回退文字 |
 | `style` | `label`（默认值）、`body`、`heading`、`mono`、`muted`、`danger` |
@@ -500,6 +506,8 @@ App 重启后优先级相同：pack 提供默认值，已保存的偏好（如�
 | `lines` | `text` 的最大行数（1–4，默认值 2）；对不能换行的标题用 `1` |
 
 头部渲染在 `statusBarsPadding()` 内，因此 `paddingV` 是叠加在系统状态栏下方的。
+设置 `cornerRadius` 后，头部会变成一张圆角卡片，由 `marginH` / `marginTop`
+控制离屏幕边缘的距离，并带 1 dp 描边。
 
 ## 抽屉 / 聊天外观
 
