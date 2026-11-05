@@ -142,6 +142,8 @@ data class SearchHit(
     val role: String,
     val snippet: String,
     val at: Long,
+    /** `title` matches the session name, `message` matches a turn. */
+    val kind: String = "message",
 )
 
 /** A drawer entry from `nav.json`; tapping it opens `window` and runs `command`. */

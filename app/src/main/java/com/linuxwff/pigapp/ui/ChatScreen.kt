@@ -3427,6 +3427,7 @@ private fun DrawerContent(
                 ) { hit ->
                     SearchHitRow(
                         hit = hit,
+                        query = sessionQuery,
                         cornerRadius = (if (appearance.sessionRowRadius >= 0) {
                             appearance.sessionRowRadius
                         } else {
@@ -4356,11 +4357,12 @@ private fun ConversationSearchDialog(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = scheme.primary,
                             )
-                            Text(
-                                hit.snippet,
+                            HighlightedSnippet(
+                                text = hit.snippet,
+                                query = vm.convQuery,
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
+                                color = scheme.onSurface,
                             )
                         }
                     }
@@ -4383,9 +4385,49 @@ private fun ConversationSearchDialog(
     }
 }
 
+/**
+ * Snippet text with every occurrence of [query] emphasized. The relay keeps
+ * only ~30 characters around a match, and two lines are enough to show them,
+ * so the highlighted word is never the part that gets folded away.
+ */
+@Composable
+private fun HighlightedSnippet(
+    text: String,
+    query: String,
+    style: TextStyle,
+    maxLines: Int,
+    color: Color,
+) {
+    val highlight = MaterialTheme.colorScheme.primary
+    val annotated = remember(text, query, highlight) {
+        buildAnnotatedString {
+            append(text)
+            val needle = query.trim()
+            if (needle.length >= 2) {
+                var start = text.indexOf(needle, ignoreCase = true)
+                while (start >= 0) {
+                    addStyle(
+                        SpanStyle(color = highlight, fontWeight = FontWeight.SemiBold),
+                        start,
+                        start + needle.length,
+                    )
+                    start = text.indexOf(needle, start + needle.length, ignoreCase = true)
+                }
+            }
+        }
+    }
+    Text(
+        annotated,
+        style = style.copy(color = color),
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
 @Composable
 private fun SearchHitRow(
     hit: SearchHit,
+    query: String,
     cornerRadius: Int,
     onClick: () -> Unit,
 ) {
@@ -4398,27 +4440,31 @@ private fun SearchHitRow(
             .padding(horizontal = 10.dp, vertical = 7.dp),
     ) {
         Text(
-            buildString {
-                append(hit.sessionName.ifBlank { hit.sessionId.take(8) })
-                append(" · ")
-                append(
-                    if (hit.role == "user") {
-                        packText("role.user", "你")
-                    } else {
-                        packText("role.assistant", "助手")
-                    },
-                )
+            if (hit.kind == "title") {
+                packText("search.titleHit", "会话标题")
+            } else {
+                buildString {
+                    append(hit.sessionName.ifBlank { hit.sessionId.take(8) })
+                    append(" · ")
+                    append(
+                        if (hit.role == "user") {
+                            packText("role.user", "你")
+                        } else {
+                            packText("role.assistant", "助手")
+                        },
+                    )
+                }
             },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.labelSmall,
             color = scheme.primary,
         )
-        Text(
-            hit.snippet,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+        HighlightedSnippet(
+            text = hit.snippet,
+            query = query,
             style = MaterialTheme.typography.bodySmall,
+            maxLines = 2,
             color = scheme.onSurface,
         )
         if (hit.at > 0) {

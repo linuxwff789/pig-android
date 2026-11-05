@@ -3983,6 +3983,7 @@ class AppViewModel @JvmOverloads constructor(
                     role = item.optString("role"),
                     snippet = item.optString("snippet"),
                     at = item.optLong("at"),
+                    kind = item.optString("kind", "message"),
                 ),
             )
         }
@@ -4002,7 +4003,10 @@ class AppViewModel @JvmOverloads constructor(
             }
             convRequestId -> {
                 convLoading = false
-                convHits = if (convAppend) convHits + hits else hits
+                // Title hits carry no message; in the open conversation they
+                // would jump to nowhere.
+                val messageHits = hits.filter { it.kind != "title" }
+                convHits = if (convAppend) convHits + messageHits else messageHits
                 convHasMore = hasMore
                 convOffset = convHits.size
                 if (!convAppend) convIndex = if (convHits.isEmpty()) -1 else 0
