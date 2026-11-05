@@ -21,8 +21,11 @@ import (
 const (
 	imageCacheDirName = "images"
 	// One image block above this is left inline: a client that cannot fetch
-	// refs must still be able to display it.
-	maxImageRefBytes = 8 << 20
+	// refs must still be able to display it. The app refuses to decode a
+	// base64 payload above 8,000,000 characters (MAX_IMAGE_B64_CHARS), and a
+	// ref it cannot decode is worse than an inline block — the row would wait
+	// forever. 4*ceil(n/3) <= 8,000,000 caps the raw bytes at 6,000,000.
+	maxImageRefBytes = 6_000_000
 	// A single relay_image_get answers at most this many pictures.
 	maxImageRefsPerRequest = 8
 	// One relay_image_data frame stays under this many base64 bytes; pictures
@@ -167,13 +170,15 @@ func (s *session) sendImages(id any, refs []string) {
 	imageSendMu.Lock()
 	defer imageSendMu.Unlock()
 	images := make([]frame, 0, len(refs))
+	missing := make([]string, 0)
 	batchBytes := 0
 	flush := func() {
-		if len(images) == 0 {
+		if len(images) == 0 && len(missing) == 0 {
 			return
 		}
-		_ = s.send(frame{"type": "relay_image_data", "id": id, "images": images})
+		_ = s.send(frame{"type": "relay_image_data", "id": id, "images": images, "missing": missing})
 		images = make([]frame, 0, len(refs))
+		missing = make([]string, 0)
 		batchBytes = 0
 	}
 	for _, ref := range refs {
@@ -183,10 +188,14 @@ func (s *session) sendImages(id any, refs []string) {
 		path := filepath.Join(s.imageCacheDir(), ref)
 		info, err := os.Stat(path)
 		if err != nil || info.Size() <= 0 || info.Size() > maxImageRefBytes {
+			// Without an explicit miss the app cannot tell a lost ref from
+			// one still in flight, and the row would spin forever.
+			missing = append(missing, ref)
 			continue
 		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
+			missing = append(missing, ref)
 			continue
 		}
 		encoded := base64.StdEncoding.EncodeToString(raw)

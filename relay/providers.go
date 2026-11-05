@@ -300,7 +300,7 @@ func (s *session) saveProvider(id any, entry map[string]any) {
 			return
 		}
 	}
-	s.syncProviderAuth()
+	s.syncProviderAuth(pid)
 	done := frame{
 		"type":     "relay_provider_saved",
 		"id":       id,

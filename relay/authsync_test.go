@@ -48,6 +48,37 @@ func TestSyncProviderAuthMirrorsCustomKeys(t *testing.T) {
 	}
 }
 
+func TestSyncProviderAuthOnlyTouchesNamedProvider(t *testing.T) {
+	s := newTestSession(t)
+	agentDir := filepath.Dir(s.settingsPath)
+	config := `{"providers":{
+		"alpha":{"baseUrl":"https://a.test/v1","apiKey":"sk-alpha"},
+		"beta":{"baseUrl":"https://b.test/v1","apiKey":"!false"}
+	}}`
+	if err := os.WriteFile(filepath.Join(agentDir, "custom-endpoints.json"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A save of one provider must not shell out for (or mirror) the others:
+	// beta's apiKey is a `!cmd`, which would run here and fail quietly.
+	s.syncProviderAuth("alpha")
+
+	data, err := os.ReadFile(filepath.Join(agentDir, "auth.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var auth map[string]map[string]string
+	if err := json.Unmarshal(data, &auth); err != nil {
+		t.Fatal(err)
+	}
+	if auth["alpha"]["key"] != "sk-alpha" {
+		t.Fatalf("alpha = %v", auth["alpha"])
+	}
+	if _, ok := auth["beta"]; ok {
+		t.Fatalf("beta was synced without being named: %v", auth["beta"])
+	}
+}
+
 func TestRemoveProviderAuthKeepsBuiltins(t *testing.T) {
 	s := newTestSession(t)
 	agentDir := filepath.Dir(s.settingsPath)

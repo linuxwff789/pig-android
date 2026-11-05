@@ -111,8 +111,8 @@ func TestSendImagesSplitsLargeBatches(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Two medium pictures (~4.4 MB of base64 each) cannot share one frame
-	// (8.8 > 8 MB budget); one big picture (~8.7 MB) always gets its own.
-	sizes := []int{3_300_000, 3_300_000, 6_500_000}
+	// (8.8 > 8 MB budget); one big picture (~7.3 MB) always gets its own.
+	sizes := []int{3_300_000, 3_300_000, 5_500_000}
 	refs := make([]string, len(sizes))
 	for i, size := range sizes {
 		raw := make([]byte, size)
@@ -140,6 +140,63 @@ func TestSendImagesSplitsLargeBatches(t *testing.T) {
 	want := [][]string{{refs[0]}, {refs[1]}, {refs[2]}}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("batches = %v, want %v", got, want)
+	}
+}
+
+func TestSendImagesReportsMissingRefs(t *testing.T) {
+	s, reader := testSessionWithConn(t)
+	if err := os.MkdirAll(s.imageCacheDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte("present")
+	sum := sha256.Sum256(raw)
+	ref := hex.EncodeToString(sum[:])
+	if err := os.WriteFile(filepath.Join(s.imageCacheDir(), ref), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	absent := strings.Repeat("b", 64)
+	go s.sendImages("img-miss", []string{ref, absent})
+	frame := readJSONFrame(t, reader)
+	images, _ := frame["images"].([]any)
+	if len(images) != 1 {
+		t.Fatalf("images = %v", images)
+	}
+	missing, _ := frame["missing"].([]any)
+	if len(missing) != 1 || missing[0] != absent {
+		t.Fatalf("missing = %v, want [%s]", missing, absent)
+	}
+}
+
+func TestSendImagesAnswersOnlyMissing(t *testing.T) {
+	s, reader := testSessionWithConn(t)
+	// No cache file at all: the answer must still be sent, otherwise the app
+	// waits for a frame that never arrives.
+	go s.sendImages("img-gone", []string{strings.Repeat("c", 64)})
+	frame := readJSONFrame(t, reader)
+	if frame["type"] != "relay_image_data" {
+		t.Fatalf("frame = %v", frame)
+	}
+	missing, _ := frame["missing"].([]any)
+	if len(missing) != 1 {
+		t.Fatalf("missing = %v", missing)
+	}
+	if images, ok := frame["images"].([]any); ok && len(images) != 0 {
+		t.Fatalf("images = %v, want none", images)
+	}
+}
+
+func TestStoreImageLeavesDecodeOversizedBlockInline(t *testing.T) {
+	s := newTestSession(t)
+	// The app refuses base64 above 8,000,000 characters, so a ref the app
+	// cannot decode must never replace the inline block.
+	raw := make([]byte, maxImageRefBytes+1)
+	data := base64.StdEncoding.EncodeToString(raw)
+	if _, ok := s.storeImage(data, "image/png"); ok {
+		t.Fatal("oversized image was stored as a ref")
+	}
+	out := s.rewriteHistoryImages([]json.RawMessage{imageMessage(data)})
+	if !strings.Contains(string(out[0]), `"data"`) {
+		t.Fatalf("oversized inline block was dropped")
 	}
 }
 

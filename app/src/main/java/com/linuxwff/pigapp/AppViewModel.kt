@@ -110,6 +110,27 @@ class AppViewModel @JvmOverloads constructor(
     private val transcriptImages = object : LruCache<String, ChatImage>(HISTORY_IMAGE_CACHE_PIXELS) {
         override fun sizeOf(key: String, value: ChatImage): Int =
             value.bitmap.width * value.bitmap.height
+
+        // The cache must be the only owner of a decoded picture. A message
+        // that keeps its own ChatImage reference defeats the pixel budget:
+        // evicting here would not free anything while a ChatMsg still holds
+        // the bitmap. Drop the reference on eviction so the row re-fetches
+        // from the hash cache (the bytes are on disk) when it scrolls back.
+        override fun entryRemoved(
+            evicted: Boolean,
+            key: String,
+            oldValue: ChatImage,
+            newValue: ChatImage?,
+        ) {
+            if (!evicted) return
+            val bitmap = oldValue.bitmap
+            viewModelScope.launch {
+                messages.filter { message -> message.images.any { it.bitmap === bitmap } }
+                    .forEach { message ->
+                        update(message.id) { it.copy(images = it.images.filterNot { image -> image.bitmap === bitmap }) }
+                    }
+            }
+        }
     }
     private data class PendingImageRef(val messageIds: MutableSet<String>, val mimeType: String)
     private val pendingImageRefs = HashMap<String, PendingImageRef>()
@@ -3723,6 +3744,9 @@ class AppViewModel @JvmOverloads constructor(
         // updated when the bytes arrive.
         val toRequest = ArrayList<ImageRef>()
         message.imageRefs.forEach { ref ->
+            // The relay already said it cannot serve this one; re-asking on
+            // every recomposition would just spin (see handleImageData).
+            if (ref.ref in message.failedRefs) return@forEach
             val cached = transcriptImages.get(ref.ref)
             if (cached == null) {
                 var fresh = false
@@ -3752,8 +3776,25 @@ class AppViewModel @JvmOverloads constructor(
     }
 
     private fun handleImageData(event: JSONObject) {
-        val images = event.optJSONArray("images") ?: return
-        if (images.length() == 0) return
+        val images = event.optJSONArray("images")
+        val failed = event.optJSONArray("missing")
+        // A ref the relay cannot serve is dropped from the pending set and
+        // marked on the message: without that the row would keep re-asking
+        // and spin on "loading" forever (a 6–8 MB picture used to land here).
+        val dead = ArrayList<String>()
+        for (index in 0 until (failed?.length() ?: 0)) {
+            val ref = failed?.optString(index)
+            if (!ref.isNullOrBlank()) dead.add(ref)
+        }
+        if (dead.isNotEmpty()) {
+            val touched = HashSet<String>()
+            dead.forEach { ref -> pendingImageRefs.remove(ref)?.messageIds?.let(touched::addAll) }
+            touched.forEach { id ->
+                update(id) { it.copy(failedRefs = it.failedRefs + dead) }
+            }
+            AppLog.event("images", "relay reported ${dead.size} unavailable ref(s)")
+        }
+        if (images == null || images.length() == 0) return
         val entries = ArrayList<Pair<String, String>>(images.length())
         for (index in 0 until images.length()) {
             val entry = images.optJSONObject(index) ?: continue
@@ -3765,13 +3806,18 @@ class AppViewModel @JvmOverloads constructor(
         if (entries.isEmpty()) return
         viewModelScope.launch {
             imageDataMu.withLock {
+                // One budget per answer: pictures that do not fit are decoded
+                // at a lower resolution rather than at full size, because
+                // eight 4 MP screenshots at once would be ~128 MB of bitmaps.
+                val budget = ImageBudget(IMAGE_REF_PIXEL_BUDGET)
                 val decoded = withContext(Dispatchers.Default) {
                     entries.mapNotNull { (ref, data) ->
                         val mime = pendingImageRefs[ref]?.mimeType ?: "image/png"
-                        decodeChatImage(data, mime, null)?.let { ref to it }
+                        decodeChatImage(data, mime, budget, fitBudget = true)?.let { ref to it }
                     }
                 }
                 decoded.forEach { (ref, image) -> transcriptImages.put(ref, image) }
+                val decodedRefs = decoded.mapTo(HashSet()) { (ref, _) -> ref }
                 val touched = HashSet<String>()
                 decoded.forEach { (ref, _) ->
                     pendingImageRefs.remove(ref)?.messageIds?.let(touched::addAll)
@@ -3781,7 +3827,14 @@ class AppViewModel @JvmOverloads constructor(
                         val ordered = message.imageRefs.mapNotNull { ref ->
                             transcriptImages.get(ref.ref)
                         }
-                        message.copy(images = ordered)
+                        message.copy(
+                            images = ordered,
+                            failedRefs = if (message.failedRefs.isEmpty()) {
+                                message.failedRefs
+                            } else {
+                                message.failedRefs - decodedRefs
+                            },
+                        )
                     }
                 }
             }
@@ -7325,6 +7378,7 @@ class AppViewModel @JvmOverloads constructor(
         base64: String,
         mimeType: String,
         budget: ImageBudget? = null,
+        fitBudget: Boolean = false,
     ): ChatImage? {
         if (base64.isEmpty() || base64.length > MAX_IMAGE_B64_CHARS) return null
         // Once the page budget is spent, don't even decode the bytes.
@@ -7337,8 +7391,18 @@ class AppViewModel @JvmOverloads constructor(
         while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= TRANSCRIPT_IMAGE_MAX_DIM) {
             sample *= 2
         }
-        val pixels = (bounds.outWidth / sample).toLong() * (bounds.outHeight / sample)
-        if (budget != null && pixels > budget.pixels) return null
+        var pixels = (bounds.outWidth / sample).toLong() * (bounds.outHeight / sample)
+        if (budget != null && pixels > budget.pixels) {
+            if (!fitBudget) return null
+            // Downsample further instead of dropping the picture: a visible
+            // image at a lower resolution beats an empty slot, and the budget
+            // still bounds the total bitmap memory of one answer.
+            while (pixels > budget.pixels && sample < 32) {
+                sample *= 2
+                pixels = (bounds.outWidth / sample).toLong() * (bounds.outHeight / sample)
+            }
+            if (pixels > budget.pixels) return null
+        }
         val bitmap = BitmapFactory.decodeByteArray(
             bytes,
             0,
@@ -7446,10 +7510,17 @@ private const val BUNDLED_PREFIX = "builtin:"
 /** Asset root of the packs compiled into the APK. */
 private const val BUNDLED_PACK_ROOT = "ui-packs"
 
-/** Largest base64 payload accepted from pig (~6 MiB of image bytes). */
+/** Largest base64 payload accepted from pig (~6 MiB of image bytes). The
+ *  relay keeps a ref only while its base64 fits (relay/images.go
+ *  maxImageRefBytes); change both together or a ref the app refuses to decode
+ *  would replace an inline block and spin on "loading" forever. */
 private const val MAX_IMAGE_B64_CHARS = 8_000_000
 /** Refs per relay_image_get; the relay answers at most eight. */
 private const val MAX_IMAGE_REFS_PER_REQUEST = 8
+// Pixel budget for one relay_image_get answer (up to eight pictures). Visible
+// rows decode on demand and never go through the history page budget, so this
+// is what stops eight full-size screenshots from allocating ~128 MB at once.
+private const val IMAGE_REF_PIXEL_BUDGET = 12_000_000L
 
 /** Keepalive cadence: fast while the user is watching, slow in the background. */
 private const val PING_FOREGROUND_MS = 4_000L

@@ -14,7 +14,12 @@ import (
 // custom-endpoints.json therefore answered `No API key found for <provider>`
 // the first time the app switched models. Writing the same key here closes
 // that gap without asking the user to log in.
-func (s *session) syncProviderAuth() {
+//
+// ids limits the work to the providers named: starting up passes none and
+// syncs everything once, while saving one provider passes only that id. A
+// full pass on every save would run every other provider's `!cmd` apiKey
+// (expandProviderValue shells out) as a side effect of an unrelated edit.
+func (s *session) syncProviderAuth(ids ...string) {
 	configPath, _, _ := s.providerPaths()
 	store, err := readJSONObjectFile(configPath)
 	if err != nil {
@@ -24,13 +29,20 @@ func (s *session) syncProviderAuth() {
 	if len(providers) == 0 {
 		return
 	}
+	wanted := map[string]bool{}
+	for _, id := range ids {
+		wanted[id] = true
+	}
 	authPath := filepath.Join(filepath.Dir(s.settingsPath), "auth.json")
 	auth, _ := readJSONObjectFile(authPath)
 	if auth == nil {
 		auth = map[string]any{}
 	}
-	changed := false
+	changed := 0
 	for id, raw := range providers {
+		if len(wanted) > 0 && !wanted[id] {
+			continue
+		}
 		entry, _ := raw.(map[string]any)
 		if entry == nil {
 			continue
@@ -45,9 +57,9 @@ func (s *session) syncProviderAuth() {
 			}
 		}
 		auth[id] = map[string]any{"type": "api_key", "key": key}
-		changed = true
+		changed++
 	}
-	if !changed {
+	if changed == 0 {
 		return
 	}
 	encoded, err := json.MarshalIndent(auth, "", "  ")
@@ -58,7 +70,7 @@ func (s *session) syncProviderAuth() {
 		logf("auth.json sync failed: %v", err)
 		return
 	}
-	logf("auth.json: synced %d custom provider credential(s)", len(providers))
+	logf("auth.json: synced %d custom provider credential(s)", changed)
 }
 
 // removeProviderAuth drops the credential when the provider is deleted. The

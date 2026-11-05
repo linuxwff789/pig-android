@@ -81,18 +81,21 @@ fun ChatImageStrip(
     images: List<ChatImage>,
     omitted: Int,
     imageRefs: List<ImageRef> = emptyList(),
+    failedRefs: Set<String> = emptySet(),
     onNeedImages: () -> Unit = {},
     modifier: Modifier = Modifier,
     maxHeight: Dp = 360.dp,
     cornerRadius: Int = 12,
 ) {
     // The row is only composed while it is visible (LazyColumn), so this is the
-    // point where a hash-backed picture is fetched and decoded.
-    val missing = imageRefs.isNotEmpty() && images.size < imageRefs.size
+    // point where a hash-backed picture is fetched and decoded. A ref the
+    // relay reported missing is neither shown nor requested again.
+    val failed = imageRefs.count { it.ref in failedRefs }
+    val missing = imageRefs.isNotEmpty() && images.size + failed < imageRefs.size
     if (missing) {
         LaunchedEffect(imageRefs.size, images.size) { onNeedImages() }
     }
-    if (images.isEmpty() && omitted <= 0 && !missing) return
+    if (images.isEmpty() && omitted <= 0 && !missing && failed == 0) return
     Column(modifier) {
         images.forEach { image ->
             Image(
@@ -115,6 +118,15 @@ fun ChatImageStrip(
                 packText("chat.imagesLoading", "图片加载中…"),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        if (failed > 0) {
+            Text(
+                packText("chat.imagesFailed", "{n} 张图片无法显示")
+                    .replace("{n}", failed.toString()),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
