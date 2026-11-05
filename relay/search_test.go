@@ -150,7 +150,7 @@ func TestSearchSessionFilesTitleBeforeMessages(t *testing.T) {
 	if len(hits) != 2 {
 		t.Fatalf("hits = %d (%+v)", len(hits), hits)
 	}
-	if hits[0].Kind != "title" || hits[1].Kind != "message" {
+	if hits[0].Kind != "title" || hits[1].Kind != "text" {
 		t.Fatalf("order = %q, %q", hits[0].Kind, hits[1].Kind)
 	}
 }
@@ -212,5 +212,46 @@ func TestSearchSessionFilesRespectsResultCap(t *testing.T) {
 				t.Fatalf("hit repeated across pages: %s", a.MessageID)
 			}
 		}
+	}
+}
+
+func TestSearchSessionFilesMatchesThinkingBlock(t *testing.T) {
+	s := newTestSession(t)
+	payload := map[string]any{
+		"type": "message", "id": "m1", "timestamp": "2026-11-05T10:00:00.000Z",
+		"message": map[string]any{
+			"role": "assistant",
+			"content": []map[string]any{
+				{"type": "thinking", "thinking": "这里推理了关键词"},
+				{"type": "text", "text": "final answer"},
+			},
+		},
+	}
+	encoded, _ := json.Marshal(payload)
+	writeSearchSession(t, s.sessionsDir, "p", "a.jsonl", []string{sessionHeader(t, "s"), string(encoded)})
+	hits, _ := searchSessionFiles(s.sessionsDir, &s.metaCache, "关键词", "", 0, searchMaxResults)
+	if len(hits) != 1 {
+		t.Fatalf("hits = %+v", hits)
+	}
+	if hits[0].Kind != "thinking" {
+		t.Fatalf("kind = %q, want thinking", hits[0].Kind)
+	}
+	if !strings.Contains(hits[0].Snippet, "关键词") {
+		t.Fatalf("snippet = %q", hits[0].Snippet)
+	}
+}
+
+func TestSearchSessionFilesLabelsToolResults(t *testing.T) {
+	s := newTestSession(t)
+	writeSearchSession(t, s.sessionsDir, "p", "a.jsonl", []string{
+		sessionHeader(t, "s"),
+		sessionLine(t, "toolResult", "m1", "命令输出的关键词"),
+	})
+	hits, _ := searchSessionFiles(s.sessionsDir, &s.metaCache, "关键词", "", 0, searchMaxResults)
+	if len(hits) != 1 {
+		t.Fatalf("hits = %+v", hits)
+	}
+	if hits[0].Kind != "tool" || hits[0].Role != "toolResult" {
+		t.Fatalf("hit = %+v", hits[0])
 	}
 }

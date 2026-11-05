@@ -403,6 +403,45 @@ sealed interface MarkdownSegment {
     data class Code(val language: String, val code: String) : MarkdownSegment
 }
 
+/** Formats that would be lost by the plain-text highlighter. */
+private val markdownSyntax = Regex(
+    """(?m)^\s*(#{1,6}\s|>|\* |- |\d+\. )|\*\*|__|\[[^\]]*\]\(|\|[^\n]*\|""",
+)
+
+private fun isPlainText(text: String): Boolean = !markdownSyntax.containsMatchIn(text)
+
+/** Plain-text body with the search term highlighted (used while searching). */
+@Composable
+private fun HighlightedPlainText(text: String, query: String) {
+    val highlight = MaterialTheme.colorScheme.primary
+    val annotated = remember(text, query, highlight) {
+        buildAnnotatedString {
+            append(text)
+            val needle = query.trim()
+            if (needle.isNotEmpty()) {
+                var start = text.indexOf(needle, ignoreCase = true)
+                while (start >= 0) {
+                    addStyle(
+                        SpanStyle(
+                            color = highlight,
+                            background = highlight.copy(alpha = 0.20f),
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                        start,
+                        start + needle.length,
+                    )
+                    start = text.indexOf(needle, start + needle.length, ignoreCase = true)
+                }
+            }
+        }
+    }
+    Text(
+        annotated,
+        modifier = Modifier.fillMaxWidth(),
+        style = MaterialTheme.typography.bodyLarge,
+    )
+}
+
 private val fenceRegex = Regex("""^\s*(`{3,}|~{3,})(.*)$""")
 
 /**
@@ -474,6 +513,9 @@ fun AssistantMarkdown(
     // inside the block would snap back to collapsed.
     codeToggleState: SnapshotStateMap<Int, Boolean>? = null,
     onCopy: ((String) -> Unit)? = null,
+    /** Search term to highlight; only plain-text segments switch renderer, so
+     *  formatted Markdown keeps its layout. */
+    highlightQuery: String = "",
 ) {
     val localToggles = remember { mutableStateMapOf<Int, Boolean>() }
     val toggles = codeToggleState ?: localToggles
@@ -482,13 +524,21 @@ fun AssistantMarkdown(
         segments.forEachIndexed { index, segment ->
             if (index > 0) Spacer(Modifier.height(6.dp))
             when (segment) {
-                is MarkdownSegment.Text -> PigMarkdown(
-                    text = segment.text,
-                    modifier = Modifier.fillMaxWidth(),
-                    types = types,
-                    cornerRadius = cornerRadius,
-                    selectionMode = selectionMode,
-                )
+                is MarkdownSegment.Text -> if (
+                    highlightQuery.isNotBlank() &&
+                    isPlainText(segment.text) &&
+                    segment.text.contains(highlightQuery, ignoreCase = true)
+                ) {
+                    HighlightedPlainText(segment.text, highlightQuery)
+                } else {
+                    PigMarkdown(
+                        text = segment.text,
+                        modifier = Modifier.fillMaxWidth(),
+                        types = types,
+                        cornerRadius = cornerRadius,
+                        selectionMode = selectionMode,
+                    )
+                }
                 is MarkdownSegment.Code -> CollapsibleCode(
                     language = segment.language,
                     code = segment.code,

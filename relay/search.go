@@ -168,14 +168,24 @@ func searchSessionFile(path string, meta map[string]any, query string, limit int
 			continue
 		}
 		// The system preamble repeats tool documentation in every session;
-		// matching it would bury the reader's own turns.
-		if entry.Message.Role != "user" && entry.Message.Role != "assistant" {
+		// matching it would bury the reader's own turns. Tool results are kept:
+		// the app labels them separately so they do not read as chat turns.
+		role := entry.Message.Role
+		if role != "user" && role != "assistant" && role != "toolResult" {
 			continue
 		}
-		text := messageSearchText(entry.Message.Content)
-		snippet, ok := snippetAround(text, query, searchSnippetRadius)
-		if !ok {
+		kind, snippet := "", ""
+		for _, block := range messageSearchBlocks(entry.Message.Content) {
+			if found, ok := snippetAround(block.text, query, searchSnippetRadius); ok {
+				kind, snippet = block.kind, found
+				break
+			}
+		}
+		if kind == "" {
 			continue
+		}
+		if role == "toolResult" {
+			kind = "tool"
 		}
 		var at int64
 		if stamp, err := time.Parse(time.RFC3339Nano, entry.Timestamp); err == nil {
@@ -186,10 +196,10 @@ func searchSessionFile(path string, meta map[string]any, query string, limit int
 			SessionID: sessionID,
 			Name:      name,
 			MessageID: entry.ID,
-			Role:      entry.Message.Role,
+			Role:      role,
 			Snippet:   snippet,
 			At:        at,
-			Kind:      "message",
+			Kind:      kind,
 		})
 		if len(hits) >= limit {
 			break
@@ -198,33 +208,48 @@ func searchSessionFile(path string, meta map[string]any, query string, limit int
 	return hits
 }
 
-// messageSearchText flattens the content of one message to searchable text.
-// A user message may be a plain string; both roles may carry an array of
-// blocks where only text/thinking are interesting.
-func messageSearchText(raw json.RawMessage) string {
+// searchBlock is one searchable piece of a message, tagged with what the
+// reader sees it as. Thinking blocks keep their text in `thinking`, not
+// `text`; reading the wrong field used to make reasoning unsearchable.
+type searchBlock struct {
+	kind string
+	text string
+}
+
+func messageSearchBlocks(raw json.RawMessage) []searchBlock {
 	var plain string
 	if json.Unmarshal(raw, &plain) == nil {
-		return plain
+		if plain == "" {
+			return nil
+		}
+		return []searchBlock{{kind: "text", text: plain}}
 	}
 	var blocks []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+		Type     string `json:"type"`
+		Text     string `json:"text"`
+		Thinking string `json:"thinking"`
 	}
 	if json.Unmarshal(raw, &blocks) != nil {
-		return ""
+		return nil
 	}
-	var out strings.Builder
+	out := make([]searchBlock, 0, len(blocks))
 	for _, block := range blocks {
-		if block.Text == "" {
-			continue
+		switch block.Type {
+		case "text":
+			if block.Text != "" {
+				out = append(out, searchBlock{kind: "text", text: block.Text})
+			}
+		case "thinking":
+			text := block.Text
+			if text == "" {
+				text = block.Thinking
+			}
+			if text != "" {
+				out = append(out, searchBlock{kind: "thinking", text: text})
+			}
 		}
-		if block.Type != "text" && block.Type != "thinking" {
-			continue
-		}
-		out.WriteString(block.Text)
-		out.WriteByte('\n')
 	}
-	return out.String()
+	return out
 }
 
 // snippetAround returns the match with a little context, newlines flattened.
