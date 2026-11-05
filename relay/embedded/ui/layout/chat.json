@@ -176,7 +176,7 @@
   "header": {
     "show": true,
     "height": 0,
-    "paddingH": 18,
+    "paddingH": 12,
     "paddingV": 6,
     "background": "surface",
     "gradientAlpha": 0.16,
@@ -193,7 +193,7 @@
             "action": "header:menu",
             "color": "onSurface",
             "padding": 0,
-            "hitSize": 34
+            "hitSize": 30
           },
           {
             "type": "text",
@@ -225,7 +225,7 @@
             "color": "onSurfaceVariant",
             "weight": 1.0,
             "format": "{id}",
-            "padding": 5
+            "padding": 3
           },
           {
             "type": "icon",
@@ -256,7 +256,7 @@
       }
     ],
     "cornerRadius": 18,
-    "marginH": 8,
+    "marginH": 4,
     "marginTop": 4
   }
 }
