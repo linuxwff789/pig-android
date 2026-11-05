@@ -3935,13 +3935,14 @@ class AppViewModel @JvmOverloads constructor(
      * Close the panel and land on the hit the reader stopped at: the dialog
      * covers the transcript, so the reveal has to happen once it is gone.
      */
+    /**
+     * Close the panel and stop highlighting. The view is left where it is:
+     * re-locating the last hit here yanked the reader back to an old message
+     * after they had already scrolled somewhere else, which looked like the
+     * transcript had reordered itself.
+     */
     fun closeConversationSearch() {
-        val hit = convHits.getOrNull(convIndex)
         clearConversationSearch()
-        if (hit != null) {
-            locateMessageId = hit.messageId.takeIf { it.isNotBlank() }
-            locateMessageAt = hit.at
-        }
     }
 
     /** Jump to the previous/next hit in the open conversation. */

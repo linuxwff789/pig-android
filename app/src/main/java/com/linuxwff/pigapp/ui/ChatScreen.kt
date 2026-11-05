@@ -5244,9 +5244,13 @@ private fun MessageList(
             }
         }
         if (index >= 0) {
-            // A little above the top edge: rows are tall and the match is
-            // usually somewhere inside, not at its first line.
-            runCatching { listState.scrollToItem(index, -140) }
+            // Land the row at the top of the viewport. A negative offset used
+            // to push it below the edge, which left the list in a state the
+            // reader read as "the transcript jumped/duplicated".
+            runCatching { listState.scrollToItem(index) }
+            // Any page that was being pulled has served its purpose; dropping
+            // the anchor stops a later prepend from yanking the view away.
+            olderAnchor = null
             // Do not fight the reader: streaming output must not pull the
             // view back to the tail right after locating an older message.
             autoScroll = false
@@ -5258,6 +5262,14 @@ private fun MessageList(
         // history one page at a time.
         if (hasOlderHistory && !loadingOlder && locatePages < 12) {
             locatePages++
+            // Prepending shifts every index. Without this anchor LazyColumn
+            // keeps the old index and the reader ends up looking at a much
+            // older turn while their place moves down the list.
+            olderAnchor = OlderAnchor(
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset,
+                listState.layoutInfo.totalItemsCount,
+            )
             onLoadOlder()
         } else if (!hasOlderHistory || locatePages >= 12) {
             onLocateConsumed()
