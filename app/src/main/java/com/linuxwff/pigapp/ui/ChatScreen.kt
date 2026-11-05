@@ -180,6 +180,7 @@ import com.linuxwff.pigapp.PendingImage
 import com.linuxwff.pigapp.QueuedMessage
 import com.linuxwff.pigapp.RelayLauncher
 import com.linuxwff.pigapp.Role
+import com.linuxwff.pigapp.SearchHit
 import com.linuxwff.pigapp.SessionInfo
 import com.linuxwff.pigapp.TypeScale
 import com.linuxwff.pigapp.UpdateChecker
@@ -565,6 +566,8 @@ fun PigApp(vm: AppViewModel) {
                         onRetryHistory = vm::reloadHistory,
                         onVerifyTail = vm::verifyLastAssistant,
                         onLoadImages = { vm.requestImageRefs(it) },
+                        locateMessageId = vm.locateMessageId,
+                        onLocateConsumed = vm::clearLocate,
                     )
                     }
                 }
@@ -3115,7 +3118,13 @@ private fun DrawerContent(
     // opening starts at the top, where the running sessions are.
     val sessionListState = rememberLazyListState()
     LaunchedEffect(open) {
-        if (open) sessionListState.scrollToItem(0)
+        if (open) {
+            sessionListState.scrollToItem(0)
+        } else {
+            // Do not leave a stale query and its hits for the next visit.
+            sessionQuery = ""
+            vm.clearSearch()
+        }
     }
     val shownSessions = remember(ui.sessions, sessionQuery) {
         val query = sessionQuery.trim()
@@ -3347,7 +3356,12 @@ private fun DrawerContent(
         }
         OutlinedTextField(
             value = sessionQuery,
-            onValueChange = { sessionQuery = it },
+            onValueChange = {
+                sessionQuery = it
+                // Name/preview filtering stays local; full text goes to the
+                // relay (debounced there per keystroke).
+                vm.searchMessages(it)
+            },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             textStyle = MaterialTheme.typography.bodySmall,
@@ -3374,12 +3388,99 @@ private fun DrawerContent(
                 unfocusedBorderColor = scheme.outline.copy(alpha = 0.25f),
             ),
         )
+        if (sessionQuery.isNotBlank()) {
+            Row(
+                Modifier.fillMaxWidth().padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(
+                    selected = !vm.searchCurrentOnly,
+                    onClick = {
+                        vm.setSearchScope(false)
+                        vm.searchMessages(sessionQuery)
+                    },
+                    label = {
+                        Text(
+                            packText("drawer.searchAll", "全部会话"),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    },
+                )
+                FilterChip(
+                    selected = vm.searchCurrentOnly,
+                    onClick = {
+                        vm.setSearchScope(true)
+                        vm.searchMessages(sessionQuery)
+                    },
+                    label = {
+                        Text(
+                            packText("drawer.searchCurrent", "当前会话"),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    },
+                )
+            }
+        }
         LazyColumn(
             state = sessionListState,
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(3.dp),
             contentPadding = PaddingValues(vertical = 2.dp),
         ) {
+            if (sessionQuery.isNotBlank()) {
+                item(key = "search-label") {
+                    SectionLabel(
+                        packText("drawer.searchContent", "内容匹配 {n}")
+                            .replace("{n}", vm.searchHits.size.toString()),
+                        Modifier.fillMaxWidth(),
+                        size = appearance.sectionLabelSize.coerceAtLeast(10),
+                        uppercase = appearance.sectionLabelUppercase,
+                    )
+                }
+                if (vm.searchLoading) {
+                    item(key = "search-loading") {
+                        LinearProgressIndicator(
+                            Modifier.fillMaxWidth().height(2.dp),
+                        )
+                    }
+                }
+                items(
+                    vm.searchHits,
+                    key = { hit -> "hit:${hit.path}:${hit.messageId}:${hit.snippet.hashCode()}" },
+                ) { hit ->
+                    SearchHitRow(
+                        hit = hit,
+                        cornerRadius = (if (appearance.sessionRowRadius >= 0) {
+                            appearance.sessionRowRadius
+                        } else {
+                            corner
+                        }).coerceAtLeast(10),
+                        onClick = {
+                            vm.openSearchHit(hit)
+                            onClose()
+                        },
+                    )
+                }
+                if (!vm.searchLoading && vm.searchHits.isEmpty()) {
+                    item(key = "search-empty") {
+                        Text(
+                            packText("drawer.searchNone", "没有匹配的消息"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        )
+                    }
+                }
+                item(key = "sessions-label") {
+                    SectionLabel(
+                        packText("drawer.sessions", "会话"),
+                        Modifier.fillMaxWidth(),
+                        size = appearance.sectionLabelSize.coerceAtLeast(10),
+                        uppercase = appearance.sectionLabelUppercase,
+                    )
+                }
+            }
             items(shownSessions, key = { it.path }) { session ->
                 SessionRow(
                     session = session,
@@ -4151,6 +4252,54 @@ private fun ReadOnlyBanner() {
 }
 
 @Composable
+private fun SearchHitRow(
+    hit: SearchHit,
+    cornerRadius: Int,
+    onClick: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(cornerRadius.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+    ) {
+        Text(
+            buildString {
+                append(hit.sessionName.ifBlank { hit.sessionId.take(8) })
+                append(" · ")
+                append(
+                    if (hit.role == "user") {
+                        packText("role.user", "你")
+                    } else {
+                        packText("role.assistant", "助手")
+                    },
+                )
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.labelSmall,
+            color = scheme.primary,
+        )
+        Text(
+            hit.snippet,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurface,
+        )
+        if (hit.at > 0) {
+            Text(
+                DateUtils.getRelativeTimeSpanString(hit.at).toString(),
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
 private fun SessionRow(
     session: SessionInfo,
     current: Boolean,
@@ -4590,6 +4739,8 @@ private fun MessageList(
     onRetryHistory: () -> Unit,
     onVerifyTail: () -> Unit,
     onLoadImages: (ChatMsg) -> Unit = {},
+    locateMessageId: String? = null,
+    onLocateConsumed: () -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -4796,6 +4947,25 @@ private fun MessageList(
                 item.message.text.isBlank() && item.message.thinking.isBlank() &&
                 item.message.images.isEmpty()
         }
+    }
+
+    // A hit picked in history search: scroll its row into view. The effect
+    // re-runs when the list grows, so a message that arrived with a later page
+    // (or with the session switch) is still revealed.
+    LaunchedEffect(locateMessageId, displayItems.size) {
+        val target = locateMessageId ?: return@LaunchedEffect
+        val index = displayItems.indexOfFirst { item ->
+            item.key == target ||
+                (item is ChatListItem.ToolGroup && item.tools.any { it.id == target })
+        }
+        if (index < 0) return@LaunchedEffect
+        // A little above the top edge: rows are tall and the match is usually
+        // somewhere inside, not at its first line.
+        runCatching { listState.scrollToItem(index, -140) }
+        // Do not fight the reader: streaming output must not pull the view
+        // back to the tail right after locating an older message.
+        autoScroll = false
+        onLocateConsumed()
     }
 
     Box(modifier.fillMaxWidth()) {

@@ -129,6 +129,21 @@ data class SessionInfo(
 
 data class AppWidget(val key: String, val lines: List<String>, val placement: String)
 
+/**
+ * One message that matched a history search. The relay scans the session files
+ * (title and preview only cover the first turn); [messageId] lets the chat list
+ * scroll to the hit after switching sessions.
+ */
+data class SearchHit(
+    val path: String,
+    val sessionId: String,
+    val sessionName: String,
+    val messageId: String,
+    val role: String,
+    val snippet: String,
+    val at: Long,
+)
+
 /** A drawer entry from `nav.json`; tapping it opens `window` and runs `command`. */
 data class NavItem(
     val id: String,
