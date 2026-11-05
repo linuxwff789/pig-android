@@ -216,7 +216,10 @@ private fun HeaderElement(
     // Larger touch targets than the pack's 22 dp artwork: a header icon was
     // both the visual size and the hit area, which is below the 48 dp guideline.
     val iconSize = (element.size.takeIf { it > 0 } ?: 24).coerceAtLeast(22)
-    val buttonSize = (iconSize + 18).coerceAtLeast(40)
+    // `hitSize` lets a pack shrink the touch target (the default keeps the
+    // 48 dp-ish guidance, but a compact header may prefer a tighter one).
+    val buttonSize = (element.hitSize.takeIf { it > 0 } ?: (iconSize + 18).coerceAtLeast(40))
+        .coerceIn(iconSize, 96)
     val clickable = Modifier.then(
         if (action.isNotBlank()) {
             Modifier.clickable {
@@ -379,9 +382,7 @@ private fun HeaderElement(
 
         "pill" -> InfoPill(
             text = label,
-            // The menu icon's artwork starts 11 dp inside its 40 dp touch target;
-            // indent the pill by the same amount so both header rows line up.
-            modifier = modifier.padding(start = 11.dp).then(clickable),
+            modifier = modifier.then(clickable),
             color = color,
         )
 

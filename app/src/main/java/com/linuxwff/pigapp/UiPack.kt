@@ -1248,6 +1248,7 @@ object UiPackParser {
                                 size = item.optInt("size", 0).coerceIn(0, 96),
                                 weight = item.optDouble("weight", 0.0).toFloat().coerceIn(0f, 10f),
                                 padding = item.optInt("padding", 0).coerceIn(0, 32),
+                                hitSize = item.optInt("hitSize", 0).coerceIn(0, 96),
                                 icon = item.optString("icon").take(32),
                                 label = item.optString("label").take(128),
                                 text = item.optString("text").take(256),

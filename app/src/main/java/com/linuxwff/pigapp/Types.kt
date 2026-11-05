@@ -426,6 +426,8 @@ data class UiHeaderElement(
     val size: Int = 0,
     val weight: Float = 0f,
     val padding: Int = 0,
+    /** Touch target around an icon; 0 keeps the automatic icon+18 (min 40) size. */
+    val hitSize: Int = 0,
     val icon: String = "",
     val label: String = "",
     val text: String = "",

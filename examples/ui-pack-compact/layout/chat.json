@@ -189,10 +189,11 @@
           {
             "type": "menu",
             "icon": "menu",
-            "size": 30,
+            "size": 24,
             "action": "header:menu",
             "color": "onSurface",
-            "padding": 2
+            "padding": 0,
+            "hitSize": 34
           },
           {
             "type": "text",
@@ -223,7 +224,8 @@
             "action": "header:model",
             "color": "onSurfaceVariant",
             "weight": 1.0,
-            "format": "{id}"
+            "format": "{id}",
+            "padding": 5
           },
           {
             "type": "icon",
