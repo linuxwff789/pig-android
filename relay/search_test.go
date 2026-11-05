@@ -123,6 +123,38 @@ func TestSearchSessionFilesSearchableAfterThinkingBlock(t *testing.T) {
 	}
 }
 
+func TestSearchSessionFilesMatchesSessionTitle(t *testing.T) {
+	s := newTestSession(t)
+	writeSearchSession(t, s.sessionsDir, "p", "a.jsonl", []string{
+		sessionHeader(t, "s1"),
+		`{"type":"session_info","id":"i1","name":"图片讨论"}`,
+		sessionLine(t, "user", "m1", "unrelated text"),
+	})
+	hits, _ := searchSessionFiles(s.sessionsDir, &s.metaCache, "图片", "", 0, searchMaxResults)
+	if len(hits) != 1 {
+		t.Fatalf("hits = %+v, want the title hit only", hits)
+	}
+	if hits[0].Kind != "title" || hits[0].Snippet != "图片讨论" || hits[0].MessageID != "" {
+		t.Fatalf("title hit = %+v", hits[0])
+	}
+}
+
+func TestSearchSessionFilesTitleBeforeMessages(t *testing.T) {
+	s := newTestSession(t)
+	writeSearchSession(t, s.sessionsDir, "p", "a.jsonl", []string{
+		sessionHeader(t, "s1"),
+		`{"type":"session_info","id":"i1","name":"图片讨论"}`,
+		sessionLine(t, "user", "m1", "这条消息也提到图片"),
+	})
+	hits, _ := searchSessionFiles(s.sessionsDir, &s.metaCache, "图片", "", 0, searchMaxResults)
+	if len(hits) != 2 {
+		t.Fatalf("hits = %d (%+v)", len(hits), hits)
+	}
+	if hits[0].Kind != "title" || hits[1].Kind != "message" {
+		t.Fatalf("order = %q, %q", hits[0].Kind, hits[1].Kind)
+	}
+}
+
 func TestSnippetAroundKeepsCJKWhole(t *testing.T) {
 	text := strings.Repeat("前", 100) + "关键词" + strings.Repeat("后", 100)
 	snippet, ok := snippetAround(text, "关键词", 10)

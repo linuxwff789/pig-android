@@ -21,8 +21,10 @@ const (
 	// One-rune queries match almost everything and cost a full scan.
 	searchMinQueryRunes = 2
 	searchMaxResults    = 60
-	// Characters kept on each side of the match in a result line.
-	searchSnippetRadius = 60
+	// Characters kept on each side of the match in a result line. Two lines of
+	// the result row must show the match itself, and a wider window would fold
+	// it away on a narrow phone.
+	searchSnippetRadius = 30
 	// A message carrying a screenshot can exceed this; such a line is skipped
 	// rather than buffered whole (the text blocks are usually far smaller).
 	searchLineBuffer = 4 << 20
@@ -38,6 +40,9 @@ type sessionSearchHit struct {
 	Role      string `json:"role"`
 	Snippet   string `json:"snippet"`
 	At        int64  `json:"at"`
+	// "title" or "message": a renamed session matches on its name, which is
+	// not repeated in any message line.
+	Kind string `json:"kind"`
 }
 
 // searchSessions answers relay_search. The scan runs off the client loop: a
@@ -86,6 +91,30 @@ func searchSessionFiles(dir string, cache *sessionMetaCache, query, onlyPath str
 			continue
 		}
 		meta := cache.metaFor(file.path, file.info)
+		// The title is part of "search history" too: a renamed session keeps
+		// its name only in session_info lines, so a content-only scan would
+		// miss it entirely.
+		name, _ := meta["name"].(string)
+		if name != "" && containsFold([]byte(name), []byte(query)) {
+			if seen < offset {
+				seen++
+			} else {
+				seen++
+				sessionID, _ := meta["id"].(string)
+				updated, _ := meta["updated"].(int64)
+				hits = append(hits, sessionSearchHit{
+					Path:      file.path,
+					SessionID: sessionID,
+					Name:      name,
+					Snippet:   name,
+					At:        updated,
+					Kind:      "title",
+				})
+				if len(hits) > limit {
+					return hits[:limit], true
+				}
+			}
+		}
 		// A single file is read whole even when only a few hits are wanted:
 		// the offset is global, so skipping has to happen after matching.
 		for _, hit := range searchSessionFile(file.path, meta, query, 1<<30) {
@@ -160,6 +189,7 @@ func searchSessionFile(path string, meta map[string]any, query string, limit int
 			Role:      entry.Message.Role,
 			Snippet:   snippet,
 			At:        at,
+			Kind:      "message",
 		})
 		if len(hits) >= limit {
 			break
