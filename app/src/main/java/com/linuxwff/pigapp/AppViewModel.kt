@@ -33,6 +33,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
@@ -111,6 +113,9 @@ class AppViewModel @JvmOverloads constructor(
     }
     private data class PendingImageRef(val messageIds: MutableSet<String>, val mimeType: String)
     private val pendingImageRefs = HashMap<String, PendingImageRef>()
+    // One image batch decodes at a time: a frame can hold ~12 MB of base64,
+    // and decoding several concurrently multiplies the bitmap peak.
+    private val imageDataMu = Mutex()
     // key -> byteCount, access-ordered; a 1024 px ARGB bitmap is ~4 MB, so
     // counting entries (48) bounded pixels at ~192 MB instead of memory.
     private val packImageLru = LinkedHashMap<String, Int>()
@@ -3712,25 +3717,29 @@ class AppViewModel @JvmOverloads constructor(
      */
     fun requestImageRefs(message: ChatMsg) {
         if (message.imageRefs.isEmpty()) return
-        val missing = ArrayList<ImageRef>()
+        // A ref already in flight is not requested again: every partial batch
+        // recomposes the row, and re-requesting would double the wire and the
+        // decode queue. The message still joins the pending set so it is
+        // updated when the bytes arrive.
+        val toRequest = ArrayList<ImageRef>()
         message.imageRefs.forEach { ref ->
             val cached = transcriptImages.get(ref.ref)
             if (cached == null) {
-                missing.add(ref)
+                var fresh = false
+                val pending = pendingImageRefs.getOrPut(ref.ref) {
+                    fresh = true
+                    PendingImageRef(mutableSetOf(), ref.mimeType)
+                }
+                pending.messageIds.add(message.id)
+                if (fresh) toRequest.add(ref)
             } else if (message.images.none { it.bitmap === cached.bitmap }) {
                 update(message.id) { it.copy(images = it.images + cached) }
             }
         }
-        if (missing.isEmpty()) return
-        missing.forEach { ref ->
-            val pending = pendingImageRefs.getOrPut(ref.ref) {
-                PendingImageRef(mutableSetOf(), ref.mimeType)
-            }
-            pending.messageIds.add(message.id)
-        }
+        if (toRequest.isEmpty()) return
         // Older relays ignore this frame's type (they only know the pig ones),
         // but they also never send refs, so this path is unreachable there.
-        missing.map { it.ref }.chunked(MAX_IMAGE_REFS_PER_REQUEST).forEach { chunk ->
+        toRequest.map { it.ref }.chunked(MAX_IMAGE_REFS_PER_REQUEST).forEach { chunk ->
             val refs = JSONArray()
             chunk.forEach { refs.put(it) }
             client.send(
@@ -3755,23 +3764,25 @@ class AppViewModel @JvmOverloads constructor(
         }
         if (entries.isEmpty()) return
         viewModelScope.launch {
-            val decoded = withContext(Dispatchers.Default) {
-                entries.mapNotNull { (ref, data) ->
-                    val mime = pendingImageRefs[ref]?.mimeType ?: "image/png"
-                    decodeChatImage(data, mime, null)?.let { ref to it }
-                }
-            }
-            decoded.forEach { (ref, image) -> transcriptImages.put(ref, image) }
-            val touched = HashSet<String>()
-            decoded.forEach { (ref, _) ->
-                pendingImageRefs.remove(ref)?.messageIds?.let(touched::addAll)
-            }
-            touched.forEach { id ->
-                update(id) { message ->
-                    val ordered = message.imageRefs.mapNotNull { ref ->
-                        transcriptImages.get(ref.ref)
+            imageDataMu.withLock {
+                val decoded = withContext(Dispatchers.Default) {
+                    entries.mapNotNull { (ref, data) ->
+                        val mime = pendingImageRefs[ref]?.mimeType ?: "image/png"
+                        decodeChatImage(data, mime, null)?.let { ref to it }
                     }
-                    message.copy(images = ordered)
+                }
+                decoded.forEach { (ref, image) -> transcriptImages.put(ref, image) }
+                val touched = HashSet<String>()
+                decoded.forEach { (ref, _) ->
+                    pendingImageRefs.remove(ref)?.messageIds?.let(touched::addAll)
+                }
+                touched.forEach { id ->
+                    update(id) { message ->
+                        val ordered = message.imageRefs.mapNotNull { ref ->
+                            transcriptImages.get(ref.ref)
+                        }
+                        message.copy(images = ordered)
+                    }
                 }
             }
         }

@@ -94,6 +94,20 @@ object AppLog {
                 val count = frame.optJSONObject("data")?.optJSONArray("messages")?.length() ?: -1
                 write(direction, "response get_messages id=${frame.optString("id")} n=$count")
             }
+            // Image answers carry up to ~12 MB of base64 per frame; the log
+            // keeps the ref count and total bytes, not the payload (reading a
+            // String's length does not copy it, toString() would).
+            type == "relay_image_data" -> {
+                val arr = frame.optJSONArray("images")
+                var bytes = 0
+                for (i in 0 until (arr?.length() ?: 0)) {
+                    bytes += arr?.optJSONObject(i)?.optString("data")?.length ?: 0
+                }
+                write(
+                    direction,
+                    "relay_image_data id=${frame.optString("id")} n=${arr?.length() ?: 0} b64=$bytes",
+                )
+            }
             // A prompt can carry several screenshots as base64 (~2 MB each).
             // Stringifying the whole frame just to keep 2400 characters was a
             // 15 MB allocation per send on a memory-tight device.

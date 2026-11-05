@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,6 +105,44 @@ func TestSendImagesRejectsTraversalAndAnswersKnownRefs(t *testing.T) {
 	}
 }
 
+func TestSendImagesSplitsLargeBatches(t *testing.T) {
+	s, reader := testSessionWithConn(t)
+	if err := os.MkdirAll(s.imageCacheDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Two medium pictures (~4.4 MB of base64 each) cannot share one frame
+	// (8.8 > 8 MB budget); one big picture (~8.7 MB) always gets its own.
+	sizes := []int{3_300_000, 3_300_000, 6_500_000}
+	refs := make([]string, len(sizes))
+	for i, size := range sizes {
+		raw := make([]byte, size)
+		raw[0] = byte(i + 1) // distinct content hashes
+		sum := sha256.Sum256(raw)
+		refs[i] = hex.EncodeToString(sum[:])
+		if err := os.WriteFile(filepath.Join(s.imageCacheDir(), refs[i]), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	go s.sendImages("img-split", refs)
+	var got [][]string
+	for i := 0; i < len(sizes); i++ {
+		frame := readJSONFrame(t, reader)
+		if frame["type"] != "relay_image_data" || frame["id"] != "img-split" {
+			t.Fatalf("frame %d = %v id=%v", i, frame["type"], frame["id"])
+		}
+		images, _ := frame["images"].([]any)
+		if len(images) != 1 {
+			t.Fatalf("frame %d carries %d images, want 1", i, len(images))
+		}
+		entry, _ := images[0].(map[string]any)
+		got = append(got, []string{entry["ref"].(string)})
+	}
+	want := [][]string{{refs[0]}, {refs[1]}, {refs[2]}}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("batches = %v, want %v", got, want)
+	}
+}
+
 func TestValidImageRef(t *testing.T) {
 	if !validImageRef(strings.Repeat("a", 64)) {
 		t.Fatal("64 hex chars should be valid")
@@ -129,6 +168,28 @@ func TestFitHistoryRefModeRewritesWindowOnly(t *testing.T) {
 	}
 	if !strings.Contains(string(out), `"ref"`) {
 		t.Fatalf("no ref in reply: %s", out)
+	}
+}
+
+func TestSendImagesSmallBatchStaysOneFrame(t *testing.T) {
+	s, reader := testSessionWithConn(t)
+	if err := os.MkdirAll(s.imageCacheDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	refs := make([]string, 2)
+	for i := range refs {
+		raw := []byte{byte(i + 1), 2, 3}
+		sum := sha256.Sum256(raw)
+		refs[i] = hex.EncodeToString(sum[:])
+		if err := os.WriteFile(filepath.Join(s.imageCacheDir(), refs[i]), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	go s.sendImages("img-small", refs)
+	frame := readJSONFrame(t, reader)
+	images, _ := frame["images"].([]any)
+	if len(images) != 2 {
+		t.Fatalf("images = %d, want 2 in a single frame", len(images))
 	}
 }
 

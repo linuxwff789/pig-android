@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 const (
@@ -24,7 +25,19 @@ const (
 	maxImageRefBytes = 8 << 20
 	// A single relay_image_get answers at most this many pictures.
 	maxImageRefsPerRequest = 8
+	// One relay_image_data frame stays under this many base64 bytes; pictures
+	// past the budget spill into a follow-up frame. The worst single picture
+	// (maxImageRefBytes) is ~11.2 MB of base64 and always gets a frame of its
+	// own — a frame is the split granularity. The app reads frames with an
+	// unbounded readLine and the JSON parser copies the line again, so an
+	// unbounded frame can OOM either end.
+	maxImageFrameBytes = 8 << 20
 )
+
+// imageSendMu serializes relay_image_get answers: assembling a batch holds
+// the raw bytes, the base64 string and the marshalled frame at the same
+// time, and a few concurrent 8-picture requests would multiply that peak.
+var imageSendMu sync.Mutex
 
 func (s *session) imageCacheDir() string {
 	return filepath.Join(s.cwd, ".pig", "cache", imageCacheDirName)
@@ -144,12 +157,25 @@ func (s *session) rewriteMessageImages(message json.RawMessage) json.RawMessage 
 }
 
 // sendImages answers relay_image_get. Each ref is a file the relay wrote
-// itself; refs are re-validated so a client cannot read arbitrary paths.
+// itself; refs are re-validated so a client cannot read arbitrary paths. The
+// answer is split into several frames when the base64 payload passes
+// maxImageFrameBytes, so one request can never produce an 85 MB line.
 func (s *session) sendImages(id any, refs []string) {
 	if len(refs) > maxImageRefsPerRequest {
 		refs = refs[:maxImageRefsPerRequest]
 	}
+	imageSendMu.Lock()
+	defer imageSendMu.Unlock()
 	images := make([]frame, 0, len(refs))
+	batchBytes := 0
+	flush := func() {
+		if len(images) == 0 {
+			return
+		}
+		_ = s.send(frame{"type": "relay_image_data", "id": id, "images": images})
+		images = make([]frame, 0, len(refs))
+		batchBytes = 0
+	}
 	for _, ref := range refs {
 		if !validImageRef(ref) {
 			continue
@@ -163,12 +189,14 @@ func (s *session) sendImages(id any, refs []string) {
 		if err != nil {
 			continue
 		}
-		images = append(images, frame{
-			"ref":  ref,
-			"data": base64.StdEncoding.EncodeToString(raw),
-		})
+		encoded := base64.StdEncoding.EncodeToString(raw)
+		if batchBytes+len(encoded) > maxImageFrameBytes {
+			flush()
+		}
+		images = append(images, frame{"ref": ref, "data": encoded})
+		batchBytes += len(encoded)
 	}
-	_ = s.send(frame{"type": "relay_image_data", "id": id, "images": images})
+	flush()
 }
 
 // imageCacheBytes reports what the ref cache costs on disk (diagnostics).
