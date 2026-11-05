@@ -379,7 +379,9 @@ private fun HeaderElement(
 
         "pill" -> InfoPill(
             text = label,
-            modifier = modifier.then(clickable),
+            // The menu icon's artwork starts 11 dp inside its 40 dp touch target;
+            // indent the pill by the same amount so both header rows line up.
+            modifier = modifier.padding(start = 11.dp).then(clickable),
             color = color,
         )
 
