@@ -6,10 +6,12 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func imageMessage(data string) json.RawMessage {
@@ -104,6 +106,101 @@ func TestSendImagesRejectsTraversalAndAnswersKnownRefs(t *testing.T) {
 	}
 }
 
+func TestSendImagesSplitsLargeBatches(t *testing.T) {
+	s, reader := testSessionWithConn(t)
+	if err := os.MkdirAll(s.imageCacheDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Two medium pictures (~4.4 MB of base64 each) cannot share one frame
+	// (8.8 > 8 MB budget); one big picture (~7.3 MB) always gets its own.
+	sizes := []int{3_300_000, 3_300_000, 5_500_000}
+	refs := make([]string, len(sizes))
+	for i, size := range sizes {
+		raw := make([]byte, size)
+		raw[0] = byte(i + 1) // distinct content hashes
+		sum := sha256.Sum256(raw)
+		refs[i] = hex.EncodeToString(sum[:])
+		if err := os.WriteFile(filepath.Join(s.imageCacheDir(), refs[i]), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	go s.sendImages("img-split", refs)
+	var got [][]string
+	for i := 0; i < len(sizes); i++ {
+		frame := readJSONFrame(t, reader)
+		if frame["type"] != "relay_image_data" || frame["id"] != "img-split" {
+			t.Fatalf("frame %d = %v id=%v", i, frame["type"], frame["id"])
+		}
+		images, _ := frame["images"].([]any)
+		if len(images) != 1 {
+			t.Fatalf("frame %d carries %d images, want 1", i, len(images))
+		}
+		entry, _ := images[0].(map[string]any)
+		got = append(got, []string{entry["ref"].(string)})
+	}
+	want := [][]string{{refs[0]}, {refs[1]}, {refs[2]}}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("batches = %v, want %v", got, want)
+	}
+}
+
+func TestSendImagesReportsMissingRefs(t *testing.T) {
+	s, reader := testSessionWithConn(t)
+	if err := os.MkdirAll(s.imageCacheDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte("present")
+	sum := sha256.Sum256(raw)
+	ref := hex.EncodeToString(sum[:])
+	if err := os.WriteFile(filepath.Join(s.imageCacheDir(), ref), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	absent := strings.Repeat("b", 64)
+	go s.sendImages("img-miss", []string{ref, absent})
+	frame := readJSONFrame(t, reader)
+	images, _ := frame["images"].([]any)
+	if len(images) != 1 {
+		t.Fatalf("images = %v", images)
+	}
+	missing, _ := frame["missing"].([]any)
+	if len(missing) != 1 || missing[0] != absent {
+		t.Fatalf("missing = %v, want [%s]", missing, absent)
+	}
+}
+
+func TestSendImagesAnswersOnlyMissing(t *testing.T) {
+	s, reader := testSessionWithConn(t)
+	// No cache file at all: the answer must still be sent, otherwise the app
+	// waits for a frame that never arrives.
+	go s.sendImages("img-gone", []string{strings.Repeat("c", 64)})
+	frame := readJSONFrame(t, reader)
+	if frame["type"] != "relay_image_data" {
+		t.Fatalf("frame = %v", frame)
+	}
+	missing, _ := frame["missing"].([]any)
+	if len(missing) != 1 {
+		t.Fatalf("missing = %v", missing)
+	}
+	if images, ok := frame["images"].([]any); ok && len(images) != 0 {
+		t.Fatalf("images = %v, want none", images)
+	}
+}
+
+func TestStoreImageLeavesDecodeOversizedBlockInline(t *testing.T) {
+	s := newTestSession(t)
+	// The app refuses base64 above 8,000,000 characters, so a ref the app
+	// cannot decode must never replace the inline block.
+	raw := make([]byte, maxImageRefBytes+1)
+	data := base64.StdEncoding.EncodeToString(raw)
+	if _, ok := s.storeImage(data, "image/png"); ok {
+		t.Fatal("oversized image was stored as a ref")
+	}
+	out := s.rewriteHistoryImages([]json.RawMessage{imageMessage(data)})
+	if !strings.Contains(string(out[0]), `"data"`) {
+		t.Fatalf("oversized inline block was dropped")
+	}
+}
+
 func TestValidImageRef(t *testing.T) {
 	if !validImageRef(strings.Repeat("a", 64)) {
 		t.Fatal("64 hex chars should be valid")
@@ -129,6 +226,72 @@ func TestFitHistoryRefModeRewritesWindowOnly(t *testing.T) {
 	}
 	if !strings.Contains(string(out), `"ref"`) {
 		t.Fatalf("no ref in reply: %s", out)
+	}
+}
+
+func TestSendImagesSmallBatchStaysOneFrame(t *testing.T) {
+	s, reader := testSessionWithConn(t)
+	if err := os.MkdirAll(s.imageCacheDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	refs := make([]string, 2)
+	for i := range refs {
+		raw := []byte{byte(i + 1), 2, 3}
+		sum := sha256.Sum256(raw)
+		refs[i] = hex.EncodeToString(sum[:])
+		if err := os.WriteFile(filepath.Join(s.imageCacheDir(), refs[i]), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	go s.sendImages("img-small", refs)
+	frame := readJSONFrame(t, reader)
+	images, _ := frame["images"].([]any)
+	if len(images) != 2 {
+		t.Fatalf("images = %d, want 2 in a single frame", len(images))
+	}
+}
+
+func TestPruneImageCacheDropsOldestFirst(t *testing.T) {
+	s := newTestSession(t)
+	dir := s.imageCacheDir()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Three 100-byte files with distinct ages.
+	for i, name := range []string{"old", "mid", "new"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, make([]byte, 100), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		stamp := time.Now().Add(time.Duration(i-3) * time.Hour)
+		if err := os.Chtimes(path, stamp, stamp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Budget 250 bytes: prune to 200, which can only drop the oldest file.
+	s.pruneImageCacheTo(250)
+	if _, err := os.Stat(filepath.Join(dir, "old")); !os.IsNotExist(err) {
+		t.Fatal("oldest file survived pruning")
+	}
+	for _, name := range []string{"mid", "new"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("%s was pruned: %v", name, err)
+		}
+	}
+}
+
+func TestPruneImageCacheLeavesSmallCacheAlone(t *testing.T) {
+	s := newTestSession(t)
+	dir := s.imageCacheDir()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "one"), make([]byte, 10), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.pruneImageCacheTo(1 << 20)
+	if _, err := os.Stat(filepath.Join(dir, "one")); err != nil {
+		t.Fatalf("small cache was pruned: %v", err)
 	}
 }
 

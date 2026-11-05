@@ -78,6 +78,8 @@ data class ChatMsg(
     val images: List<ChatImage> = emptyList(),
     /** Images the relay returned by hash; decoded on demand when the row is composed. */
     val imageRefs: List<ImageRef> = emptyList(),
+    /** Refs the relay reported as unavailable; asking again cannot help. */
+    val failedRefs: Set<String> = emptySet(),
     /** Image blocks dropped by the size/count caps. */
     val imagesOmitted: Int = 0,
     /** Session-file timestamp (epoch ms); 0 when unknown/live. Used to place
