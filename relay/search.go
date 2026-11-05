@@ -42,26 +42,36 @@ type sessionSearchHit struct {
 
 // searchSessions answers relay_search. The scan runs off the client loop: a
 // large history takes long enough that blocking the protocol would stall
-// streaming output.
-func (s *session) searchSessions(id any, query, onlyPath string) {
+// streaming output. offset/limit page through the hits; hasMore tells the app
+// whether "load more" is worth showing.
+func (s *session) searchSessions(id any, query, onlyPath string, offset, limit int) {
 	query = strings.TrimSpace(query)
 	if len([]rune(query)) < searchMinQueryRunes {
 		_ = s.send(frame{
 			"type": "response", "id": id, "command": "relay_search",
-			"success": true, "data": frame{"results": []any{}},
+			"success": true, "data": frame{"results": []any{}, "hasMore": false},
 		})
 		return
 	}
+	if limit <= 0 || limit > searchMaxResults {
+		limit = searchMaxResults
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	go func() {
-		results := searchSessionFiles(s.sessionsDir, &s.metaCache, query, onlyPath)
+		results, hasMore := searchSessionFiles(s.sessionsDir, &s.metaCache, query, onlyPath, offset, limit)
 		_ = s.send(frame{
 			"type": "response", "id": id, "command": "relay_search",
-			"success": true, "data": frame{"results": results},
+			"success": true, "data": frame{"results": results, "hasMore": hasMore},
 		})
 	}()
 }
 
-func searchSessionFiles(dir string, cache *sessionMetaCache, query, onlyPath string) []sessionSearchHit {
+func searchSessionFiles(dir string, cache *sessionMetaCache, query, onlyPath string, offset, limit int) ([]sessionSearchHit, bool) {
+	if limit <= 0 {
+		return nil, false
+	}
 	files := sessionFiles(dir)
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].info.ModTime().After(files[j].info.ModTime())
@@ -69,18 +79,29 @@ func searchSessionFiles(dir string, cache *sessionMetaCache, query, onlyPath str
 	if len(files) > searchMaxFiles {
 		files = files[:searchMaxFiles]
 	}
-	hits := make([]sessionSearchHit, 0, searchMaxResults)
+	hits := make([]sessionSearchHit, 0, limit)
+	seen := 0
 	for _, file := range files {
 		if onlyPath != "" && file.path != onlyPath {
 			continue
 		}
 		meta := cache.metaFor(file.path, file.info)
-		hits = append(hits, searchSessionFile(file.path, meta, query, searchMaxResults-len(hits))...)
-		if len(hits) >= searchMaxResults {
-			break
+		// A single file is read whole even when only a few hits are wanted:
+		// the offset is global, so skipping has to happen after matching.
+		for _, hit := range searchSessionFile(file.path, meta, query, 1<<30) {
+			if seen < offset {
+				seen++
+				continue
+			}
+			seen++
+			hits = append(hits, hit)
+			if len(hits) > limit {
+				// One extra match proves there is a next page.
+				return hits[:limit], true
+			}
 		}
 	}
-	return hits
+	return hits, false
 }
 
 func searchSessionFile(path string, meta map[string]any, query string, limit int) []sessionSearchHit {

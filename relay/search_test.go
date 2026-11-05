@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,7 +61,10 @@ func TestSearchSessionFilesFindsUserAndAssistantText(t *testing.T) {
 		sessionLine(t, "user", "m1", "请帮我找 needle 这个词"),
 		sessionLine(t, "assistant", "m2", "The answer mentions NEEDLE twice"),
 	})
-	hits := searchSessionFiles(s.sessionsDir, &s.metaCache, "needle", "")
+	hits, hasMore := searchSessionFiles(s.sessionsDir, &s.metaCache, "needle", "", 0, searchMaxResults)
+	if hasMore {
+		t.Fatal("hasMore = true for a small result set")
+	}
 	if len(hits) != 2 {
 		t.Fatalf("hits = %d (%+v), want 2 (system preamble must be skipped)", len(hits), hits)
 	}
@@ -93,7 +97,7 @@ func TestSearchSessionFilesHonorsOnlyPath(t *testing.T) {
 		sessionHeader(t, "sess-b"),
 		sessionLine(t, "user", "b1", "beta target"),
 	})
-	hits := searchSessionFiles(s.sessionsDir, &s.metaCache, "target", first)
+	hits, _ := searchSessionFiles(s.sessionsDir, &s.metaCache, "target", first, 0, searchMaxResults)
 	if len(hits) != 1 || hits[0].MessageID != "a1" {
 		t.Fatalf("hits = %+v, want only the scoped session", hits)
 	}
@@ -113,7 +117,7 @@ func TestSearchSessionFilesSearchableAfterThinkingBlock(t *testing.T) {
 	}
 	encoded, _ := json.Marshal(payload)
 	writeSearchSession(t, s.sessionsDir, "p", "a.jsonl", []string{sessionHeader(t, "s"), string(encoded)})
-	hits := searchSessionFiles(s.sessionsDir, &s.metaCache, "keyword", "")
+	hits, _ := searchSessionFiles(s.sessionsDir, &s.metaCache, "keyword", "", 0, searchMaxResults)
 	if len(hits) != 1 || !strings.Contains(hits[0].Snippet, "keyword") {
 		t.Fatalf("hits = %+v", hits)
 	}
@@ -150,11 +154,31 @@ func TestSearchSessionFilesRespectsResultCap(t *testing.T) {
 	var lines []string
 	lines = append(lines, sessionHeader(t, "s"))
 	for i := 0; i < searchMaxResults+10; i++ {
-		lines = append(lines, sessionLine(t, "user", "m"+string(rune('a'+i%26)), "repeat token"))
+		lines = append(lines, sessionLine(t, "user", fmt.Sprintf("m%d", i), "repeat token"))
 	}
 	writeSearchSession(t, s.sessionsDir, "p", "a.jsonl", lines)
-	hits := searchSessionFiles(s.sessionsDir, &s.metaCache, "token", "")
+	hits, hasMore := searchSessionFiles(s.sessionsDir, &s.metaCache, "token", "", 0, searchMaxResults)
 	if len(hits) != searchMaxResults {
 		t.Fatalf("hits = %d, want cap %d", len(hits), searchMaxResults)
+	}
+	if !hasMore {
+		t.Fatal("hasMore = false with more matches behind the page")
+	}
+
+	// Paging must walk the same order without repeating or dropping hits.
+	firstPage, more := searchSessionFiles(s.sessionsDir, &s.metaCache, "token", "", 0, 5)
+	if !more || len(firstPage) != 5 {
+		t.Fatalf("first page = %d hits, more=%v", len(firstPage), more)
+	}
+	secondPage, _ := searchSessionFiles(s.sessionsDir, &s.metaCache, "token", "", 5, 5)
+	if len(secondPage) == 0 {
+		t.Fatal("second page is empty")
+	}
+	for _, a := range firstPage {
+		for _, b := range secondPage {
+			if a.MessageID == b.MessageID {
+				t.Fatalf("hit repeated across pages: %s", a.MessageID)
+			}
+		}
 	}
 }

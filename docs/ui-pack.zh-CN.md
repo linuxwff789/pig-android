@@ -458,6 +458,7 @@ App 重启后优先级相同：pack 提供默认值，已保存的偏好（如�
 | `header:stop` / `header:abort` | 中止当前回合 |
 | `header:settings` | 打开设置 |
 | `header:new` / `header:new_session` | 新会话 |
+| `header:search` | 搜索当前会话 |
 | `pack:<name>` | 运行 `layout.actions` 条目 |
 
 `builtin:copy:*` 和 `ext:*` 也能通过普通的窗口动作路径生效。

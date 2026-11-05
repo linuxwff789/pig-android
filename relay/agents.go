@@ -1585,6 +1585,7 @@ func (s *session) handleClientLine(line []byte) {
 		ImageMode   string         `json:"imageMode"`
 		Refs        []string       `json:"refs"`
 		Query       string         `json:"query"`
+		Offset      int            `json:"offset"`
 	}
 	if err := json.Unmarshal(line, &head); err != nil {
 		_ = s.send(frame{"type": "relay_error", "message": "invalid json: " + err.Error()})
@@ -1609,7 +1610,11 @@ func (s *session) handleClientLine(line []byte) {
 	case "relay_search":
 		// path limits the scan to one session (in-conversation search); empty
 		// searches every session the drawer can show.
-		s.searchSessions(head.ID, head.Query, head.Path)
+		limit := searchMaxResults
+		if head.Limit != nil && *head.Limit > 0 {
+			limit = *head.Limit
+		}
+		s.searchSessions(head.ID, head.Query, head.Path, head.Offset, limit)
 	case "relay_restart":
 		a := s.activeAgent()
 		if a != nil && a.isBusy() {
