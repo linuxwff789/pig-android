@@ -85,6 +85,10 @@ data class ChatMsg(
     /** Session-file timestamp (epoch ms); 0 when unknown/live. Used to place
      *  app-recorded notices back among the turns that produced them. */
     val at: Long = 0L,
+    /** The `id` of the message in pig's session file. [id] is an app-side key
+     *  (history rows get a generated one); search hits carry the session id, so
+     *  locating a hit has to compare against this field. */
+    val sourceId: String = "",
 )
 
 /** Cumulative counters from `get_session_stats` (whole session file). */

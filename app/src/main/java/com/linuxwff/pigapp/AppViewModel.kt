@@ -4009,7 +4009,13 @@ class AppViewModel @JvmOverloads constructor(
                 convHits = if (convAppend) convHits + messageHits else messageHits
                 convHasMore = hasMore
                 convOffset = convHits.size
-                if (!convAppend) convIndex = if (convHits.isEmpty()) -1 else 0
+                if (!convAppend) {
+                    convIndex = if (convHits.isEmpty()) -1 else 0
+                    // Jump to the first hit as the query settles, like a
+                    // browser find bar: the reader sees where it is before
+                    // paging through with the arrows.
+                    convHits.firstOrNull()?.let { openSearchHit(it) }
+                }
             }
         }
     }
@@ -6693,6 +6699,7 @@ class AppViewModel @JvmOverloads constructor(
                                 imageRefs = decoded.refs,
                                 imagesOmitted = decoded.omitted,
                                 at = at,
+                                sourceId = message.optString("id"),
                             ),
                         )
                     }
@@ -6712,6 +6719,7 @@ class AppViewModel @JvmOverloads constructor(
                                 imageRefs = decoded.refs,
                                 imagesOmitted = decoded.omitted,
                                 at = at,
+                                sourceId = message.optString("id"),
                             ),
                         )
                     }
@@ -6719,7 +6727,7 @@ class AppViewModel @JvmOverloads constructor(
                     // errorMessage; without this they vanish on reload.
                     val failure = failureText(message)
                     if (failure.isNotBlank()) {
-                        out.add(ChatMsg(itemId(), Role.NOTICE, text = failure, isError = true, at = at))
+                        out.add(ChatMsg(itemId(), Role.NOTICE, text = failure, isError = true, at = at, sourceId = message.optString("id")))
                     }
                     val blocks = message.optJSONArray("content") ?: continue
                     for (blockIndex in 0 until blocks.length()) {
@@ -6749,6 +6757,7 @@ class AppViewModel @JvmOverloads constructor(
                                 toolResult = partial ?: "",
                                 running = partial != null,
                                 at = at,
+                                sourceId = message.optString("id"),
                             ),
                         )
                     }
@@ -6788,6 +6797,7 @@ class AppViewModel @JvmOverloads constructor(
                                 imageRefs = decoded.refs,
                                 imagesOmitted = decoded.omitted,
                                 at = at,
+                                sourceId = message.optString("id"),
                             ),
                         )
                     }
