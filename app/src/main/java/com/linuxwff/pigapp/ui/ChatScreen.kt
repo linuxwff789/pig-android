@@ -224,6 +224,8 @@ fun PigApp(vm: AppViewModel) {
     val convHitIds = remember(vm.convHits) {
         vm.convHits.mapNotNull { hit -> hit.messageId.takeIf { it.isNotBlank() } }.toSet()
     }
+    // The hit the reader is on: its row stays expanded and shows the snippet.
+    val convReveal = if (showConvSearch) vm.convHits.getOrNull(vm.convIndex) else null
     // System photo picker: GetMultipleContents needs no storage permission.
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents(),
@@ -586,6 +588,10 @@ fun PigApp(vm: AppViewModel) {
                         locateMessageAt = vm.locateMessageAt,
                         onLocateConsumed = vm::clearLocate,
                         highlightIds = if (showConvSearch) convHitIds else emptySet(),
+                        revealId = convReveal?.messageId,
+                        hitQuery = vm.convQuery,
+                        hitSnippet = convReveal?.snippet.orEmpty(),
+                        hitKind = convReveal?.kind.orEmpty(),
                     )
                     }
                 }
@@ -4358,11 +4364,7 @@ private fun ConversationSearchBar(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            if (hit.role == "user") {
-                                packText("role.user", "你")
-                            } else {
-                                packText("role.assistant", "助手")
-                            },
+                            hitRoleLabel(hit),
                             style = MaterialTheme.typography.labelSmall,
                             color = scheme.primary,
                             modifier = Modifier.padding(end = 6.dp),
@@ -4395,6 +4397,53 @@ private fun ConversationSearchBar(
         }
     }
     HorizontalDivider(color = scheme.outline.copy(alpha = 0.22f))
+}
+
+/** What a hit matched, as the reader sees that part of a turn. */
+@Composable
+private fun hitRoleLabel(hit: SearchHit): String = when (hit.kind) {
+    "title" -> packText("search.titleHit", "会话标题")
+    "thinking" -> packText("search.kindThinking", "思考")
+    "tool" -> packText("search.kindTool", "工具")
+    else -> if (hit.role == "user") {
+        packText("role.user", "你")
+    } else {
+        packText("role.assistant", "助手")
+    }
+}
+
+@Composable
+private fun hitKindName(kind: String): String = when (kind) {
+    "thinking" -> packText("search.kindThinking", "思考")
+    "tool" -> packText("search.kindTool", "工具")
+    "title" -> packText("search.titleHit", "会话标题")
+    else -> packText("search.kindMessage", "消息")
+}
+
+/** Snippet banner shown above the row a search hit landed on. */
+@Composable
+private fun HitBanner(snippet: String, query: String, kind: String) {
+    val scheme = MaterialTheme.colorScheme
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(scheme.primary.copy(alpha = 0.08f))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        Text(
+            packText("search.hitBanner", "命中 · {kind}").replace("{kind}", hitKindName(kind)),
+            style = MaterialTheme.typography.labelSmall,
+            color = scheme.primary,
+        )
+        HighlightedSnippet(
+            text = snippet,
+            query = query,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 3,
+            color = scheme.onSurface,
+        )
+    }
 }
 
 /**
@@ -4444,6 +4493,7 @@ private fun SearchHitRow(
     onClick: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val roleLabel = hitRoleLabel(hit)
     Column(
         Modifier
             .fillMaxWidth()
@@ -4458,13 +4508,7 @@ private fun SearchHitRow(
                 buildString {
                     append(hit.sessionName.ifBlank { hit.sessionId.take(8) })
                     append(" · ")
-                    append(
-                        if (hit.role == "user") {
-                            packText("role.user", "你")
-                        } else {
-                            packText("role.assistant", "助手")
-                        },
-                    )
+                    append(roleLabel)
                 }
             },
             maxLines = 1,
@@ -4752,9 +4796,17 @@ private fun ToolGroupCard(
     // LazyColumn disposes rows that leave the viewport; plain remember would
     // collapse the card the reader just opened as soon as they scroll away.
     var expanded by rememberSaveable(tools.first().id) { mutableStateOf(false) }
+    // What the reader had before a hit opened this group: switching to another
+    // hit (or closing the search) puts it back.
+    var savedExpanded by remember(tools.first().id) { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(revealId) {
-        if (revealId != null && tools.any { it.id == revealId || it.sourceId == revealId }) {
+        val relevant = revealId != null && tools.any { it.id == revealId || it.sourceId == revealId }
+        if (relevant) {
+            if (savedExpanded == null) savedExpanded = expanded
             expanded = true
+        } else if (savedExpanded != null) {
+            expanded = savedExpanded ?: false
+            savedExpanded = null
         }
     }
     // Expanding a 130-call run must not build 130 cards (each parses its args
@@ -4947,6 +4999,11 @@ private fun MessageList(
     /** Session-file ids of every current search hit, tinted while the search
      *  bar is open. */
     highlightIds: Set<String> = emptySet(),
+    /** The hit the reader is on: its row expands and shows [hitSnippet]. */
+    revealId: String? = null,
+    hitQuery: String = "",
+    hitSnippet: String = "",
+    hitKind: String = "",
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -4964,14 +5021,6 @@ private fun MessageList(
     val anySelection by remember { derivedStateOf { selectingRows.isNotEmpty() } }
     // Where the reader was before an older page was prepended.
     var olderAnchor by remember { mutableStateOf<OlderAnchor?>(null) }
-    // The row a search hit landed on gets a brief tint; its own effect clears
-    // it so consuming the locate request cannot cancel the timer.
-    var flashId by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(flashId) {
-        val id = flashId ?: return@LaunchedEffect
-        delay(1400)
-        if (flashId == id) flashId = null
-    }
     // Older pages one locate may pull before giving up on a stale message id.
     var locatePages by remember { mutableStateOf(0) }
     LaunchedEffect(locateMessageId, locateMessageAt) { locatePages = 0 }
@@ -5201,10 +5250,6 @@ private fun MessageList(
             // Do not fight the reader: streaming output must not pull the
             // view back to the tail right after locating an older message.
             autoScroll = false
-            flashId = when (val row = displayItems[index]) {
-                is ChatListItem.Single -> row.message.id
-                is ChatListItem.ToolGroup -> row.tools.first().id
-            }
             onLocateConsumed()
             return@LaunchedEffect
         }
@@ -5235,14 +5280,13 @@ private fun MessageList(
             verticalArrangement = Arrangement.spacedBy(messageSpacing.dp),
         ) {
             items(displayItems, key = { it.key }, contentType = { it.contentType }) { item ->
-                // The row a search hit landed on gets a brief tint so the
-                // reader can see where the jump went. Every other hit keeps a
-                // lighter tint for as long as the search bar is open.
-                val flashed = flashId != null && when (item) {
+                // The hit the reader is on stays tinted and expanded; every
+                // other hit keeps a lighter tint while the search bar is open.
+                val revealed = revealId != null && when (item) {
                     is ChatListItem.Single ->
-                        item.message.id == flashId || item.message.sourceId == flashId
+                        item.message.id == revealId || item.message.sourceId == revealId
                     is ChatListItem.ToolGroup ->
-                        item.tools.any { it.id == flashId || it.sourceId == flashId }
+                        item.tools.any { it.id == revealId || it.sourceId == revealId }
                 }
                 val matched = when (item) {
                     is ChatListItem.Single ->
@@ -5251,7 +5295,7 @@ private fun MessageList(
                         item.tools.any { it.id in highlightIds || it.sourceId in highlightIds }
                 }
                 val tint = when {
-                    flashed -> MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                    revealed -> MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
                     matched -> MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
                     else -> Color.Transparent
                 }
@@ -5268,6 +5312,11 @@ private fun MessageList(
                             },
                         ),
                 ) {
+                Column(Modifier.fillMaxWidth()) {
+                if (revealed && hitSnippet.isNotBlank()) {
+                    HitBanner(hitSnippet, hitQuery, hitKind)
+                    Spacer(Modifier.height(4.dp))
+                }
                 when (item) {
                     is ChatListItem.Single -> MessageRow(
                         message = item.message,
@@ -5293,7 +5342,8 @@ private fun MessageList(
                         onCopy = onCopy,
                         onToolModeAll = onToolModeAll,
                         onNeedImages = { onLoadImages(item.message) },
-                        reveal = flashed,
+                        reveal = revealed,
+                        hitQuery = hitQuery,
                         // Expanding a tool card or a group is not a scroll: it must
                         // not stop the transcript from following the answer. Only a
                         // real drag pauses following (see the dragged effect above);
@@ -5309,8 +5359,9 @@ private fun MessageList(
                         onToolModeAll = onToolModeAll,
                         onUserRead = {},
                         onLoadImages = onLoadImages,
-                        revealId = flashId,
+                        revealId = revealId,
                     )
+                }
                 }
                 }
             }
@@ -5564,10 +5615,15 @@ private fun ThinkingBlock(
     val scheme = MaterialTheme.colorScheme
     var open by rememberSaveable(id) { mutableStateOf(!style.collapsedByDefault) }
     var userChoice by rememberSaveable(id) { mutableStateOf(false) }
+    var savedOpen by remember(id) { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(reveal) {
         if (reveal) {
+            if (savedOpen == null) savedOpen = open
             open = true
             userChoice = true
+        } else if (savedOpen != null) {
+            open = savedOpen ?: open
+            savedOpen = null
         }
     }
     // Follow the stream until the user taps; after that their choice wins.
@@ -5687,6 +5743,8 @@ private fun MessageRow(
     onNeedImages: () -> Unit = {},
     /** This row holds the search hit that was just located. */
     reveal: Boolean = false,
+    /** Search term to highlight inside a plain-text body. */
+    hitQuery: String = "",
 ) {
     val components = packComponents()
     val theme = packTheme()
@@ -5786,17 +5844,29 @@ private fun MessageRow(
                         )
                         if (message.text.isNotBlank()) {
                             if (message.images.isNotEmpty()) Spacer(Modifier.height(5.dp))
-                            Text(
-                                message.text,
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    textAlign = when (bubbleAppearance.textAlign) {
-                                        "center" -> TextAlign.Center
-                                        "end" -> TextAlign.End
-                                        else -> TextAlign.Start
-                                    },
-                                ),
-                                color = packColor(bubbleAppearance.textColor),
+                            val bubbleTextStyle = MaterialTheme.typography.bodyLarge.copy(
+                                textAlign = when (bubbleAppearance.textAlign) {
+                                    "center" -> TextAlign.Center
+                                    "end" -> TextAlign.End
+                                    else -> TextAlign.Start
+                                },
                             )
+                            val bubbleTextColor = packColor(bubbleAppearance.textColor)
+                            if (reveal && hitQuery.length >= 2) {
+                                HighlightedSnippet(
+                                    text = message.text,
+                                    query = hitQuery,
+                                    style = bubbleTextStyle,
+                                    maxLines = Int.MAX_VALUE,
+                                    color = bubbleTextColor,
+                                )
+                            } else {
+                                Text(
+                                    message.text,
+                                    style = bubbleTextStyle,
+                                    color = bubbleTextColor,
+                                )
+                            }
                         }
                         if (showTimestamps) {
                             val time = formatChatTime(message.at)
@@ -5925,6 +5995,7 @@ private fun MessageRow(
                                 codeToggleState = codeToggles,
                                 selectionMode = selecting,
                                 onCopy = onCopy,
+                                highlightQuery = if (reveal) hitQuery else "",
                             )
                         }
                         if (message.images.isNotEmpty() || message.imagesOmitted > 0 ||
@@ -6091,8 +6162,15 @@ private fun ToolCard(
             },
         )
     }
+    var savedMode by remember(message.id) { mutableStateOf<ToolMode?>(null) }
     LaunchedEffect(reveal) {
-        if (reveal) viewMode = ToolMode.EXPANDED
+        if (reveal) {
+            if (savedMode == null) savedMode = viewMode
+            viewMode = ToolMode.EXPANDED
+        } else if (savedMode != null) {
+            viewMode = savedMode ?: viewMode
+            savedMode = null
+        }
     }
     val toolStrings = LocalUiPack.current.strings
     // Wall-clock start (pig's call timestamp) and pig's measured runtime. A
