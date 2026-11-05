@@ -170,6 +170,10 @@ class AppViewModel @JvmOverloads constructor(
      */
     var locateMessageId by mutableStateOf<String?>(null)
         private set
+    /** Timestamp of the same hit: the fallback when the relay did not tag the
+     *  message with its session-file id (older relays). */
+    var locateMessageAt by mutableStateOf(0L)
+        private set
 
     // One image batch decodes at a time: a frame can hold ~12 MB of base64,
     // and decoding several concurrently multiplies the bitmap peak.
@@ -3936,6 +3940,7 @@ class AppViewModel @JvmOverloads constructor(
         clearConversationSearch()
         if (hit != null) {
             locateMessageId = hit.messageId.takeIf { it.isNotBlank() }
+            locateMessageAt = hit.at
         }
     }
 
@@ -3957,6 +3962,7 @@ class AppViewModel @JvmOverloads constructor(
     /** Open the session holding a hit and reveal the message in it. */
     fun openSearchHit(hit: SearchHit) {
         locateMessageId = hit.messageId.takeIf { it.isNotBlank() }
+        locateMessageAt = hit.at
         if (hit.path.isNotBlank() && hit.path != ui.sessionFile) {
             switchSession(hit.path)
         }
@@ -3964,6 +3970,7 @@ class AppViewModel @JvmOverloads constructor(
 
     fun clearLocate() {
         locateMessageId = null
+        locateMessageAt = 0L
     }
 
     private fun parseSearchHits(event: JSONObject): Pair<List<SearchHit>, Boolean> {
