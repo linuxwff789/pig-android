@@ -477,9 +477,13 @@ Header actions in node trees:
 | `header:stop` / `header:abort` | abort current turn |
 | `header:settings` | open settings |
 | `header:new` / `header:new_session` | new session |
+| `header:search` | search the open conversation |
 | `pack:<name>` | run a `layout.actions` entry |
 
 `builtin:copy:*` and `ext:*` also work through the normal window action path.
+
+A pack that has no `header:search` element still gets a search button at the
+end of its first row, so the conversation finder is always reachable.
 
 ### Simple rows (`header.rows`)
 

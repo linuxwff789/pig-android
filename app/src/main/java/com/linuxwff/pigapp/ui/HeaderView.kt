@@ -55,6 +55,7 @@ fun CustomPigHeader(
     onSettings: () -> Unit,
     onNewSession: () -> Unit,
     onPackAction: (String) -> Unit,
+    onSearch: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val base = when (header.background) {
@@ -128,6 +129,7 @@ fun CustomPigHeader(
                                 onSettings,
                                 onNewSession,
                                 onPackAction,
+                                onSearch,
                             )
                             action.startsWith("pack:") -> onPackAction(action.removePrefix("pack:"))
                             else -> vm.handleWindowAction("__header__", action)
@@ -135,7 +137,13 @@ fun CustomPigHeader(
                     },
                 )
             } else {
-                header.rows.forEach { row ->
+                // A pack that predates `header:search` would have no way to
+                // open the finder, so the first row always gets one when the
+                // pack does not place it itself.
+                val hasSearch = header.rows.any { row ->
+                    row.elements.any { it.action.removePrefix("header:") == "search" }
+                }
+                header.rows.forEachIndexed { index, row ->
                     HeaderRow(
                         row = row,
                         ui = ui,
@@ -146,6 +154,8 @@ fun CustomPigHeader(
                         onSettings = onSettings,
                         onNewSession = onNewSession,
                         onPackAction = onPackAction,
+                        onSearch = onSearch,
+                        trailingSearch = !hasSearch && index == 0,
                     )
                 }
             }
@@ -167,6 +177,8 @@ private fun HeaderRow(
     onSettings: () -> Unit,
     onNewSession: () -> Unit,
     onPackAction: (String) -> Unit,
+    onSearch: () -> Unit,
+    trailingSearch: Boolean = false,
 ) {
     val arrangement = when (row.align) {
         "center" -> Arrangement.spacedBy(row.spacingDp.dp, Alignment.CenterHorizontally)
@@ -187,9 +199,19 @@ private fun HeaderRow(
                     Modifier.weight(element.weight.takeIf { it > 0f } ?: 1f),
                 )
                 element.weight > 0f -> Box(Modifier.weight(element.weight)) {
-                    HeaderElement(element, ui, onMenu, onModel, onReconnect, onStop, onSettings, onNewSession, onPackAction)
+                    HeaderElement(element, ui, onMenu, onModel, onReconnect, onStop, onSettings, onNewSession, onPackAction, onSearch)
                 }
-                else -> HeaderElement(element, ui, onMenu, onModel, onReconnect, onStop, onSettings, onNewSession, onPackAction)
+                else -> HeaderElement(element, ui, onMenu, onModel, onReconnect, onStop, onSettings, onNewSession, onPackAction, onSearch)
+            }
+        }
+        if (trailingSearch) {
+            IconButton(onClick = onSearch, modifier = Modifier.size(34.dp)) {
+                Icon(
+                    packIcon("search", "search"),
+                    contentDescription = packText("a11y.searchChat", "搜索当前会话"),
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -206,6 +228,7 @@ private fun HeaderElement(
     onSettings: () -> Unit,
     onNewSession: () -> Unit,
     onPackAction: (String) -> Unit,
+    onSearch: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val modifier = Modifier.padding(element.padding.dp)
@@ -229,7 +252,7 @@ private fun HeaderElement(
     val clickable = Modifier.then(
         if (action.isNotBlank()) {
             Modifier.clickable {
-                runHeaderAction(action, onMenu, onModel, onReconnect, onStop, onSettings, onNewSession, onPackAction)
+                runHeaderAction(action, onMenu, onModel, onReconnect, onStop, onSettings, onNewSession, onPackAction, onSearch)
             }
         } else {
             Modifier
@@ -431,6 +454,7 @@ private fun runHeaderAction(
     onSettings: () -> Unit,
     onNewSession: () -> Unit,
     onPackAction: (String) -> Unit,
+    onSearch: () -> Unit = {},
 ) {
     when {
         action == "menu" -> onMenu()
@@ -439,6 +463,7 @@ private fun runHeaderAction(
         action == "stop" || action == "abort" -> onStop()
         action == "settings" -> onSettings()
         action == "new" || action == "new_session" -> onNewSession()
+        action == "search" -> onSearch()
         action.startsWith("pack:") -> onPackAction(action.removePrefix("pack:"))
         action.startsWith("header:") -> runHeaderAction(
             action.removePrefix("header:"),
@@ -449,6 +474,7 @@ private fun runHeaderAction(
             onSettings,
             onNewSession,
             onPackAction,
+            onSearch,
         )
     }
 }

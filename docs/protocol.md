@@ -57,6 +57,8 @@ Control frames:
 | `relay_restore_begin` | `id`, `name`, `size` | `relay_restore_ready` (`max` archive size) or `relay_restore_error` |
 | `relay_restore_chunk` | `id`, `data` (base64) | none; an error aborts with `relay_restore_error` |
 | `relay_restore_end` | `id`, `sha256` of the uploaded bytes | `relay_restore_done` (`entries`, `bytes`, `backup`) or `relay_restore_error` |
+| `relay_search` | `id`, `query`, optional `path`, `offset`, `limit` (≤60) | `response` with `command: relay_search`, `data.results[]`, `data.hasMore` |
+| `relay_image_get` | `id`, `refs` (≤8 content hashes) | `relay_image_data` (`images[]`, `missing[]`) |
 | `relay_stop` | | closes the connection |
 
 ## Install progress

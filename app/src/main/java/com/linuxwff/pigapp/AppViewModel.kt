@@ -140,11 +140,29 @@ class AppViewModel @JvmOverloads constructor(
         private set
     var searchLoading by mutableStateOf(false)
         private set
-    /** Scope of the drawer search: the open conversation or every session. */
-    var searchCurrentOnly by mutableStateOf(false)
+    var searchHasMore by mutableStateOf(false)
         private set
     private var searchJob: Job? = null
     private var searchRequestId = ""
+    private var searchOffset = 0
+    private var searchAppend = false
+
+    /** In-conversation search, opened from the chat header. */
+    var convQuery by mutableStateOf("")
+        private set
+    var convHits by mutableStateOf<List<SearchHit>>(emptyList())
+        private set
+    var convLoading by mutableStateOf(false)
+        private set
+    var convHasMore by mutableStateOf(false)
+        private set
+    /** Index of the hit the reader is on, for the "2 / 17" counter. */
+    var convIndex by mutableStateOf(-1)
+        private set
+    private var convJob: Job? = null
+    private var convRequestId = ""
+    private var convOffset = 0
+    private var convAppend = false
 
     /**
      * A message the reader picked from search results. The chat list consumes
@@ -3802,50 +3820,42 @@ class AppViewModel @JvmOverloads constructor(
     /**
      * Full-text search over the session store. The drawer filters the session
      * list locally by name/preview; this finds a phrase from any turn.
+     * [more] appends the next page instead of replacing the list.
      */
-    fun searchMessages(query: String) {
-        searchJob?.cancel()
+    fun searchMessages(query: String, more: Boolean = false) {
         val q = query.trim()
         if (q.length < 2) {
+            searchJob?.cancel()
             searchLoading = false
             searchHits = emptyList()
+            searchHasMore = false
+            searchOffset = 0
             return
         }
+        if (more && (searchLoading || !searchHasMore)) return
+        searchJob?.cancel()
         searchLoading = true
+        searchAppend = more
+        if (!more) searchOffset = 0
         searchJob = viewModelScope.launch {
             // One scan per pause, not per keystroke: the relay reads whole
             // session files.
-            delay(350)
+            if (!more) delay(350)
             if (!client.connected.value) {
                 searchLoading = false
                 return@launch
             }
-            // In-conversation scope with nothing saved yet: there is no file
-            // to scan, and searching every session would be the wrong answer.
-            if (searchCurrentOnly && ui.sessionFile.isBlank()) {
-                searchLoading = false
-                searchHits = emptyList()
-                return@launch
-            }
             val id = "search-${nextId++}"
             searchRequestId = id
-            val payload = JSONObject()
-                .put("id", id)
-                .put("type", "relay_search")
-                .put("query", q)
-            // In-conversation scope. A brand-new session has no file yet, so
-            // there is nothing to scan and the result stays empty.
-            if (searchCurrentOnly) payload.put("path", ui.sessionFile)
-            client.send(payload)
+            client.send(
+                JSONObject()
+                    .put("id", id)
+                    .put("type", "relay_search")
+                    .put("query", q)
+                    .put("offset", searchOffset)
+                    .put("limit", SEARCH_PAGE),
+            )
         }
-    }
-
-    fun setSearchScope(currentOnly: Boolean) {
-        if (searchCurrentOnly == currentOnly) return
-        searchCurrentOnly = currentOnly
-        // Hits from the other scope would flash for a moment until the new
-        // query lands.
-        searchHits = emptyList()
     }
 
     /** Drop the result list (the drawer closed or the query was cleared). */
@@ -3853,7 +3863,95 @@ class AppViewModel @JvmOverloads constructor(
         searchJob?.cancel()
         searchLoading = false
         searchHits = emptyList()
+        searchHasMore = false
+        searchOffset = 0
         searchRequestId = ""
+    }
+
+    /** In-conversation search panel: query, results and cursor. */
+    fun searchConversation(query: String, more: Boolean = false) {
+        convQuery = query
+        val q = query.trim()
+        if (q.length < 2) {
+            convJob?.cancel()
+            convLoading = false
+            convHits = emptyList()
+            convHasMore = false
+            convOffset = 0
+            convIndex = -1
+            return
+        }
+        if (more && (convLoading || !convHasMore)) return
+        convJob?.cancel()
+        convLoading = true
+        convAppend = more
+        if (!more) {
+            convOffset = 0
+            convIndex = -1
+        }
+        convJob = viewModelScope.launch {
+            if (!more) delay(300)
+            if (!client.connected.value) {
+                convLoading = false
+                return@launch
+            }
+            // A new session has no file yet; there is nothing to scan.
+            if (ui.sessionFile.isBlank()) {
+                convLoading = false
+                convHits = emptyList()
+                convHasMore = false
+                return@launch
+            }
+            val id = "convsearch-${nextId++}"
+            convRequestId = id
+            client.send(
+                JSONObject()
+                    .put("id", id)
+                    .put("type", "relay_search")
+                    .put("query", q)
+                    .put("path", ui.sessionFile)
+                    .put("offset", convOffset)
+                    .put("limit", SEARCH_PAGE),
+            )
+        }
+    }
+
+    /** Close the panel: stop the scan and forget the query. */
+    fun clearConversationSearch() {
+        convJob?.cancel()
+        convQuery = ""
+        convLoading = false
+        convHits = emptyList()
+        convHasMore = false
+        convOffset = 0
+        convIndex = -1
+    }
+
+    /**
+     * Close the panel and land on the hit the reader stopped at: the dialog
+     * covers the transcript, so the reveal has to happen once it is gone.
+     */
+    fun closeConversationSearch() {
+        val hit = convHits.getOrNull(convIndex)
+        clearConversationSearch()
+        if (hit != null) {
+            locateMessageId = hit.messageId.takeIf { it.isNotBlank() }
+        }
+    }
+
+    /** Jump to the previous/next hit in the open conversation. */
+    fun stepConversationHit(delta: Int) {
+        if (convHits.isEmpty()) return
+        val next = (convIndex + delta).coerceIn(0, convHits.lastIndex)
+        convIndex = next
+        convHits.getOrNull(next)?.let { openSearchHit(it) }
+    }
+
+    /** Open one specific hit from the conversation panel. */
+    fun openConversationHit(hit: SearchHit) {
+        val index = convHits.indexOf(hit)
+        if (index >= 0) convIndex = index
+        openSearchHit(hit)
     }
 
     /** Open the session holding a hit and reveal the message in it. */
@@ -3868,10 +3966,9 @@ class AppViewModel @JvmOverloads constructor(
         locateMessageId = null
     }
 
-    private fun applySearchResults(event: JSONObject) {
-        if (event.optString("id") != searchRequestId) return
-        searchLoading = false
-        val results = event.optJSONObject("data")?.optJSONArray("results") ?: JSONArray()
+    private fun parseSearchHits(event: JSONObject): Pair<List<SearchHit>, Boolean> {
+        val data = event.optJSONObject("data")
+        val results = data?.optJSONArray("results") ?: JSONArray()
         val hits = ArrayList<SearchHit>(results.length())
         for (index in 0 until results.length()) {
             val item = results.optJSONObject(index) ?: continue
@@ -3889,7 +3986,28 @@ class AppViewModel @JvmOverloads constructor(
                 ),
             )
         }
-        searchHits = hits
+        return hits to (data?.optBoolean("hasMore") ?: false)
+    }
+
+    private fun applySearchResults(event: JSONObject) {
+        val id = event.optString("id")
+        if (id.isEmpty()) return
+        val (hits, hasMore) = parseSearchHits(event)
+        when (id) {
+            searchRequestId -> {
+                searchLoading = false
+                searchHits = if (searchAppend) searchHits + hits else hits
+                searchHasMore = hasMore
+                searchOffset = searchHits.size
+            }
+            convRequestId -> {
+                convLoading = false
+                convHits = if (convAppend) convHits + hits else hits
+                convHasMore = hasMore
+                convOffset = convHits.size
+                if (!convAppend) convIndex = if (convHits.isEmpty()) -1 else 0
+            }
+        }
     }
 
     private fun handleImageData(event: JSONObject) {
@@ -7646,6 +7764,8 @@ private const val BUNDLED_PACK_ROOT = "ui-packs"
 private const val MAX_IMAGE_B64_CHARS = 8_000_000
 /** Refs per relay_image_get; the relay answers at most eight. */
 private const val MAX_IMAGE_REFS_PER_REQUEST = 8
+/** Hits per search page; the relay caps a page at 60. */
+private const val SEARCH_PAGE = 30
 // Pixel budget for one relay_image_get answer (up to eight pictures). Visible
 // rows decode on demand and never go through the history page budget, so this
 // is what stops eight full-size screenshots from allocating ~128 MB at once.

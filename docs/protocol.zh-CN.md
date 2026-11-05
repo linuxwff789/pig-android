@@ -51,6 +51,8 @@
 | `relay_restore_chunk` | `id`、`data`（base64） | 无；出错时以 `relay_restore_error` 中止 |
 | `relay_restore_end` | `id`、已上传字节的 `sha256` | `relay_restore_done`（`entries`、`bytes`、`backup`）或 `relay_restore_error` |
 | `relay_stop` | | 关闭连接 |
+| `relay_search` | `id`、`query`，可选 `path`、`offset`、`limit`（≤60） | `response`，`command` 为 `relay_search`，含 `data.results[]` 与 `data.hasMore` |
+| `relay_image_get` | `id`、`refs`（≤8 个内容哈希） | `relay_image_data`（`images[]`、`missing[]`） |
 
 ## 安装进度
 

@@ -219,6 +219,7 @@ fun PigApp(vm: AppViewModel) {
     var showQueue by remember { mutableStateOf(false) }
     var showWebDav by remember { mutableStateOf(false) }
     var showArchive by remember { mutableStateOf(false) }
+    var showConvSearch by remember { mutableStateOf(false) }
     // System photo picker: GetMultipleContents needs no storage permission.
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents(),
@@ -448,6 +449,7 @@ fun PigApp(vm: AppViewModel) {
                             onSettings = { showSettings = true },
                             onNewSession = vm::newSession,
                             onPackAction = { vm.runPackAction(it) },
+                            onSearch = { showConvSearch = true },
                         )
                     } else {
                         Spacer(Modifier.statusBarsPadding())
@@ -614,6 +616,14 @@ fun PigApp(vm: AppViewModel) {
         }
         if (showPackManager) {
             PackManagerDialog(vm, ui) { showPackManager = false }
+        }
+        if (showConvSearch) {
+            ConversationSearchDialog(vm, ui) {
+                showConvSearch = false
+                // Reveal the hit the reader stopped on; the dialog hid the
+                // transcript, so the jump only becomes visible now.
+                vm.closeConversationSearch()
+            }
         }
     }
 
@@ -3388,47 +3398,13 @@ private fun DrawerContent(
                 unfocusedBorderColor = scheme.outline.copy(alpha = 0.25f),
             ),
         )
-        if (sessionQuery.isNotBlank()) {
-            Row(
-                Modifier.fillMaxWidth().padding(top = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                FilterChip(
-                    selected = !vm.searchCurrentOnly,
-                    onClick = {
-                        vm.setSearchScope(false)
-                        vm.searchMessages(sessionQuery)
-                    },
-                    label = {
-                        Text(
-                            packText("drawer.searchAll", "全部会话"),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    },
-                )
-                FilterChip(
-                    selected = vm.searchCurrentOnly,
-                    onClick = {
-                        vm.setSearchScope(true)
-                        vm.searchMessages(sessionQuery)
-                    },
-                    label = {
-                        Text(
-                            packText("drawer.searchCurrent", "当前会话"),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    },
-                )
-            }
-        }
         LazyColumn(
             state = sessionListState,
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(3.dp),
             contentPadding = PaddingValues(vertical = 2.dp),
         ) {
-            if (sessionQuery.isNotBlank()) {
+            if (sessionQuery.trim().length >= 2) {
                 item(key = "search-label") {
                     SectionLabel(
                         packText("drawer.searchContent", "内容匹配 {n}")
@@ -3470,6 +3446,19 @@ private fun DrawerContent(
                             color = scheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         )
+                    }
+                }
+                if (vm.searchHasMore) {
+                    item(key = "search-more") {
+                        TextButton(
+                            onClick = { vm.searchMessages(sessionQuery, more = true) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                packText("drawer.searchMore", "加载更多"),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
                     }
                 }
                 item(key = "sessions-label") {
@@ -4251,6 +4240,149 @@ private fun ReadOnlyBanner() {
     }
 }
 
+/**
+ * In-conversation finder, opened from the chat header. Results come from the
+ * relay's session-file scan, so they cover the whole conversation and not just
+ * the loaded page.
+ */
+@Composable
+private fun ConversationSearchDialog(
+    vm: AppViewModel,
+    ui: AppUiState,
+    onClose: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(ui.uiPack.theme.cornerRadius.coerceAtLeast(8).dp)
+    Dialog(onDismissRequest = onClose) {
+        Surface(
+            shape = shape,
+            color = scheme.surface,
+            tonalElevation = 3.dp,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        packText("chat.search", "搜索当前会话"),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = onClose, modifier = Modifier.size(30.dp)) {
+                        Icon(
+                            packIcon("close", "close"),
+                            contentDescription = packText("a11y.close", "关闭"),
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = vm.convQuery,
+                    onValueChange = { vm.searchConversation(it) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodySmall,
+                    shape = RoundedCornerShape(10.dp),
+                    placeholder = {
+                        Text(
+                            packText("chat.searchPlaceholder", "输入至少 2 个字…"),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    },
+                )
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val counter = if (vm.convHits.isEmpty()) {
+                        packText("chat.searchNone", "没有匹配")
+                    } else {
+                        "${vm.convIndex + 1} / ${vm.convHits.size}"
+                    }
+                    Text(
+                        counter,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (vm.convLoading) {
+                        CircularProgressIndicator(Modifier.size(13.dp), strokeWidth = 1.5.dp)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    IconButton(
+                        onClick = { vm.stepConversationHit(-1) },
+                        enabled = vm.convHits.isNotEmpty(),
+                        modifier = Modifier.size(30.dp),
+                    ) {
+                        Icon(
+                            packIcon("up", "up"),
+                            contentDescription = packText("chat.searchPrev", "上一条"),
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                    IconButton(
+                        onClick = { vm.stepConversationHit(1) },
+                        enabled = vm.convHits.isNotEmpty(),
+                        modifier = Modifier.size(30.dp),
+                    ) {
+                        Icon(
+                            packIcon("down", "down"),
+                            contentDescription = packText("chat.searchNext", "下一条"),
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                    items(
+                        vm.convHits,
+                        key = { "${it.messageId}:${it.snippet.hashCode()}" },
+                    ) { hit ->
+                        val selected = vm.convHits.getOrNull(vm.convIndex) == hit
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (selected) scheme.primary.copy(alpha = 0.10f) else Color.Transparent,
+                                )
+                                .clickable { vm.openConversationHit(hit) }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                        ) {
+                            Text(
+                                if (hit.role == "user") {
+                                    packText("role.user", "你")
+                                } else {
+                                    packText("role.assistant", "助手")
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = scheme.primary,
+                            )
+                            Text(
+                                hit.snippet,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    if (vm.convHasMore) {
+                        item(key = "conv-more") {
+                            TextButton(
+                                onClick = { vm.searchConversation(vm.convQuery, more = true) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    packText("chat.searchMore", "加载更多"),
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun SearchHitRow(
     hit: SearchHit,
@@ -4758,6 +4890,17 @@ private fun MessageList(
     val anySelection by remember { derivedStateOf { selectingRows.isNotEmpty() } }
     // Where the reader was before an older page was prepended.
     var olderAnchor by remember { mutableStateOf<OlderAnchor?>(null) }
+    // The row a search hit landed on gets a brief tint; its own effect clears
+    // it so consuming the locate request cannot cancel the timer.
+    var flashId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(flashId) {
+        val id = flashId ?: return@LaunchedEffect
+        delay(1400)
+        if (flashId == id) flashId = null
+    }
+    // Older pages one locate may pull before giving up on a stale message id.
+    var locatePages by remember { mutableStateOf(0) }
+    LaunchedEffect(locateMessageId) { locatePages = 0 }
     var pulled by remember { mutableStateOf(0f) }
     var pullArmed by remember { mutableStateOf(true) }
     val pullThreshold = with(LocalDensity.current) { 120.dp.toPx() }
@@ -4952,20 +5095,32 @@ private fun MessageList(
     // A hit picked in history search: scroll its row into view. The effect
     // re-runs when the list grows, so a message that arrived with a later page
     // (or with the session switch) is still revealed.
-    LaunchedEffect(locateMessageId, displayItems.size) {
+    LaunchedEffect(locateMessageId, displayItems.size, hasOlderHistory, loadingOlder) {
         val target = locateMessageId ?: return@LaunchedEffect
         val index = displayItems.indexOfFirst { item ->
             item.key == target ||
                 (item is ChatListItem.ToolGroup && item.tools.any { it.id == target })
         }
-        if (index < 0) return@LaunchedEffect
-        // A little above the top edge: rows are tall and the match is usually
-        // somewhere inside, not at its first line.
-        runCatching { listState.scrollToItem(index, -140) }
-        // Do not fight the reader: streaming output must not pull the view
-        // back to the tail right after locating an older message.
-        autoScroll = false
-        onLocateConsumed()
+        if (index >= 0) {
+            // A little above the top edge: rows are tall and the match is
+            // usually somewhere inside, not at its first line.
+            runCatching { listState.scrollToItem(index, -140) }
+            // Do not fight the reader: streaming output must not pull the
+            // view back to the tail right after locating an older message.
+            autoScroll = false
+            flashId = target
+            onLocateConsumed()
+            return@LaunchedEffect
+        }
+        // The hit may be older than the loaded window: keep pulling pages
+        // until it appears. The cap stops a stale id from walking the whole
+        // history one page at a time.
+        if (hasOlderHistory && !loadingOlder && locatePages < 12) {
+            locatePages++
+            onLoadOlder()
+        } else if (!hasOlderHistory || locatePages >= 12) {
+            onLocateConsumed()
+        }
     }
 
     Box(modifier.fillMaxWidth()) {
@@ -4984,6 +5139,25 @@ private fun MessageList(
             verticalArrangement = Arrangement.spacedBy(messageSpacing.dp),
         ) {
             items(displayItems, key = { it.key }, contentType = { it.contentType }) { item ->
+                // The row a search hit landed on gets a brief tint so the
+                // reader can see where the jump went.
+                val flashed = flashId != null && when (item) {
+                    is ChatListItem.Single -> item.message.id == flashId
+                    is ChatListItem.ToolGroup -> item.tools.any { it.id == flashId }
+                }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (flashed) {
+                                Modifier
+                                    .clip(RoundedCornerShape(cornerRadius.dp))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                            } else {
+                                Modifier
+                            },
+                        ),
+                ) {
                 when (item) {
                     is ChatListItem.Single -> MessageRow(
                         message = item.message,
@@ -5025,6 +5199,7 @@ private fun MessageList(
                         onUserRead = {},
                         onLoadImages = onLoadImages,
                     )
+                }
                 }
             }
             if (showTyping) {
