@@ -134,6 +134,25 @@ class AppViewModel @JvmOverloads constructor(
     }
     private data class PendingImageRef(val messageIds: MutableSet<String>, val mimeType: String)
     private val pendingImageRefs = HashMap<String, PendingImageRef>()
+
+    /** History search results; the drawer renders them under the session list. */
+    var searchHits by mutableStateOf<List<SearchHit>>(emptyList())
+        private set
+    var searchLoading by mutableStateOf(false)
+        private set
+    /** Scope of the drawer search: the open conversation or every session. */
+    var searchCurrentOnly by mutableStateOf(false)
+        private set
+    private var searchJob: Job? = null
+    private var searchRequestId = ""
+
+    /**
+     * A message the reader picked from search results. The chat list consumes
+     * it, scrolls the row into view and clears it.
+     */
+    var locateMessageId by mutableStateOf<String?>(null)
+        private set
+
     // One image batch decodes at a time: a frame can hold ~12 MB of base64,
     // and decoding several concurrently multiplies the bitmap peak.
     private val imageDataMu = Mutex()
@@ -3780,6 +3799,99 @@ class AppViewModel @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Full-text search over the session store. The drawer filters the session
+     * list locally by name/preview; this finds a phrase from any turn.
+     */
+    fun searchMessages(query: String) {
+        searchJob?.cancel()
+        val q = query.trim()
+        if (q.length < 2) {
+            searchLoading = false
+            searchHits = emptyList()
+            return
+        }
+        searchLoading = true
+        searchJob = viewModelScope.launch {
+            // One scan per pause, not per keystroke: the relay reads whole
+            // session files.
+            delay(350)
+            if (!client.connected.value) {
+                searchLoading = false
+                return@launch
+            }
+            // In-conversation scope with nothing saved yet: there is no file
+            // to scan, and searching every session would be the wrong answer.
+            if (searchCurrentOnly && ui.sessionFile.isBlank()) {
+                searchLoading = false
+                searchHits = emptyList()
+                return@launch
+            }
+            val id = "search-${nextId++}"
+            searchRequestId = id
+            val payload = JSONObject()
+                .put("id", id)
+                .put("type", "relay_search")
+                .put("query", q)
+            // In-conversation scope. A brand-new session has no file yet, so
+            // there is nothing to scan and the result stays empty.
+            if (searchCurrentOnly) payload.put("path", ui.sessionFile)
+            client.send(payload)
+        }
+    }
+
+    fun setSearchScope(currentOnly: Boolean) {
+        if (searchCurrentOnly == currentOnly) return
+        searchCurrentOnly = currentOnly
+        // Hits from the other scope would flash for a moment until the new
+        // query lands.
+        searchHits = emptyList()
+    }
+
+    /** Drop the result list (the drawer closed or the query was cleared). */
+    fun clearSearch() {
+        searchJob?.cancel()
+        searchLoading = false
+        searchHits = emptyList()
+        searchRequestId = ""
+    }
+
+    /** Open the session holding a hit and reveal the message in it. */
+    fun openSearchHit(hit: SearchHit) {
+        locateMessageId = hit.messageId.takeIf { it.isNotBlank() }
+        if (hit.path.isNotBlank() && hit.path != ui.sessionFile) {
+            switchSession(hit.path)
+        }
+    }
+
+    fun clearLocate() {
+        locateMessageId = null
+    }
+
+    private fun applySearchResults(event: JSONObject) {
+        if (event.optString("id") != searchRequestId) return
+        searchLoading = false
+        val results = event.optJSONObject("data")?.optJSONArray("results") ?: JSONArray()
+        val hits = ArrayList<SearchHit>(results.length())
+        for (index in 0 until results.length()) {
+            val item = results.optJSONObject(index) ?: continue
+            val path = item.optString("path")
+            if (path.isBlank()) continue
+            hits.add(
+                SearchHit(
+                    path = path,
+                    sessionId = item.optString("sessionId"),
+                    sessionName = item.optString("name"),
+                    messageId = item.optString("messageId"),
+                    role = item.optString("role"),
+                    snippet = item.optString("snippet"),
+                    at = item.optLong("at"),
+                ),
+            )
+        }
+        searchHits = hits
+    }
+
     private fun handleImageData(event: JSONObject) {
         val images = event.optJSONArray("images")
         val failed = event.optJSONArray("missing")
@@ -5599,6 +5711,12 @@ class AppViewModel @JvmOverloads constructor(
     private fun handleResponse(event: JSONObject) {
         val responseCommand = event.optString("command")
         val responseId = event.optString("id")
+        // Search is answered by the relay itself and has no session state to
+        // reconcile, so it must not go through the get_messages filters below.
+        if (responseCommand == "relay_search") {
+            applySearchResults(event)
+            return
+        }
         // The manual tail verify rides on get_messages but must not touch the
         // transcript window, so it is answered here before any of that filtering.
         if (responseId.isNotBlank() && responseId == lastPeekRequestId) {

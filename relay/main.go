@@ -200,10 +200,26 @@ func (c *sessionMetaCache) metaFor(path string, info os.FileInfo) map[string]any
 
 // listSessions returns the most recently updated Session files, newest first.
 func listSessions(dir string, cache *sessionMetaCache) []map[string]any {
+	files := sessionFiles(dir)
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].info.ModTime().After(files[j].info.ModTime())
+	})
+	if len(files) > 60 {
+		files = files[:60]
+	}
+	out := make([]map[string]any, 0, len(files))
+	for _, file := range files {
+		out = append(out, cache.metaFor(file.path, file.info))
+	}
+	return out
+}
+
+// sessionFiles lists every JSONL session, unsorted; callers order and cap it.
+func sessionFiles(dir string) []sessionFile {
 	var files []sessionFile
 	projects, err := os.ReadDir(dir)
 	if err != nil {
-		return []map[string]any{}
+		return files
 	}
 	for _, project := range projects {
 		if !project.IsDir() {
@@ -224,17 +240,7 @@ func listSessions(dir string, cache *sessionMetaCache) []map[string]any {
 			files = append(files, sessionFile{filepath.Join(dir, project.Name(), entry.Name()), info})
 		}
 	}
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].info.ModTime().After(files[j].info.ModTime())
-	})
-	if len(files) > 60 {
-		files = files[:60]
-	}
-	out := make([]map[string]any, 0, len(files))
-	for _, file := range files {
-		out = append(out, cache.metaFor(file.path, file.info))
-	}
-	return out
+	return files
 }
 
 func readSessionMeta(path string, info os.FileInfo) map[string]any {
