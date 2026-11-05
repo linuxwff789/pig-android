@@ -460,7 +460,7 @@ fun PigApp(vm: AppViewModel) {
                         Spacer(Modifier.statusBarsPadding())
                     }
                     if (showConvSearch) {
-                        ConversationSearchBar(vm, ui) {
+                        ConversationSearchBar(vm) {
                             showConvSearch = false
                             // Reveal the hit the reader stopped on; the bar was
                             // covering the top of the transcript.
@@ -583,6 +583,7 @@ fun PigApp(vm: AppViewModel) {
                         onVerifyTail = vm::verifyLastAssistant,
                         onLoadImages = { vm.requestImageRefs(it) },
                         locateMessageId = vm.locateMessageId,
+                        locateMessageAt = vm.locateMessageAt,
                         onLocateConsumed = vm::clearLocate,
                         highlightIds = if (showConvSearch) convHitIds else emptySet(),
                     )
@@ -4256,10 +4257,12 @@ private fun ReadOnlyBanner() {
 @Composable
 private fun ConversationSearchBar(
     vm: AppViewModel,
-    ui: AppUiState,
     onClose: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
+    // The hit list is a fixed-height panel that can be folded away: with
+    // dozens of matches it otherwise covered the whole transcript.
+    var resultsOpen by rememberSaveable { mutableStateOf(true) }
     Column(
         Modifier
             .fillMaxWidth()
@@ -4282,10 +4285,19 @@ private fun ConversationSearchBar(
                 },
             )
             Text(
-                if (vm.convHits.isEmpty()) "" else "${vm.convIndex + 1}/${vm.convHits.size}",
+                text = buildString {
+                    if (vm.convHits.isNotEmpty()) {
+                        append(vm.convIndex + 1)
+                        append('/')
+                        append(vm.convHits.size)
+                        append(if (resultsOpen) "  ▴" else "  ▾")
+                    }
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = scheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp),
+                modifier = Modifier
+                    .padding(horizontal = 4.dp)
+                    .clickable(enabled = vm.convHits.isNotEmpty()) { resultsOpen = !resultsOpen },
             )
             if (vm.convLoading) {
                 CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
@@ -4320,8 +4332,15 @@ private fun ConversationSearchBar(
                 )
             }
         }
-        if (vm.convHits.isNotEmpty()) {
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 168.dp)) {
+        if (resultsOpen && vm.convHits.isNotEmpty()) {
+            // Fixed height, not heightIn: the panel must not grow with the
+            // number of matches (it would push the transcript away).
+            LazyColumn(
+                Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+                    .padding(top = 2.dp),
+            ) {
                 items(
                     vm.convHits,
                     key = { "${it.messageId}:${it.snippet.hashCode()}" },
@@ -4923,6 +4942,8 @@ private fun MessageList(
     onLoadImages: (ChatMsg) -> Unit = {},
     locateMessageId: String? = null,
     onLocateConsumed: () -> Unit = {},
+    /** Timestamp of the locate target, matching [ChatMsg.at]. */
+    locateMessageAt: Long = 0L,
     /** Session-file ids of every current search hit, tinted while the search
      *  bar is open. */
     highlightIds: Set<String> = emptySet(),
@@ -4953,7 +4974,7 @@ private fun MessageList(
     }
     // Older pages one locate may pull before giving up on a stale message id.
     var locatePages by remember { mutableStateOf(0) }
-    LaunchedEffect(locateMessageId) { locatePages = 0 }
+    LaunchedEffect(locateMessageId, locateMessageAt) { locatePages = 0 }
     var pulled by remember { mutableStateOf(0f) }
     var pullArmed by remember { mutableStateOf(true) }
     val pullThreshold = with(LocalDensity.current) { 120.dp.toPx() }
@@ -5148,14 +5169,29 @@ private fun MessageList(
     // A hit picked in history search: scroll its row into view. The effect
     // re-runs when the list grows, so a message that arrived with a later page
     // (or with the session switch) is still revealed.
-    LaunchedEffect(locateMessageId, displayItems.size, hasOlderHistory, loadingOlder) {
-        val target = locateMessageId ?: return@LaunchedEffect
+    LaunchedEffect(
+        locateMessageId,
+        locateMessageAt,
+        displayItems.size,
+        hasOlderHistory,
+        loadingOlder,
+    ) {
+        val target = locateMessageId
+        val locateAt = locateMessageAt
+        // Either an id or a timestamp is enough: relays that predate the id
+        // tagging only send the message time.
+        if (target == null && locateAt == 0L) return@LaunchedEffect
         val index = displayItems.indexOfFirst { item ->
             when (item) {
                 is ChatListItem.Single ->
-                    item.key == target || item.message.sourceId == target || item.message.id == target
+                    (target != null &&
+                        (item.key == target || item.message.sourceId == target || item.message.id == target)) ||
+                        (locateAt > 0 && item.message.at == locateAt)
                 is ChatListItem.ToolGroup ->
-                    item.tools.any { it.id == target || it.sourceId == target }
+                    item.tools.any {
+                        (target != null && (it.id == target || it.sourceId == target)) ||
+                            (locateAt > 0 && it.at == locateAt)
+                    }
             }
         }
         if (index >= 0) {
@@ -5165,7 +5201,10 @@ private fun MessageList(
             // Do not fight the reader: streaming output must not pull the
             // view back to the tail right after locating an older message.
             autoScroll = false
-            flashId = target
+            flashId = when (val row = displayItems[index]) {
+                is ChatListItem.Single -> row.message.id
+                is ChatListItem.ToolGroup -> row.tools.first().id
+            }
             onLocateConsumed()
             return@LaunchedEffect
         }

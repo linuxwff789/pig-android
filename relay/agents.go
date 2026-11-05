@@ -1046,11 +1046,43 @@ func scanMessages(path string, offset int64) ([]json.RawMessage, error) {
 			continue
 		}
 		var e struct {
-			Type    string          `json:"type"`
-			Message json.RawMessage `json:"message"`
+			Type      string          `json:"type"`
+			ID        string          `json:"id"`
+			Timestamp string          `json:"timestamp"`
+			Message   json.RawMessage `json:"message"`
 		}
 		if json.Unmarshal(line, &e) == nil && e.Type == "message" && len(e.Message) > 0 {
-			out = append(out, e.Message)
+			// The envelope carries the id and the timestamp; the message
+			// object usually has neither. The app locates a search hit by
+			// both (id when the relay is new, time as a fallback), so put
+			// them back without touching fields the message already has.
+			message := e.Message
+			needsID := e.ID != "" && !bytes.Contains(message, []byte(`"id":`))
+			needsStamp := e.Timestamp != "" && !bytes.Contains(message, []byte(`"timestamp":`))
+			if needsID || needsStamp {
+				var doc map[string]json.RawMessage
+				if json.Unmarshal(message, &doc) == nil {
+					changed := false
+					if needsID {
+						if encoded, err := json.Marshal(e.ID); err == nil {
+							doc["id"] = encoded
+							changed = true
+						}
+					}
+					if needsStamp {
+						if encoded, err := json.Marshal(e.Timestamp); err == nil {
+							doc["timestamp"] = encoded
+							changed = true
+						}
+					}
+					if changed {
+						if encoded, err := json.Marshal(doc); err == nil {
+							message = encoded
+						}
+					}
+				}
+			}
+			out = append(out, message)
 		}
 	}
 	return out, sc.Err()
