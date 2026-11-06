@@ -3757,9 +3757,14 @@ class AppViewModel @JvmOverloads constructor(
         }
         val added = tail.length - target.text.length
         AppLog.event("stream", "manual repair +$added chars")
-        val thinking = latest?.let { contentThinking(it) }.orEmpty()
+        val thinkingParts = latest?.let { contentThinkingParts(it, str("chat.thinkingRedacted", "（提供方已隐藏思考内容）")) }.orEmpty()
+        val thinking = thinkingParts.joinToString("\n\n")
         update(target.id) {
-            it.copy(text = tail, thinking = thinking.ifBlank { it.thinking })
+            it.copy(
+                text = tail,
+                thinking = thinking.ifBlank { it.thinking },
+                thinkingParts = thinkingParts.ifEmpty { it.thinkingParts },
+            )
         }
         ui = ui.copy(toast = str("toast.repaired", "已补全 {n} 字").replace("{n}", added.toString()))
     }
@@ -6756,7 +6761,8 @@ class AppViewModel @JvmOverloads constructor(
                 }
                 "assistant" -> {
                     val text = contentText(message)
-                    val thinking = contentThinking(message, redactedLabel)
+                    val thinkingParts = contentThinkingParts(message, redactedLabel)
+                    val thinking = thinkingParts.joinToString("\n\n")
                     if (text.isNotBlank() || thinking.isNotBlank() || hasImages(message)) {
                         val decoded = decodedImages[index] ?: DecodedImages(emptyList(), 0)
                         out.add(
@@ -6765,6 +6771,7 @@ class AppViewModel @JvmOverloads constructor(
                                 Role.ASSISTANT,
                                 text = text,
                                 thinking = thinking,
+                                thinkingParts = thinkingParts,
                                 images = decoded.images,
                                 imageRefs = decoded.refs,
                                 imagesOmitted = decoded.omitted,
@@ -7170,7 +7177,8 @@ class AppViewModel @JvmOverloads constructor(
     private fun handleMessageStart(message: JSONObject?) {
         if (message == null || message.optString("role") != "assistant") return
         val text = contentText(message)
-        val thinking = contentThinking(message)
+        val thinkingParts = contentThinkingParts(message, str("chat.thinkingRedacted", "（提供方已隐藏思考内容）"))
+        val thinking = thinkingParts.joinToString("\n\n")
         liveBuffer.setLength(0)
         liveBuffer.append(text)
         liveThinking.setLength(0)
@@ -7180,7 +7188,15 @@ class AppViewModel @JvmOverloads constructor(
         liveActive = true
         val id = currentAssistant ?: "a${nextId++}".also {
             currentAssistant = it
-            append(ChatMsg(id = it, role = Role.ASSISTANT, text = text, thinking = thinking))
+            append(
+                ChatMsg(
+                    id = it,
+                    role = Role.ASSISTANT,
+                    text = text,
+                    thinking = thinking,
+                    thinkingParts = thinkingParts,
+                ),
+            )
         }
         update(id) { it.copy(text = text, thinking = thinking) }
         ui = ui.copy(streamingId = id)
@@ -7353,12 +7369,14 @@ class AppViewModel @JvmOverloads constructor(
                 return
             }
             val adopted = "a${nextId++}"
+            val orphanThinkingParts = contentThinkingParts(message, str("chat.thinkingRedacted", "（提供方已隐藏思考内容）"))
             append(
                 ChatMsg(
                     id = adopted,
                     role = Role.ASSISTANT,
                     text = orphanText,
-                    thinking = contentThinking(message),
+                    thinking = orphanThinkingParts.joinToString("\n\n"),
+                    thinkingParts = orphanThinkingParts,
                 ),
             )
             attachImages(adopted, message)
@@ -7368,11 +7386,13 @@ class AppViewModel @JvmOverloads constructor(
             return
         }
         val text = contentText(message)
-        val thinking = contentThinking(message)
+        val thinkingParts = contentThinkingParts(message, str("chat.thinkingRedacted", "（提供方已隐藏思考内容）"))
+        val thinking = thinkingParts.joinToString("\n\n")
         update(id) {
             it.copy(
                 text = text.ifBlank { it.text },
                 thinking = thinking.ifBlank { it.thinking },
+                thinkingParts = thinkingParts.ifEmpty { it.thinkingParts },
             )
         }
         attachImages(id, message)
@@ -7603,28 +7623,26 @@ class AppViewModel @JvmOverloads constructor(
      * Reasoning blocks of an assistant message. A redacted block keeps its
      * signature only, so say so instead of rendering an empty section.
      */
-    private fun contentThinking(object0: JSONObject?): String =
-        contentThinking(object0, str("chat.thinkingRedacted", "（提供方已隐藏思考内容）"))
-
-    private fun contentThinking(object0: JSONObject?, redactedLabel: String): String {
-        if (object0 == null) return ""
-        val blocks = object0.optJSONArray("content") ?: return ""
-        val builder = StringBuilder()
+    /**
+     * Reasoning blocks in their original order. Keeping the boundaries lets the
+     * transcript fold each block separately, so a search hit inside one of them
+     * stays findable instead of disappearing into one merged paragraph.
+     */
+    private fun contentThinkingParts(object0: JSONObject?, redactedLabel: String): List<String> {
+        if (object0 == null) return emptyList()
+        val blocks = object0.optJSONArray("content") ?: return emptyList()
+        val out = ArrayList<String>()
         for (index in 0 until blocks.length()) {
             val block = blocks.optJSONObject(index) ?: continue
             if (block.optString("type") != "thinking") continue
             if (block.optBoolean("redacted", false)) {
-                if (builder.isNotEmpty()) builder.append("\n\n")
-                builder.append(redactedLabel)
+                out.add(redactedLabel)
                 continue
             }
             val text = block.optString("thinking", "")
-            if (text.isNotBlank()) {
-                if (builder.isNotEmpty()) builder.append("\n\n")
-                builder.append(text)
-            }
+            if (text.isNotBlank()) out.add(text)
         }
-        return builder.toString()
+        return out
     }
 
     // ─── Images ──────────────────────────────────────────────────────────

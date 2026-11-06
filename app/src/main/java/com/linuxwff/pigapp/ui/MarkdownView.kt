@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -59,8 +60,10 @@ import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.ImageData
+import com.mikepenz.markdown.model.DefaultMarkdownAnnotator
 import com.mikepenz.markdown.model.ImageTransformer
 import com.mikepenz.markdown.utils.buildMarkdownAnnotatedString
+import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.findChildOfType
 import org.intellij.markdown.ast.getTextInNode
@@ -119,6 +122,8 @@ fun PigMarkdown(
      * opaque code span punches a hole through the selected range.
      */
     selectionMode: Boolean = false,
+    /** Search term to mark inside the rendered text (formatting is kept). */
+    highlightQuery: String = "",
 ) {
     val components = remember(cornerRadius) {
         markdownComponents(
@@ -175,6 +180,30 @@ fun PigMarkdown(
         },
         dividerColor = packColor(md.hrColor),
     )
+    val markdownHighlight = MaterialTheme.colorScheme.primary
+    // The library calls this for every node before its own rendering: taking
+    // over the leaf text nodes is the only hook that keeps the Markdown layout
+    // while still marking the search term.
+    val annotator = remember(highlightQuery, markdownHighlight) {
+        val mark: (AnnotatedString.Builder, String, ASTNode) -> Boolean =
+            if (highlightQuery.isBlank()) {
+                { _, _, _ -> false }
+            } else {
+                { builder, content, node ->
+                    if (node.type == MarkdownTokenTypes.TEXT) {
+                        builder.appendHighlighted(
+                            node.getTextInNode(content).toString(),
+                            highlightQuery,
+                            markdownHighlight,
+                        )
+                        true
+                    } else {
+                        false
+                    }
+                }
+            }
+        DefaultMarkdownAnnotator(mark)
+    }
     Markdown(
         content = text,
         modifier = modifier,
@@ -182,7 +211,33 @@ fun PigMarkdown(
         colors = colors,
         imageTransformer = imageTransformer,
         components = components,
+        annotator = annotator,
     )
+}
+
+/** Append [text], marking every occurrence of [query] with [color]. */
+private fun AnnotatedString.Builder.appendHighlighted(
+    text: String,
+    query: String,
+    color: Color,
+) {
+    val start = length
+    append(text)
+    val needle = query.trim()
+    if (needle.isEmpty()) return
+    var at = text.indexOf(needle, 0, ignoreCase = true)
+    while (at >= 0) {
+        addStyle(
+            SpanStyle(
+                color = color,
+                background = color.copy(alpha = 0.32f),
+                fontWeight = FontWeight.Bold,
+            ),
+            start + at,
+            start + at + needle.length,
+        )
+        at = text.indexOf(needle, at + needle.length, ignoreCase = true)
+    }
 }
 
 @Composable
@@ -403,45 +458,6 @@ sealed interface MarkdownSegment {
     data class Code(val language: String, val code: String) : MarkdownSegment
 }
 
-/** Formats that would be lost by the plain-text highlighter. */
-private val markdownSyntax = Regex(
-    """(?m)^\s*(#{1,6}\s|>|\* |- |\d+\. )|\*\*|__|\[[^\]]*\]\(|\|[^\n]*\|""",
-)
-
-private fun isPlainText(text: String): Boolean = !markdownSyntax.containsMatchIn(text)
-
-/** Plain-text body with the search term highlighted (used while searching). */
-@Composable
-private fun HighlightedPlainText(text: String, query: String) {
-    val highlight = MaterialTheme.colorScheme.primary
-    val annotated = remember(text, query, highlight) {
-        buildAnnotatedString {
-            append(text)
-            val needle = query.trim()
-            if (needle.isNotEmpty()) {
-                var start = text.indexOf(needle, ignoreCase = true)
-                while (start >= 0) {
-                    addStyle(
-                        SpanStyle(
-                            color = highlight,
-                            background = highlight.copy(alpha = 0.34f),
-                            fontWeight = FontWeight.Bold,
-                        ),
-                        start,
-                        start + needle.length,
-                    )
-                    start = text.indexOf(needle, start + needle.length, ignoreCase = true)
-                }
-            }
-        }
-    }
-    Text(
-        annotated,
-        modifier = Modifier.fillMaxWidth(),
-        style = MaterialTheme.typography.bodyLarge,
-    )
-}
-
 private val fenceRegex = Regex("""^\s*(`{3,}|~{3,})(.*)$""")
 
 /**
@@ -524,21 +540,14 @@ fun AssistantMarkdown(
         segments.forEachIndexed { index, segment ->
             if (index > 0) Spacer(Modifier.height(6.dp))
             when (segment) {
-                is MarkdownSegment.Text -> if (
-                    highlightQuery.isNotBlank() &&
-                    isPlainText(segment.text) &&
-                    segment.text.contains(highlightQuery, ignoreCase = true)
-                ) {
-                    HighlightedPlainText(segment.text, highlightQuery)
-                } else {
-                    PigMarkdown(
-                        text = segment.text,
-                        modifier = Modifier.fillMaxWidth(),
-                        types = types,
-                        cornerRadius = cornerRadius,
-                        selectionMode = selectionMode,
-                    )
-                }
+                is MarkdownSegment.Text -> PigMarkdown(
+                    text = segment.text,
+                    modifier = Modifier.fillMaxWidth(),
+                    types = types,
+                    cornerRadius = cornerRadius,
+                    selectionMode = selectionMode,
+                    highlightQuery = highlightQuery,
+                )
                 is MarkdownSegment.Code -> CollapsibleCode(
                     language = segment.language,
                     code = segment.code,
@@ -547,6 +556,7 @@ fun AssistantMarkdown(
                     expanded = toggles[index] == true,
                     onToggle = { toggles[index] = toggles[index] != true },
                     onCopy = onCopy,
+                    highlightQuery = highlightQuery,
                 )
             }
         }
@@ -563,6 +573,7 @@ private fun CollapsibleCode(
     expanded: Boolean,
     onToggle: () -> Unit,
     onCopy: ((String) -> Unit)? = null,
+    highlightQuery: String = "",
 ) {
     val md = LocalUiPack.current.layout.markdown
     val scheme = MaterialTheme.colorScheme
@@ -640,8 +651,13 @@ private fun CollapsibleCode(
                     .horizontalScroll(rememberScrollState())
                     .padding(10.dp),
             ) {
+                val codeHighlight = MaterialTheme.colorScheme.primary
                 Text(
-                    shown,
+                    remember(shown, highlightQuery, codeHighlight) {
+                        buildAnnotatedString {
+                            appendHighlighted(shown, highlightQuery, codeHighlight)
+                        }
+                    },
                     fontFamily = packCodeFont(),
                     fontSize = 11.sp,
                     softWrap = false,
