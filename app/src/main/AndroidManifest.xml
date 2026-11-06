@@ -60,6 +60,12 @@
         <receiver
             android:name=".RunCommandReceiver"
             android:exported="false" />
+
+        <!-- Re-arms the WebDAV backup in Doze, where periodic work can be
+             deferred for hours. -->
+        <receiver
+            android:name=".WebDavAlarmReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>
