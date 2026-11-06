@@ -158,6 +158,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Lock
@@ -166,6 +167,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import com.linuxwff.pigapp.AppLog
@@ -4266,6 +4272,7 @@ private fun ConversationSearchBar(
     onClose: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val keyboard = LocalSoftwareKeyboardController.current
     // The hit list is a fixed-height panel that can be folded away: with
     // dozens of matches it otherwise covered the whole transcript.
     var resultsOpen by rememberSaveable { mutableStateOf(true) }
@@ -4279,7 +4286,11 @@ private fun ConversationSearchBar(
             OutlinedTextField(
                 value = vm.convQuery,
                 onValueChange = { vm.searchConversation(it) },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    // Leaving the field (tapping the transcript, closing) should
+                    // put the keyboard away instead of covering the messages.
+                    .onFocusChanged { state -> if (!state.isFocused) keyboard?.hide() },
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodySmall,
                 shape = RoundedCornerShape(10.dp),
@@ -5006,6 +5017,7 @@ private fun MessageList(
     hitKind: String = "",
 ) {
     val listState = rememberLazyListState()
+    val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
     val chrome = LocalUiPack.current.layout.chrome
     val packThemeValues = LocalUiPack.current.theme
@@ -5259,16 +5271,26 @@ private fun MessageList(
         }
         if (index >= 0) {
             AppLog.event("search", "locate id=$target at=$locateAt -> $index/${displayItems.size}")
-            // Land the row at the top of the viewport. A negative offset used
-            // to push it below the edge, which left the list in a state the
-            // reader read as "the transcript jumped/duplicated".
-            runCatching { listState.scrollToItem(index) }
             // Any page that was being pulled has served its purpose; dropping
             // the anchor stops a later prepend from yanking the view away.
             olderAnchor = null
             // Do not fight the reader: streaming output must not pull the
             // view back to the tail right after locating an older message.
             autoScroll = false
+            // Center the row, then keep re-centering while its folded content
+            // (tool card / thinking block) expands and changes its height.
+            runCatching { listState.scrollToItem(index) }
+            repeat(4) {
+                withFrameNanos { }
+                delay(45)
+                val info = listState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { it.index == index } ?: return@repeat
+                val viewport = listState.layoutInfo.viewportSize.height
+                if (viewport <= 0) return@repeat
+                val delta = info.offset + info.size / 2 - viewport / 2
+                if (delta == 0) return@repeat
+                runCatching { listState.scrollBy(delta.toFloat()) }
+            }
             onLocateConsumed()
             return@LaunchedEffect
         }
@@ -5296,6 +5318,16 @@ private fun MessageList(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
+                // Tapping the transcript drops the search field's focus, which
+                // hides the keyboard (see onFocusChanged on the field).
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            if (event.type == PointerEventType.Press) focusManager.clearFocus()
+                        }
+                    }
+                }
                 .nestedScroll(olderPageConnection)
                 .nestedScroll(tailVerifyConnection),
             contentPadding = PaddingValues(
