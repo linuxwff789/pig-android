@@ -424,8 +424,8 @@ private fun HighlightedPlainText(text: String, query: String) {
                     addStyle(
                         SpanStyle(
                             color = highlight,
-                            background = highlight.copy(alpha = 0.20f),
-                            fontWeight = FontWeight.SemiBold,
+                            background = highlight.copy(alpha = 0.34f),
+                            fontWeight = FontWeight.Bold,
                         ),
                         start,
                         start + needle.length,
