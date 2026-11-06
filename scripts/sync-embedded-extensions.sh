@@ -44,7 +44,7 @@ mkdir -p "$dst"
 # subdirectory) has to survive, pig builds each package against the module root.
 (
     cd "$src" &&
-    find . -type f \( -name '*.go' -o -name 'go.mod' \) | sed 's|^\./||' | sort
+    find . -type f \( -name '*.go' -o -name 'go.mod' \) ! -name '*_test.go' | sed 's|^\./||' | sort
 ) | while IFS= read -r rel; do
     mkdir -p "$dst/$(dirname "$rel")"
     cp "$src/$rel" "$dst/$rel.txt"

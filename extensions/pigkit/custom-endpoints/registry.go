@@ -314,12 +314,54 @@ func normalizeModel(raw any, defaults ...map[string]any) (map[string]any, error)
 		if value == nil || value == "" {
 			continue
 		}
+		// A size of 0 is "unknown", not a real limit. Caches written by older
+		// relays carried contextWindow/maxTokens: 0, and pig then asked for a
+		// single output token (every reply truncated after one token). Keep the
+		// merged defaults for those keys instead of copying the zero over.
+		if (key == "contextWindow" || key == "maxTokens") && isZeroNumber(value) {
+			continue
+		}
 		merged[key] = value
 	}
 	if name, _ := merged["name"].(string); name == "" || name == id {
 		merged["name"] = id
 	}
 	return merged, nil
+}
+
+// cachedModels normalizes the on-disk cache before it is registered. Older
+// relays cached the endpoint listing as-is ({id,name}), which pig reads as a
+// zero-sized model unless the metadata is filled in here. Doing it in the
+// extension makes the repair automatic: no TTL wait, no relay restart.
+func cachedModels(list []any, defaults map[string]any) []any {
+	out := make([]any, 0, len(list))
+	for _, raw := range list {
+		model, err := normalizeModel(raw, defaults)
+		if err != nil {
+			continue
+		}
+		out = append(out, model)
+	}
+	return out
+}
+
+// isZeroNumber reports whether value is the numeric zero, however it was
+// decoded (JSON numbers arrive as float64).
+func isZeroNumber(value any) bool {
+	switch number := value.(type) {
+	case float64:
+		return number == 0
+	case float32:
+		return number == 0
+	case int:
+		return number == 0
+	case int64:
+		return number == 0
+	case json.Number:
+		parsed, err := number.Float64()
+		return err == nil && parsed == 0
+	}
+	return false
 }
 
 // staticModels decodes a provider's inline model list.
@@ -678,7 +720,7 @@ func (r *registry) load(cwd string) {
 
 		var models []any
 		if def.auto() {
-			models = r.cache.get(id).Models
+			models = cachedModels(r.cache.get(id).Models, cfg.Defaults)
 		} else {
 			inline, problems := staticModels(def, cfg.Defaults)
 			models = inline
