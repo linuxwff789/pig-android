@@ -235,3 +235,60 @@ func TestSmallHelpers(t *testing.T) {
 		t.Fatalf("plan sources missing after failed install: %v", err)
 	}
 }
+
+func TestProviderNormalizeFillsModelDefaults(t *testing.T) {
+	// A bare endpoint listing entry must still carry concrete sizes: pig reads
+	// contextWindow=0 literally and truncates every reply after one token.
+	model, ok := providerNormalizeModel(map[string]any{"id": "m1"})
+	if !ok {
+		t.Fatal("bare model rejected")
+	}
+	if model["contextWindow"] != int64(defaultModelContextWindow) ||
+		model["maxTokens"] != int64(defaultModelMaxTokens) {
+		t.Fatalf("defaults: %#v", model)
+	}
+	// An explicit zero is not a real size either.
+	model, _ = providerNormalizeModel(map[string]any{
+		"id": "m2", "contextWindow": float64(0), "maxTokens": float64(0),
+	})
+	if model["contextWindow"] != int64(defaultModelContextWindow) ||
+		model["maxTokens"] != int64(defaultModelMaxTokens) {
+		t.Fatalf("zero model: %#v", model)
+	}
+}
+
+func TestRepairModelMetadata(t *testing.T) {
+	s, _ := memSession(t)
+	dir := filepath.Dir(s.settingsPath)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, cachePath, modelsPath := s.providerPaths()
+	if err := os.WriteFile(cachePath, []byte(`{"p1":{"fetchedAt":1,"models":[{"id":"m1","name":"m1"},{"id":"m2","name":"m2","contextWindow":1000000,"maxTokens":4096}]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(modelsPath, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.repairModelMetadata()
+
+	cache, _ := readJSONObjectFile(cachePath)
+	entry, _ := cache["p1"].(map[string]any)
+	models, _ := entry["models"].([]any)
+	if len(models) != 2 {
+		t.Fatalf("models: %#v", models)
+	}
+	first, _ := models[0].(map[string]any)
+	if first["contextWindow"] != float64(defaultModelContextWindow) || first["maxTokens"] != float64(defaultModelMaxTokens) {
+		t.Fatalf("missing defaults: %#v", first)
+	}
+	second, _ := models[1].(map[string]any)
+	if second["contextWindow"] != float64(1000000) || second["maxTokens"] != float64(4096) {
+		t.Fatalf("explicit values lost: %#v", second)
+	}
+
+	root, _ := readJSONObjectFile(modelsPath)
+	if _, ok := root["providers"].(map[string]any); !ok {
+		t.Fatalf("providers not repaired: %#v", root)
+	}
+}

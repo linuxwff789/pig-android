@@ -2038,13 +2038,17 @@ func handleModelOverride(s *session, id any, provider, model string, window *int
 	}
 	providers, _ := root["providers"].(map[string]interface{})
 	if providers == nil {
-		fail("models.json has no providers object")
-		return
+		// A fresh install can have an empty (or missing) models.json. Creating
+		// the container is safe: the only owner of this file is the app.
+		providers = map[string]interface{}{}
+		root["providers"] = providers
 	}
 	entry, _ := providers[provider].(map[string]interface{})
 	if entry == nil {
-		fail("unknown provider: " + provider)
-		return
+		// Keep the pin instead of failing: an entry with only modelOverrides is
+		// valid for pig (custom-endpoints still supplies baseUrl/apiKey).
+		entry = map[string]interface{}{}
+		providers[provider] = entry
 	}
 	overrides, _ := entry["modelOverrides"].(map[string]interface{})
 	if overrides == nil {

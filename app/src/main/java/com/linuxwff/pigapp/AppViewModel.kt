@@ -2961,13 +2961,15 @@ class AppViewModel @JvmOverloads constructor(
     private fun providerModelsJson(models: List<ProviderModel>): JSONArray {
         val array = JSONArray()
         models.forEach { model ->
-            array.put(
-                JSONObject()
-                    .put("id", model.id)
-                    .put("name", model.name.ifBlank { model.id })
-                    .put("contextWindow", model.contextWindow)
-                    .put("maxTokens", model.maxTokens),
-            )
+            val item = JSONObject()
+                .put("id", model.id)
+                .put("name", model.name.ifBlank { model.id })
+            // 0 means "unknown". Writing it makes pig treat the model as
+            // zero-sized and truncate every reply after one token, so omit
+            // the field and let relay/pig fill in their defaults.
+            if (model.contextWindow > 0) item.put("contextWindow", model.contextWindow)
+            if (model.maxTokens > 0) item.put("maxTokens", model.maxTokens)
+            array.put(item)
         }
         return array
     }
@@ -5493,6 +5495,9 @@ class AppViewModel @JvmOverloads constructor(
             "relay_model_override_error" -> {
                 val message = event.optString("message").takeIf { it.isNotBlank() }
                     ?: str("toast.contextWindowLocalOnly", "relay 版本过旧，上下文长度仅在本机生效")
+                // setContextWindow already showed an optimistic "已设为 …" toast;
+                // replace it so the screen does not claim a pin the relay refused.
+                ui = ui.copy(toast = message)
                 appendNotice(message)
             }
             "relay_providers" -> {

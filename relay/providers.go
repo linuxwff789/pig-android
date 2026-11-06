@@ -33,6 +33,15 @@ import (
 const (
 	providerFetchTimeout = 20 * time.Second
 	providerResolveLimit = 10 * time.Second
+
+	// pig only falls back to its own defaults when contextWindow/maxTokens are
+	// absent. A cached model that carries id/name only would otherwise read as
+	// contextWindow=0 and maxTokens=0, and pig answers that with
+	// max_completion_tokens: 1 (every reply truncated after one token). Always
+	// write concrete numbers instead; a provider that reports its own values
+	// still wins in providerNormalizeModel.
+	defaultModelContextWindow = 128000
+	defaultModelMaxTokens     = 8192
 )
 
 var (
@@ -566,7 +575,54 @@ func providerNormalizeModel(raw any) (map[string]any, bool) {
 	if vision, ok := object["supports_vision"].(bool); ok && vision {
 		model["input"] = []any{"text", "image"}
 	}
+	if _, ok := model["contextWindow"]; !ok {
+		model["contextWindow"] = int64(defaultModelContextWindow)
+	}
+	if _, ok := model["maxTokens"]; !ok {
+		model["maxTokens"] = int64(defaultModelMaxTokens)
+	}
 	return model, true
+}
+
+// repairModelMetadata backfills model metadata written by older relays, which
+// cached the endpoint listing as-is ({id,name}) and left pig with a zero-sized
+// model. It also makes sure models.json has the providers object pig's schema
+// requires (a fresh install may hold `{}`).
+func (s *session) repairModelMetadata() {
+	_, cachePath, modelsPath := s.providerPaths()
+	if data, err := os.ReadFile(cachePath); err == nil && len(bytes.TrimSpace(data)) > 0 {
+		if cache, err := readJSONObjectFile(cachePath); err == nil {
+			changed := false
+			for _, raw := range cache {
+				entry, ok := raw.(map[string]any)
+				if !ok {
+					continue
+				}
+				list, ok := entry["models"].([]any)
+				if !ok {
+					continue
+				}
+				fixed := sanitizeModels(list)
+				old, _ := json.Marshal(list)
+				next, _ := json.Marshal(fixed)
+				if !bytes.Equal(old, next) {
+					entry["models"] = fixed
+					changed = true
+				}
+			}
+			if changed {
+				_ = writeJSONAtomic(cachePath, cache)
+			}
+		}
+	}
+	if data, err := os.ReadFile(modelsPath); err == nil && len(bytes.TrimSpace(data)) > 0 {
+		if store, err := readJSONObjectFile(modelsPath); err == nil {
+			if _, ok := store["providers"].(map[string]any); !ok {
+				store["providers"] = map[string]any{}
+				_ = writeJSONAtomic(modelsPath, store)
+			}
+		}
+	}
 }
 
 func providerFirstString(object map[string]any, keys ...string) string {

@@ -752,6 +752,9 @@ func main() {
 	log.Printf("pig-relay %s %s on %s (cwd=%s ui=%s pig=%s)", protocol, buildVersion, listener.Addr(), *cwd, *uiDir, *pigBin)
 
 	agent := newSession(*token, *cwd, *uiDir, sessionsDir, *pigBin)
+	// Backfill model metadata cached by older relays before pig ever reads it:
+	// a zero-sized model makes pig truncate every reply after one token.
+	agent.repairModelMetadata()
 	// Make the custom providers' keys visible to pig's credential store before
 	// any set_model can reach it (see syncProviderAuth).
 	agent.syncProviderAuth()

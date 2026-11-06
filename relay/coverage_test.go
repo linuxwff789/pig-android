@@ -206,19 +206,25 @@ func TestHandleModelOverride(t *testing.T) {
 		{"", "gpt", &window},
 		{"openai", "", &window},
 		{"openai", "gpt", &negative},
-		{"missing", "gpt", &window},
 	} {
 		handleModelOverride(s, "bad", tc.provider, tc.model, tc.window)
 		if frame := m.frames(t)[0]; frame["type"] != "relay_model_override_error" {
 			t.Fatalf("bad override accepted: %#v", frame)
 		}
 	}
+	// An unknown provider (and a models.json without providers, above) is not
+	// an error any more: the app pins the window before the provider entry
+	// exists, and a fresh install has no providers object at all.
+	handleModelOverride(s, "pin", "missing", "gpt", &window)
+	if frame := m.frames(t)[0]; frame["type"] != "relay_model_override" {
+		t.Fatalf("missing provider should be created: %#v", frame)
+	}
 	if err := os.WriteFile(modelsPath, []byte(`{"providers":{}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	handleModelOverride(s, "bad", "openai", "gpt", &window)
-	if frame := m.frames(t)[0]; !strings.Contains(frame["message"].(string), "unknown provider") {
-		t.Fatalf("unknown provider: %#v", frame)
+	if frame := m.frames(t)[0]; frame["type"] != "relay_model_override" {
+		t.Fatalf("unknown provider should be created: %#v", frame)
 	}
 }
 
