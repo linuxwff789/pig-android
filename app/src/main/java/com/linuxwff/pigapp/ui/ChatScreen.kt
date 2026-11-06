@@ -5230,7 +5230,7 @@ private fun MessageList(
         // Either an id or a timestamp is enough: relays that predate the id
         // tagging only send the message time.
         if (target == null && locateAt == 0L) return@LaunchedEffect
-        val index = displayItems.indexOfFirst { item ->
+        var index = displayItems.indexOfFirst { item ->
             when (item) {
                 is ChatListItem.Single ->
                     (target != null &&
@@ -5243,7 +5243,22 @@ private fun MessageList(
                     }
             }
         }
+        if (index < 0 && hitSnippet.isNotBlank()) {
+            // Last resort: the ids did not line up (for example a relay from
+            // before the envelope id was preserved). Match the snippet text
+            // itself, whitespace-normalized on both sides.
+            val needle = hitSnippet.trim('…', ' ').replace(chatWhitespace, " ")
+            if (needle.length >= 6) {
+                index = displayItems.indexOfFirst { item ->
+                    when (item) {
+                        is ChatListItem.Single -> item.message.matchesSnippet(needle)
+                        is ChatListItem.ToolGroup -> item.tools.any { it.matchesSnippet(needle) }
+                    }
+                }
+            }
+        }
         if (index >= 0) {
+            AppLog.event("search", "locate id=$target at=$locateAt -> $index/${displayItems.size}")
             // Land the row at the top of the viewport. A negative offset used
             // to push it below the edge, which left the list in a state the
             // reader read as "the transcript jumped/duplicated".
@@ -5460,6 +5475,15 @@ private fun MessageList(
             }
         }
     }
+}
+
+/** Whitespace-normalized containment for the snippet fallback. */
+private val chatWhitespace = Regex("\\s+")
+
+private fun ChatMsg.matchesSnippet(needle: String): Boolean {
+    fun hit(value: String): Boolean =
+        value.isNotEmpty() && value.replace(chatWhitespace, " ").contains(needle, ignoreCase = true)
+    return hit(text) || hit(thinking) || hit(toolResult)
 }
 
 /** Scroll position captured before an older page was prepended. */

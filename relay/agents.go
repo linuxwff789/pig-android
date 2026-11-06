@@ -1052,24 +1052,23 @@ func scanMessages(path string, offset int64) ([]json.RawMessage, error) {
 			Message   json.RawMessage `json:"message"`
 		}
 		if json.Unmarshal(line, &e) == nil && e.Type == "message" && len(e.Message) > 0 {
-			// The envelope carries the id and the timestamp; the message
-			// object usually has neither. The app locates a search hit by
-			// both (id when the relay is new, time as a fallback), so put
-			// them back without touching fields the message already has.
+			// The envelope id is the key the app's search hits point at. A
+			// message object may carry pig's own id (which need not match the
+			// session-file row), and tool payloads contain `"id":` strings, so
+			// a byte-level "already present" check is wrong on both counts.
+			// Overwrite deliberately: history and search must agree.
 			message := e.Message
-			needsID := e.ID != "" && !bytes.Contains(message, []byte(`"id":`))
-			needsStamp := e.Timestamp != "" && !bytes.Contains(message, []byte(`"timestamp":`))
-			if needsID || needsStamp {
+			if e.ID != "" || e.Timestamp != "" {
 				var doc map[string]json.RawMessage
 				if json.Unmarshal(message, &doc) == nil {
 					changed := false
-					if needsID {
+					if e.ID != "" {
 						if encoded, err := json.Marshal(e.ID); err == nil {
 							doc["id"] = encoded
 							changed = true
 						}
 					}
-					if needsStamp {
+					if e.Timestamp != "" {
 						if encoded, err := json.Marshal(e.Timestamp); err == nil {
 							doc["timestamp"] = encoded
 							changed = true
