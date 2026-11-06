@@ -4772,6 +4772,12 @@ private fun ToolGroupCard(
     revealId: String? = null,
     /** The located hit is inside this group: open it (and one card). */
     reveal: Boolean = false,
+    /** What kind of block the hit was: a thinking hit must not open a card. */
+    hitKind: String = "",
+    /** Text around the hit, used when the ids did not line up. */
+    hitSnippet: String = "",
+    /** The search term, to mark the reasoning shown above the group. */
+    hitQuery: String = "",
     /**
      * The reader opened a card: stop auto-following the transcript. An opened
      * card is taller than the viewport, so the next tool result would scroll
@@ -4800,13 +4806,21 @@ private fun ToolGroupCard(
             savedExpanded = null
         }
     }
-    // Which card inside the group should open: the one the hit points at, or
-    // the first one when the ids did not line up.
-    val revealedTool = if (!reveal) {
+    // Which card inside the group should open: the one the hit points at, else
+    // the one whose text contains the hit snippet. A thinking hit never opens a
+    // card -- that reasoning lives above the group.
+    val revealedTool = if (!reveal || hitKind == "thinking") {
         null
     } else {
-        revealId?.let { id -> tools.firstOrNull { it.id == id || it.sourceId == id } }
-            ?: tools.firstOrNull()
+        val needle = hitSnippet.trim('…', ' ').replace(chatWhitespace, " ")
+        val match = revealId?.let { id -> tools.firstOrNull { it.id == id || it.sourceId == id } }
+            ?: tools.firstOrNull { tool ->
+                needle.isNotBlank() && (
+                    tool.toolResult.replace(chatWhitespace, " ").contains(needle, ignoreCase = true) ||
+                        tool.toolArgs.replace(chatWhitespace, " ").contains(needle, ignoreCase = true)
+                    )
+            }
+        match ?: if (hitKind == "tool") tools.firstOrNull() else null
     }
     // Expanding a 130-call run must not build 130 cards (each parses its args
     // and result) on the frame that handles the tap.
@@ -4839,9 +4853,10 @@ private fun ToolGroupCard(
         ThinkingBlock(
             id = tools.first().id + ":group",
             parts = listOf(thinking),
-            query = "",
+            query = if (reveal && hitKind == "thinking") hitQuery else "",
             streaming = false,
             onOpen = onUserRead,
+            reveal = reveal && hitKind == "thinking",
         )
         Spacer(Modifier.height(4.dp))
     }
@@ -5261,7 +5276,9 @@ private fun MessageList(
                 index = displayItems.indexOfFirst { item ->
                     when (item) {
                         is ChatListItem.Single -> item.message.matchesSnippet(needle)
-                        is ChatListItem.ToolGroup -> item.tools.any { it.matchesSnippet(needle) }
+                        is ChatListItem.ToolGroup ->
+                            item.thinking.replace(chatWhitespace, " ").contains(needle, ignoreCase = true) ||
+                                item.tools.any { it.matchesSnippet(needle) }
                     }
                 }
             }
@@ -5401,6 +5418,7 @@ private fun MessageList(
                         onNeedImages = { onLoadImages(item.message) },
                         reveal = revealed,
                         hitQuery = hitQuery,
+                        hitKind = hitKind,
                         // Expanding a tool card or a group is not a scroll: it must
                         // not stop the transcript from following the answer. Only a
                         // real drag pauses following (see the dragged effect above);
@@ -5418,6 +5436,9 @@ private fun MessageList(
                         onLoadImages = onLoadImages,
                         revealId = revealId,
                         reveal = revealed,
+                        hitKind = hitKind,
+                        hitSnippet = hitSnippet,
+                        hitQuery = hitQuery,
                     )
                 }
                 }
@@ -5872,6 +5893,8 @@ private fun MessageRow(
     reveal: Boolean = false,
     /** Search term to highlight inside a plain-text body. */
     hitQuery: String = "",
+    /** Kind of the located hit, so only the block that matched expands. */
+    hitKind: String = "",
 ) {
     val components = packComponents()
     val theme = packTheme()
@@ -6076,7 +6099,8 @@ private fun MessageRow(
                 }
                 Spacer(Modifier.height(4.dp))
                 val thinkingParts = message.thinkingParts.ifEmpty { listOf(message.thinking) }
-                if ((!hideThinking || reveal) && thinkingParts.any { it.isNotBlank() }) {
+                val thinkingReveal = reveal && hitKind != "tool"
+                if ((!hideThinking || thinkingReveal) && thinkingParts.any { it.isNotBlank() }) {
                     // Freeze the reasoning while a selection is open, otherwise
                     // every new token reflows the text under the drag handles.
                     val frozenParts = if (selecting) {
@@ -6090,9 +6114,9 @@ private fun MessageRow(
                         onOpen = onUserRead,
                         id = message.id,
                         parts = frozenParts,
-                        query = hitQuery,
+                        query = if (thinkingReveal) hitQuery else "",
                         streaming = thinkingStreaming,
-                        reveal = reveal,
+                        reveal = thinkingReveal,
                     )
                     Spacer(Modifier.height(6.dp))
                 }
@@ -6212,7 +6236,7 @@ private fun MessageRow(
                 onToolModeAll,
                 onUserRead,
                 onNeedImages = onNeedImages,
-                reveal = reveal,
+                reveal = reveal && hitKind != "thinking",
             )
         }
 
