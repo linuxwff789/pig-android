@@ -40,7 +40,7 @@ func TestScanMessagesCarriesEnvelopeID(t *testing.T) {
 	}
 }
 
-func TestScanMessagesKeepsInnerMessageID(t *testing.T) {
+func TestScanMessagesOverwritesInnerMessageID(t *testing.T) {
 	s := newTestSession(t)
 	path := filepath.Join(s.sessionsDir, "p", "a.jsonl")
 	writeFile(t, path, `{"type":"message","id":"outer","message":{"id":"inner","role":"assistant","content":"x"}}`+"\n")
@@ -54,8 +54,10 @@ func TestScanMessagesKeepsInnerMessageID(t *testing.T) {
 	if err := json.Unmarshal(messages[0], &doc); err != nil {
 		t.Fatal(err)
 	}
-	if doc.ID != "inner" {
-		t.Fatalf("id = %q, an id already on the message must win", doc.ID)
+	if doc.ID != "outer" {
+		// pig's own message id need not match the session row; search hits
+		// point at the row, so the envelope has to win.
+		t.Fatalf("id = %q, want the envelope id", doc.ID)
 	}
 }
 
