@@ -181,10 +181,11 @@ fun PigMarkdown(
         dividerColor = packColor(md.hrColor),
     )
     val markdownHighlight = MaterialTheme.colorScheme.primary
+    val markdownHighlightInk = MaterialTheme.colorScheme.onPrimary
     // The library calls this for every node before its own rendering: taking
     // over the leaf text nodes is the only hook that keeps the Markdown layout
     // while still marking the search term.
-    val annotator = remember(highlightQuery, markdownHighlight) {
+    val annotator = remember(highlightQuery, markdownHighlight, markdownHighlightInk) {
         val mark: (AnnotatedString.Builder, String, ASTNode) -> Boolean =
             if (highlightQuery.isBlank()) {
                 { _, _, _ -> false }
@@ -195,6 +196,7 @@ fun PigMarkdown(
                             node.getTextInNode(content).toString(),
                             highlightQuery,
                             markdownHighlight,
+                            markdownHighlightInk,
                         )
                         true
                     } else {
@@ -215,11 +217,12 @@ fun PigMarkdown(
     )
 }
 
-/** Append [text], marking every occurrence of [query] with [color]. */
+/** Append [text], marking every occurrence of [query] with [mark] and [ink]. */
 private fun AnnotatedString.Builder.appendHighlighted(
     text: String,
     query: String,
-    color: Color,
+    mark: Color,
+    ink: Color,
 ) {
     val start = length
     append(text)
@@ -229,8 +232,8 @@ private fun AnnotatedString.Builder.appendHighlighted(
     while (at >= 0) {
         addStyle(
             SpanStyle(
-                color = color,
-                background = color.copy(alpha = 0.32f),
+                color = ink,
+                background = mark,
                 fontWeight = FontWeight.Bold,
             ),
             start + at,
@@ -652,10 +655,11 @@ private fun CollapsibleCode(
                     .padding(10.dp),
             ) {
                 val codeHighlight = MaterialTheme.colorScheme.primary
+                val codeHighlightInk = MaterialTheme.colorScheme.onPrimary
                 Text(
-                    remember(shown, highlightQuery, codeHighlight) {
+                    remember(shown, highlightQuery, codeHighlight, codeHighlightInk) {
                         buildAnnotatedString {
-                            appendHighlighted(shown, highlightQuery, codeHighlight)
+                            appendHighlighted(shown, highlightQuery, codeHighlight, codeHighlightInk)
                         }
                     },
                     fontFamily = packCodeFont(),

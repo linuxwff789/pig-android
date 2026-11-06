@@ -4446,7 +4446,8 @@ private fun HighlightedSnippet(
     color: Color,
 ) {
     val highlight = MaterialTheme.colorScheme.primary
-    val annotated = remember(text, query, highlight) {
+    val onHighlight = MaterialTheme.colorScheme.onPrimary
+    val annotated = remember(text, query, highlight, onHighlight) {
         buildAnnotatedString {
             append(text)
             val needle = query.trim()
@@ -4455,8 +4456,8 @@ private fun HighlightedSnippet(
                 while (start >= 0) {
                     addStyle(
                         SpanStyle(
-                            color = highlight,
-                            background = highlight.copy(alpha = 0.32f),
+                            color = onHighlight,
+                            background = highlight,
                             fontWeight = FontWeight.Bold,
                         ),
                         start,
@@ -5295,14 +5296,23 @@ private fun MessageList(
             // Center the row, then keep re-centering while its folded content
             // (tool card / thinking block) expands and changes its height.
             runCatching { listState.scrollToItem(index) }
+            // A reasoning hit lives at the top of its row. Centering a row that
+            // is taller than the screen pushes that block off the top, so for
+            // thinking hits keep the row's top edge in view instead.
+            val centerRow = hitKind != "thinking"
             repeat(4) {
                 withFrameNanos { }
                 delay(45)
-                val info = listState.layoutInfo.visibleItemsInfo
+                val layout = listState.layoutInfo
+                val info = layout.visibleItemsInfo
                     .firstOrNull { it.index == index } ?: return@repeat
-                val viewport = listState.layoutInfo.viewportSize.height
+                val viewport = layout.viewportSize.height
                 if (viewport <= 0) return@repeat
-                val delta = info.offset + info.size / 2 - viewport / 2
+                val delta = if (centerRow) {
+                    info.offset + info.size / 2 - viewport / 2
+                } else {
+                    info.offset
+                }
                 if (delta == 0) return@repeat
                 runCatching { listState.scrollBy(delta.toFloat()) }
             }
@@ -5721,7 +5731,12 @@ private fun ThinkingBlock(
 }
 
 /** Highlight [query] inside [text] for a plain (non-Markdown) block. */
-private fun highlightedTextOf(text: String, query: String, color: Color): AnnotatedString {
+private fun highlightedTextOf(
+    text: String,
+    query: String,
+    mark: Color,
+    ink: Color,
+): AnnotatedString {
     val needle = query.trim()
     if (needle.isEmpty()) return AnnotatedString(text)
     return buildAnnotatedString {
@@ -5731,8 +5746,8 @@ private fun highlightedTextOf(text: String, query: String, color: Color): Annota
             append(text.substring(from, at))
             pushStyle(
                 SpanStyle(
-                    color = color,
-                    background = color.copy(alpha = 0.32f),
+                    color = ink,
+                    background = mark,
                     fontWeight = FontWeight.Bold,
                 ),
             )
@@ -5827,10 +5842,13 @@ private fun ThinkingPart(
             )
         }
         AnimatedVisibility(visible = open) {
-            val thinkingColor = packColor(style.textColor)
+            // The card has its own tint, so a translucent keyword wash all but
+            // disappears. A solid mark with the on-primary ink stays readable.
+            val mark = MaterialTheme.colorScheme.primary
+            val markInk = MaterialTheme.colorScheme.onPrimary
             Text(
-                remember(text, query, thinkingColor) {
-                    highlightedTextOf(text, query, thinkingColor)
+                remember(text, query, mark, markInk) {
+                    highlightedTextOf(text, query, mark, markInk)
                 },
                 modifier = Modifier
                     .fillMaxWidth()
