@@ -136,6 +136,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -4430,39 +4431,6 @@ private fun hitRoleLabel(hit: SearchHit): String = when (hit.kind) {
     }
 }
 
-@Composable
-private fun hitKindName(kind: String): String = when (kind) {
-    "thinking" -> packText("search.kindThinking", "思考")
-    "tool" -> packText("search.kindTool", "工具")
-    "title" -> packText("search.titleHit", "会话标题")
-    else -> packText("search.kindMessage", "消息")
-}
-
-/** Snippet banner shown above the row a search hit landed on. */
-@Composable
-private fun HitBanner(snippet: String, query: String, kind: String) {
-    val scheme = MaterialTheme.colorScheme
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(scheme.primary.copy(alpha = 0.14f))
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-    ) {
-        Text(
-            packText("search.hitBanner", "命中 · {kind}").replace("{kind}", hitKindName(kind)),
-            style = MaterialTheme.typography.labelSmall,
-            color = scheme.primary,
-        )
-        HighlightedSnippet(
-            text = snippet,
-            query = query,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 3,
-            color = scheme.onSurface,
-        )
-    }
-}
 
 /**
  * Snippet text with every occurrence of [query] emphasized. The relay keeps
@@ -4870,7 +4838,8 @@ private fun ToolGroupCard(
     if (thinking.isNotBlank()) {
         ThinkingBlock(
             id = tools.first().id + ":group",
-            text = thinking,
+            parts = listOf(thinking),
+            query = "",
             streaming = false,
             onOpen = onUserRead,
         )
@@ -5405,10 +5374,6 @@ private fun MessageList(
                         ),
                 ) {
                 Column(Modifier.fillMaxWidth()) {
-                if (revealed && hitSnippet.isNotBlank()) {
-                    HitBanner(hitSnippet, hitQuery, hitKind)
-                    Spacer(Modifier.height(4.dp))
-                }
                 when (item) {
                     is ChatListItem.Single -> MessageRow(
                         message = item.message,
@@ -5706,7 +5671,8 @@ private fun CopyButton(onClick: () -> Unit) {
 @Composable
 private fun ThinkingBlock(
     id: String,
-    text: String,
+    parts: List<String>,
+    query: String,
     streaming: Boolean,
     onOpen: () -> Unit = {},
     /** A search hit lives in this block: show it even when thinking is hidden. */
@@ -5714,6 +5680,62 @@ private fun ThinkingBlock(
 ) {
     val style = LocalUiPack.current.layout.thinking
     if (!style.show) return
+    val shown = parts.filter { it.isNotBlank() }
+    if (shown.isEmpty()) return
+    val base = style.title.ifBlank { packText("chat.thinking", "思考") }
+    Column(Modifier.fillMaxWidth()) {
+        shown.forEachIndexed { index, part ->
+            if (index > 0) Spacer(Modifier.height(4.dp))
+            ThinkingPart(
+                id = "$id#t$index",
+                title = if (shown.size > 1) "$base ${index + 1}/${shown.size}" else base,
+                text = part,
+                query = query,
+                streaming = streaming && index == shown.lastIndex,
+                onOpen = onOpen,
+                reveal = reveal,
+            )
+        }
+    }
+}
+
+/** Highlight [query] inside [text] for a plain (non-Markdown) block. */
+private fun highlightedTextOf(text: String, query: String, color: Color): AnnotatedString {
+    val needle = query.trim()
+    if (needle.isEmpty()) return AnnotatedString(text)
+    return buildAnnotatedString {
+        var from = 0
+        var at = text.indexOf(needle, 0, ignoreCase = true)
+        while (at >= 0) {
+            append(text.substring(from, at))
+            pushStyle(
+                SpanStyle(
+                    color = color,
+                    background = color.copy(alpha = 0.32f),
+                    fontWeight = FontWeight.Bold,
+                ),
+            )
+            append(text.substring(at, at + needle.length))
+            pop()
+            from = at + needle.length
+            at = text.indexOf(needle, from, ignoreCase = true)
+        }
+        append(text.substring(from))
+    }
+}
+
+@Composable
+private fun ThinkingPart(
+    id: String,
+    title: String,
+    text: String,
+    query: String,
+    streaming: Boolean,
+    onOpen: () -> Unit = {},
+    /** A search hit lives in this block: show it even when thinking is hidden. */
+    reveal: Boolean = false,
+) {
+    val style = LocalUiPack.current.layout.thinking
     val scheme = MaterialTheme.colorScheme
     var open by rememberSaveable(id) { mutableStateOf(!style.collapsedByDefault) }
     var userChoice by rememberSaveable(id) { mutableStateOf(false) }
@@ -5763,7 +5785,7 @@ private fun ThinkingBlock(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                style.title.ifBlank { packText("chat.thinking", "思考") },
+                title,
                 style = MaterialTheme.typography.labelSmall,
                 color = packColor(style.titleColor),
             )
@@ -5784,8 +5806,11 @@ private fun ThinkingBlock(
             )
         }
         AnimatedVisibility(visible = open) {
+            val thinkingColor = packColor(style.textColor)
             Text(
-                text,
+                remember(text, query, thinkingColor) {
+                    highlightedTextOf(text, query, thinkingColor)
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = style.maxHeight.dp)
@@ -6050,20 +6075,22 @@ private fun MessageRow(
                     }
                 }
                 Spacer(Modifier.height(4.dp))
-                if ((!hideThinking || reveal) && message.thinking.isNotBlank()) {
+                val thinkingParts = message.thinkingParts.ifEmpty { listOf(message.thinking) }
+                if ((!hideThinking || reveal) && thinkingParts.any { it.isNotBlank() }) {
                     // Freeze the reasoning while a selection is open, otherwise
                     // every new token reflows the text under the drag handles.
-                    val thinkingText = if (selecting) {
-                        remember(message.id) { message.thinking }
+                    val frozenParts = if (selecting) {
+                        remember(message.id) { thinkingParts }
                     } else {
-                        message.thinking
+                        thinkingParts
                     }
                     val thinkingStreaming =
                         if (selecting) remember(message.id) { streaming } else streaming
                     ThinkingBlock(
                         onOpen = onUserRead,
                         id = message.id,
-                        text = thinkingText,
+                        parts = frozenParts,
+                        query = hitQuery,
                         streaming = thinkingStreaming,
                         reveal = reveal,
                     )

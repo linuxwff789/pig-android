@@ -65,6 +65,9 @@ data class ChatMsg(
     val text: String = "",
     /** Visible reasoning ("thinking") blocks of an assistant message. */
     val thinking: String = "",
+    /** The same reasoning kept in its original blocks: rendering folds each
+     *  block on its own instead of one long paragraph. */
+    val thinkingParts: List<String> = emptyList(),
     val toolName: String? = null,
     val toolArgs: String = "",
     val toolResult: String = "",
