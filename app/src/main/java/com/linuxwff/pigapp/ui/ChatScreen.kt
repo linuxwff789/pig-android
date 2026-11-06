@@ -4273,6 +4273,7 @@ private fun ConversationSearchBar(
 ) {
     val scheme = MaterialTheme.colorScheme
     val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
     // The hit list is a fixed-height panel that can be folded away: with
     // dozens of matches it otherwise covered the whole transcript.
     var resultsOpen by rememberSaveable { mutableStateOf(true) }
@@ -4368,9 +4369,15 @@ private fun ConversationSearchBar(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
                             .background(
-                                if (selected) scheme.primary.copy(alpha = 0.10f) else Color.Transparent,
+                                if (selected) scheme.primary.copy(alpha = 0.20f) else Color.Transparent,
                             )
-                            .clickable { vm.openConversationHit(hit) }
+                            .clickable {
+                                // Tapping a hit is a commitment: put the
+                                // keyboard away so the transcript is visible.
+                                keyboard?.hide()
+                                focusManager.clearFocus()
+                                vm.openConversationHit(hit)
+                            }
                             .padding(horizontal = 8.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -4439,7 +4446,7 @@ private fun HitBanner(snippet: String, query: String, kind: String) {
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(scheme.primary.copy(alpha = 0.08f))
+            .background(scheme.primary.copy(alpha = 0.14f))
             .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
         Text(
@@ -4479,7 +4486,11 @@ private fun HighlightedSnippet(
                 var start = text.indexOf(needle, ignoreCase = true)
                 while (start >= 0) {
                     addStyle(
-                        SpanStyle(color = highlight, fontWeight = FontWeight.SemiBold),
+                        SpanStyle(
+                            color = highlight,
+                            background = highlight.copy(alpha = 0.32f),
+                            fontWeight = FontWeight.Bold,
+                        ),
                         start,
                         start + needle.length,
                     )
@@ -4791,6 +4802,8 @@ private fun ToolGroupCard(
      * match behind the collapsed summary.
      */
     revealId: String? = null,
+    /** The located hit is inside this group: open it (and one card). */
+    reveal: Boolean = false,
     /**
      * The reader opened a card: stop auto-following the transcript. An opened
      * card is taller than the viewport, so the next tool result would scroll
@@ -4810,15 +4823,22 @@ private fun ToolGroupCard(
     // What the reader had before a hit opened this group: switching to another
     // hit (or closing the search) puts it back.
     var savedExpanded by remember(tools.first().id) { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(revealId) {
-        val relevant = revealId != null && tools.any { it.id == revealId || it.sourceId == revealId }
-        if (relevant) {
+    LaunchedEffect(reveal) {
+        if (reveal) {
             if (savedExpanded == null) savedExpanded = expanded
             expanded = true
         } else if (savedExpanded != null) {
             expanded = savedExpanded ?: false
             savedExpanded = null
         }
+    }
+    // Which card inside the group should open: the one the hit points at, or
+    // the first one when the ids did not line up.
+    val revealedTool = if (!reveal) {
+        null
+    } else {
+        revealId?.let { id -> tools.firstOrNull { it.id == id || it.sourceId == id } }
+            ?: tools.firstOrNull()
     }
     // Expanding a 130-call run must not build 130 cards (each parses its args
     // and result) on the frame that handles the tap.
@@ -4953,7 +4973,7 @@ private fun ToolGroupCard(
                         onToolModeAll,
                         onUserRead,
                         onNeedImages = { onLoadImages(tool) },
-                        reveal = revealId != null && (tool.id == revealId || tool.sourceId == revealId),
+                        reveal = tool === revealedTool,
                     )
                 }
                 if (!showAll && tools.size > limit) {
@@ -5036,6 +5056,14 @@ private fun MessageList(
     // Older pages one locate may pull before giving up on a stale message id.
     var locatePages by remember { mutableStateOf(0) }
     LaunchedEffect(locateMessageId, locateMessageAt) { locatePages = 0 }
+    // The list key of the row the locator last landed on. Matching by key (not
+    // by message id) keeps expand/highlight correct when the locator had to
+    // fall back to the snippet text.
+    var revealedKey by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(highlightIds) {
+        // The search ended: drop the reveal so folded rows return to normal.
+        if (highlightIds.isEmpty()) revealedKey = null
+    }
     var pulled by remember { mutableStateOf(0f) }
     var pullArmed by remember { mutableStateOf(true) }
     val pullThreshold = with(LocalDensity.current) { 120.dp.toPx() }
@@ -5271,6 +5299,7 @@ private fun MessageList(
         }
         if (index >= 0) {
             AppLog.event("search", "locate id=$target at=$locateAt -> $index/${displayItems.size}")
+            revealedKey = displayItems[index].key
             // Any page that was being pulled has served its purpose; dropping
             // the anchor stops a later prepend from yanking the view away.
             olderAnchor = null
@@ -5339,35 +5368,39 @@ private fun MessageList(
             verticalArrangement = Arrangement.spacedBy(messageSpacing.dp),
         ) {
             items(displayItems, key = { it.key }, contentType = { it.contentType }) { item ->
-                // The hit the reader is on stays tinted and expanded; every
-                // other hit keeps a lighter tint while the search bar is open.
-                val revealed = revealId != null && when (item) {
-                    is ChatListItem.Single ->
-                        item.message.id == revealId || item.message.sourceId == revealId
-                    is ChatListItem.ToolGroup ->
-                        item.tools.any { it.id == revealId || it.sourceId == revealId }
-                }
+                // The row the reader located is the one that expands; matching
+                // by its list key keeps this correct even when a relay's ids
+                // did not line up (the locator fell back to the snippet text).
+                val revealed = revealedKey != null && item.key == revealedKey
                 val matched = when (item) {
                     is ChatListItem.Single ->
                         item.message.id in highlightIds || item.message.sourceId in highlightIds
                     is ChatListItem.ToolGroup ->
                         item.tools.any { it.id in highlightIds || it.sourceId in highlightIds }
                 }
+                val shape = RoundedCornerShape(cornerRadius.dp)
                 val tint = when {
-                    revealed -> MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                    matched -> MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                    revealed -> MaterialTheme.colorScheme.primary.copy(alpha = 0.26f)
+                    matched -> MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)
                     else -> Color.Transparent
                 }
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .then(
-                            if (tint != Color.Transparent) {
-                                Modifier
-                                    .clip(RoundedCornerShape(cornerRadius.dp))
+                            when {
+                                revealed -> Modifier
+                                    .clip(shape)
                                     .background(tint)
-                            } else {
-                                Modifier
+                                    .border(
+                                        1.5.dp,
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
+                                        shape,
+                                    )
+                                matched -> Modifier
+                                    .clip(shape)
+                                    .background(tint)
+                                else -> Modifier
                             },
                         ),
                 ) {
@@ -5419,6 +5452,7 @@ private fun MessageList(
                         onUserRead = {},
                         onLoadImages = onLoadImages,
                         revealId = revealId,
+                        reveal = revealed,
                     )
                 }
                 }
