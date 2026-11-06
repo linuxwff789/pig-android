@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -290,5 +291,25 @@ func TestRepairModelMetadata(t *testing.T) {
 	root, _ := readJSONObjectFile(modelsPath)
 	if _, ok := root["providers"].(map[string]any); !ok {
 		t.Fatalf("providers not repaired: %#v", root)
+	}
+}
+
+func TestRefreshModelCacheFrame(t *testing.T) {
+	s, m := memSession(t)
+	dir := filepath.Dir(s.settingsPath)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, cachePath, _ := s.providerPaths()
+	if err := os.WriteFile(cachePath, []byte(`{"p1":{"fetchedAt":1,"models":[{"id":"m1","name":"m1"}]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.refreshModelCache("c1")
+	frame := m.frames(t)[0]
+	if frame["type"] != "relay_model_cache_refreshed" {
+		t.Fatalf("frame: %#v", frame)
+	}
+	if fmt.Sprint(frame["fixed"]) != "1" || fmt.Sprint(frame["models"]) != "1" {
+		t.Fatalf("counts: %#v", frame)
 	}
 }

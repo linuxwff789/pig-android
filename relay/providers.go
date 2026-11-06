@@ -587,9 +587,11 @@ func providerNormalizeModel(raw any) (map[string]any, bool) {
 // repairModelMetadata backfills model metadata written by older relays, which
 // cached the endpoint listing as-is ({id,name}) and left pig with a zero-sized
 // model. It also makes sure models.json has the providers object pig's schema
-// requires (a fresh install may hold `{}`).
-func (s *session) repairModelMetadata() {
+// requires (a fresh install may hold `{}`). Returns the number of model entries
+// whose sizes had to be filled in.
+func (s *session) repairModelMetadata() int {
 	_, cachePath, modelsPath := s.providerPaths()
+	fixedCount := 0
 	if data, err := os.ReadFile(cachePath); err == nil && len(bytes.TrimSpace(data)) > 0 {
 		if cache, err := readJSONObjectFile(cachePath); err == nil {
 			changed := false
@@ -608,6 +610,7 @@ func (s *session) repairModelMetadata() {
 				if !bytes.Equal(old, next) {
 					entry["models"] = fixed
 					changed = true
+					fixedCount += len(fixed)
 				}
 			}
 			if changed {
@@ -623,6 +626,31 @@ func (s *session) repairModelMetadata() {
 			}
 		}
 	}
+	return fixedCount
+}
+
+// refreshModelCache answers a user-initiated "repair model cache" request. The
+// app follows it with relay_restart so the running pig reloads the fixed sizes.
+func (s *session) refreshModelCache(id any) {
+	fixed := s.repairModelMetadata()
+	_, cachePath, _ := s.providerPaths()
+	models := 0
+	if cache, err := readJSONObjectFile(cachePath); err == nil {
+		for _, raw := range cache {
+			if entry, ok := raw.(map[string]any); ok {
+				if list, ok := entry["models"].([]any); ok {
+					models += len(list)
+				}
+			}
+		}
+	}
+	_ = s.send(frame{
+		"type":      "relay_model_cache_refreshed",
+		"id":        id,
+		"fixed":     fixed,
+		"models":    models,
+		"fetchedAt": time.Now().UnixMilli(),
+	})
 }
 
 func providerFirstString(object map[string]any, keys ...string) string {

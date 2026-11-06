@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -134,6 +135,12 @@ fun ProviderManagerDialog(vm: AppViewModel, ui: AppUiState, onDismiss: () -> Uni
                                 Icon(
                                     Icons.Default.Refresh,
                                     contentDescription = packText("provider.refreshList", "刷新列表"),
+                                )
+                            }
+                            IconButton(onClick = vm::refreshModelCache, enabled = !ui.providerBusy) {
+                                Icon(
+                                    Icons.Default.Build,
+                                    contentDescription = packText("provider.repairCache", "修复模型缓存"),
                                 )
                             }
                         }

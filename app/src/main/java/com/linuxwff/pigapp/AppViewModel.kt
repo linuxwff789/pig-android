@@ -2830,6 +2830,29 @@ class AppViewModel @JvmOverloads constructor(
     }
 
     /**
+     * Rewrites the provider model cache with concrete contextWindow/maxTokens.
+     * Pig reads a missing size as zero and then sends max_completion_tokens: 1,
+     * truncating every reply; the cache only self-heals when its 5 minute TTL
+     * expires, so this makes the repair immediate.
+     */
+    fun refreshModelCache() {
+        if (ui.providerBusy) return
+        if (!client.connected.value) {
+            ui = ui.copy(
+                providerMessage = str("provider.offline", "未连接 relay，无法读取供应商"),
+                providerMessageError = true,
+            )
+            return
+        }
+        ui = ui.copy(providerBusy = true)
+        client.send(
+            JSONObject()
+                .put("id", "model-cache-${nextId++}")
+                .put("type", "relay_model_cache_refresh"),
+        )
+    }
+
+    /**
      * Fetches `{baseUrl}/models` without saving. The relay expands `$ENV` /
      * `!command` keys and sends the same headers the session would.
      */
@@ -5464,6 +5487,20 @@ class AppViewModel @JvmOverloads constructor(
                 // "relay 版本过旧" notice left over from an older relay.
                 resolveNotice(str("toast.contextWindowLocalOnly", "relay 版本过旧，上下文长度仅在本机生效"))
                 applyPinLive()
+            }
+            "relay_model_cache_refreshed" -> {
+                val fixed = event.optInt("fixed", 0)
+                ui = ui.copy(
+                    providerBusy = false,
+                    toast = if (fixed > 0) {
+                        str("provider.cacheRepaired", "已修复 {n} 个模型，正在重启 pig")
+                            .replace("{n}", fixed.toString())
+                    } else {
+                        str("provider.cacheAlreadyOk", "模型缓存已是最新，正在重启 pig")
+                    },
+                )
+                requestProviders()
+                restartAgentNow()
             }
             "relay_restarted" -> {
                 // Pig was restarted by us (or by the relay's own button): it now

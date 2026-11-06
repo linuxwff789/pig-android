@@ -1826,6 +1826,12 @@ func (s *session) handleClientLine(line []byte) {
 	case "relay_provider_models":
 		// A fetch can take seconds; do not block pings or the transcript.
 		go s.sendProviderModels(head.ID, head.Entry)
+	case "relay_model_cache_refresh":
+		// Pig caches a provider's model list for 5 minutes and reads a missing
+		// contextWindow/maxTokens as zero (which makes it ask for a single
+		// output token). Let the app repair that cache on demand instead of
+		// waiting for the TTL.
+		s.refreshModelCache(head.ID)
 	case "relay_ext_status":
 		// `pig status` spawns a second pig; keep it off the read loop.
 		go func(id any, force bool) {

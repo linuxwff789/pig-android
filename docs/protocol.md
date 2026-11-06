@@ -192,6 +192,7 @@ that omits `apiKey` keeps the stored one.
 | `relay_provider_save` | `id`, `entry` | `relay_provider_saved` (`provider`, `path`, optional `warning`) |
 | `relay_provider_delete` | `id`, `entry.id` | `relay_provider_deleted` (`provider` = the id) |
 | `relay_provider_models` | `id`, `entry` (draft: `id`, `baseUrl`, `api`, optional `apiKey`/`modelsUrl`) | `relay_provider_models` (`provider`, `models`, `fetchedAt`) |
+| `relay_model_cache_refresh` | `id` | `relay_model_cache_refreshed` (`fixed`, `models`, `fetchedAt`) |
 
 Any failure answers `relay_provider_error` with `op` (`list` / `save` /
 `delete` / `refresh`) and a `message`.
@@ -221,6 +222,13 @@ Any failure answers `relay_provider_error` with `op` (`list` / `save` /
 - The provider is not registered into the running session by the relay: the app
   follows a successful save/delete with `relay_restart`, and the
   `custom-endpoints` extension reads the file when the new pig starts.
+- `relay_model_cache_refresh` rewrites `custom-endpoints.cache.json` so every
+  model carries `contextWindow`/`maxTokens` (defaults 128000/8192 when the
+  endpoint did not report them), and creates a missing `providers` object in
+  `models.json`. pig reads a missing size as zero and then requests
+  `max_completion_tokens: 1`, which truncates every reply; the cache otherwise
+  self-heals only when its 5 minute TTL expires. The app follows this frame
+  with `relay_restart` so the running agent reloads the sizes.
 
 ## Backup and restore
 
