@@ -7330,6 +7330,15 @@ private fun WebDavDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                     style = MaterialTheme.typography.labelSmall,
                     color = scheme.onSurfaceVariant,
                 )
+                Text(
+                    packText(
+                        "webdav.incrementalHint",
+                        "增量备份：只上传相比上一份变化的文件，每 7 次后重建一份完整归档。" +
+                            "恢复会自动下载它依赖的整条链。",
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(
                         enabled = !ui.webdavBusy && config.ready,
@@ -7440,6 +7449,15 @@ private fun WebDavArchiveDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                         color = if (ui.webdavMessageError) scheme.error else scheme.primary,
                     )
                 }
+                Text(
+                    packText(
+                        "webdav.chainHint",
+                        "「完整」是一条链的起点，「增量」只含当次变化的文件；" +
+                            "恢复任意一条都会先下载它依赖的完整链。",
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                )
                 ui.webdavBackups.forEach { backup ->
                     HorizontalDivider(color = scheme.outline.copy(alpha = 0.35f))
                     Row(verticalAlignment = Alignment.CenterVertically) {
