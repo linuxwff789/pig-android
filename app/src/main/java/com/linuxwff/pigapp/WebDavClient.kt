@@ -219,7 +219,13 @@ object WebDavClient {
         // empty would upload a new root and overwrite the index, orphaning
         // every archive that index described.
         if (response.code == 404) return null
-        if (response.code !in 200..299) error("读取备份索引失败：${errorText(response)}")
+        if (response.code !in 200..299) {
+            error(
+                "读取备份索引失败（${response.code}）：${errorText(response)}\n" +
+                    "如果这是 AList 挂载的网盘（Google Drive 等），请确认该存储允许直接下载" +
+                    "（填 API key，或开启 WebDAV 代理），否则备份无法建立增量链。",
+            )
+        }
         val stream = response.stream ?: return null
         val body = stream.use { it.readBytes().toString(Charsets.UTF_8) }
         return if (body.isBlank()) null else BackupIndex.from(body)
@@ -388,6 +394,11 @@ object WebDavClient {
     ): Response {
         var target = url
         var redirects = 0
+        // A WebDAV server backed by object storage (AList with a Google Drive
+        // mount, S3, ...) answers a file GET with a redirect to a signed URL on
+        // the storage host. Following it is fine as long as the WebDAV
+        // credentials stay here: they belong to this server, not to Google.
+        var crossHost = false
         if (!target.startsWith("http://") && !target.startsWith("https://")) {
             error("服务器地址要以 http:// 或 https:// 开头：$target")
         }
@@ -404,7 +415,7 @@ object WebDavClient {
                 else -> null
             }
             val builder = Request.Builder().url(target).method(method, payload)
-            if (config.user.isNotBlank() || config.password.isNotBlank()) {
+            if (!crossHost && (config.user.isNotBlank() || config.password.isNotBlank())) {
                 val raw = "${config.user}:${config.password}".toByteArray()
                 builder.header(
                     "Authorization",
@@ -423,11 +434,14 @@ object WebDavClient {
                 if (location.isNullOrBlank()) error("重定向缺少 Location")
                 val current = URL(target)
                 val next = if (location.startsWith("http")) URL(location) else URL(current, location)
-                // The Authorization header below is rebuilt on every loop, so a
-                // redirect used to hand the NAS password to whatever host the
-                // server named (and accepted https -> http downgrades).
                 if (!next.host.equals(current.host, ignoreCase = true)) {
-                    error("拒绝跨主机重定向：${current.host} -> ${next.host}")
+                    // Never replay an upload or a DELETE on another host: only a
+                    // file GET has a signed-URL meaning. The credentials are
+                    // dropped for every later request of this loop.
+                    if (method != "GET" && method != "HEAD") {
+                        error("服务器把 $method 重定向到其他主机（${next.host}），已拒绝")
+                    }
+                    crossHost = true
                 }
                 if (current.protocol.equals("https", true) &&
                     !next.protocol.equals("https", true)
