@@ -25,6 +25,9 @@ interface RelayConnection {
         out: OutputStream,
         includeSessions: Boolean,
         includeUi: Boolean,
+        incremental: Boolean = false,
+        base: String? = null,
+        forceFull: Boolean = false,
         onProgress: (sent: Long) -> Unit,
     ): JSONObject
 
@@ -32,6 +35,7 @@ interface RelayConnection {
         input: InputStream,
         name: String,
         size: Long,
+        skipSafetyBackup: Boolean = false,
         onProgress: (sent: Long, total: Long) -> Unit,
     ): JSONObject
 }

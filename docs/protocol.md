@@ -52,9 +52,9 @@ Control frames:
 | `relay_model_override` | `id`, `provider`, `model`, `contextWindow` | `relay_model_override` (`provider`, `model`, `contextWindow`) |
 | `relay_model_override` | `contextWindow` outside 0…10 000 000 or unknown provider | `relay_model_override_error` (`message`) |
 | `relay_restart` | | kills and respawns pig from the same session file (`relay_restarted`); used after a context-window pin |
-| `relay_backup` | `id`, optional `sessions`/`ui` booleans (default true) | `relay_backup_start`, then `relay_backup_chunk`…, then `relay_backup_done` or `relay_backup_error` |
+| `relay_backup` | `id`, optional `sessions`/`ui` booleans (default true), optional `incremental`, `base`, `full` | `relay_backup_start`, then `relay_backup_chunk`…, then `relay_backup_done` or `relay_backup_error` |
 | `relay_backup_cancel` | `id` | the running export stops with `relay_backup_error` (`cancelled: true`) |
-| `relay_restore_begin` | `id`, `name`, `size` | `relay_restore_ready` (`max` archive size) or `relay_restore_error` |
+| `relay_restore_begin` | `id`, `name`, `size`, optional `skipSafetyBackup` | `relay_restore_ready` (`max` archive size) or `relay_restore_error` |
 | `relay_restore_chunk` | `id`, `data` (base64) | none; an error aborts with `relay_restore_error` |
 | `relay_restore_end` | `id`, `sha256` of the uploaded bytes | `relay_restore_done` (`entries`, `bytes`, `backup`) or `relay_restore_error` |
 | `relay_search` | `id`, `query`, optional `path`, `offset`, `limit` (≤60) | `response` with `command: relay_search`, `data.results[]`, `data.hasMore` |
@@ -239,11 +239,11 @@ whose entry names are relative to the Termux home (`$HOME/.pig/agent/...`,
 same connection:
 
 ```
-→ {"type":"relay_backup","id":"b1","sessions":true,"ui":true}
-← {"type":"relay_backup_start","id":"b1","name":"pig-backup-20261027-120000.tar.gz","entries":312,"bytes":68123456}
+→ {"type":"relay_backup","id":"b1","sessions":true,"ui":true,"incremental":true,"base":"pig-full-20261026-030000.tar.gz"}
+← {"type":"relay_backup_start","id":"b1","name":"pig-inc-20261027-030000.tar.gz","kind":"inc","base":"pig-full-20261026-030000.tar.gz","parent":"pig-full-20261026-030000.tar.gz","entries":8,"bytes":512345,"deleted":1}
 ← {"type":"relay_backup_chunk","id":"b1","seq":0,"data":"H4sI…"}
 ← {"type":"relay_backup_chunk","id":"b1","seq":1,"data":"…"}
-← {"type":"relay_backup_done","id":"b1","name":"…","entries":312,"bytes":9123456,"sha256":"…"}
+← {"type":"relay_backup_done","id":"b1","name":"…","kind":"inc","base":"pig-full-20261026-030000.tar.gz","deleted":1,"entries":8,"bytes":204800,"sha256":"…"}
 ```
 
 - `bytes` in `start` is the uncompressed size (for a progress bar); `bytes` in
@@ -262,11 +262,33 @@ same connection:
 - Chunks are at most 48 KiB of raw bytes; the archive is capped at 1 GiB and
   only one transfer runs at a time.
 
+### Incremental archives
+
+`incremental: true` with a `base` that names the package the relay produced last
+makes the relay write only the files that changed since then. An unknown `base`,
+or `full: true`, writes a full archive, so a lost relay state cannot produce a
+broken chain. `relay_backup_start` and `relay_backup_done` carry `kind` (`full`
+or `inc`), `base`/`parent` and the number of removed files in `deleted`.
+
+Every archive starts with a `.pig/.backup-meta.json` entry that records its kind,
+base and the paths that disappeared. The extractor deletes those paths and never
+writes the entry to disk, so an incremental restore does not need the app index
+to be correct.
+
+The app keeps the chain in `pig-index.json` next to the archives, one entry per
+package (`name`, `kind`, `base`, `ts`, `bytes`, `sha256`, `entries`). Restoring an
+increment downloads every link concurrently and applies them oldest first. Only
+the first `relay_restore_begin` of a chain omits `skipSafetyBackup`: that one
+writes the automatic backup and stops the pig processes, and the rest just
+overwrite files.
+
+
 Restore is the same bytes in reverse. The relay writes them to a staging file,
 enforces the announced `size` and verifies the SHA-256 before touching anything:
 
 ```
-→ {"type":"relay_restore_begin","id":"r1","name":"pig-backup.tar.gz","size":9123456}
+→ {"type":"relay_restore_begin","id":"r1","name":"pig-full-20261026-030000.tar.gz","size":9123456}
+→ {"type":"relay_restore_begin","id":"r2","name":"pig-inc-20261027-030000.tar.gz","size":204800,"skipSafetyBackup":true}
 ← {"type":"relay_restore_ready","id":"r1","max":1073741824}
 → {"type":"relay_restore_chunk","id":"r1","data":"H4sI…"}        (repeated)
 → {"type":"relay_restore_end","id":"r1","sha256":"…"}

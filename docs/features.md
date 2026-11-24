@@ -424,8 +424,14 @@ speaks Basic auth — Nextcloud, Alist, Synology, rclone serve.
 - **Server / user / password / folder**: the folder is created on first upload
   (`MKCOL`); the URL may already point at a user's home, e.g.
   `https://dav.example.com/remote.php/dav/files/me`.
-- **保留 N 份**: after each upload the oldest `pig-backup-*.tar.gz` files beyond
-  N are deleted from that folder.
+- **保留 N 份**: the folder keeps roughly N archive files, always as whole
+  chains (a chain that a recent archive belongs to is kept even if that pushes
+  the count past N). Uploads are
+  incremental: only files whose SHA-256 changed since the previous archive are
+  sent (`pig-index.json` records the chain). Every seventh increment starts a
+  new full archive. The chain of the newest archive is never split, because an
+  increment without its root cannot be restored. Restoring a chain downloads its
+  links four at a time and applies them oldest first.
 - **定时备份**: off / daily at a chosen hour (default 03:00). It is a periodic
   WorkManager job (24 h) with a network constraint: it survives reboots, app
   restarts and failed or skipped runs, because the next period always comes.

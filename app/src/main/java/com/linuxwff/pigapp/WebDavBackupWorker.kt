@@ -25,10 +25,6 @@ import androidx.work.workDataOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
@@ -119,12 +115,6 @@ class WebDavBackupWorker(
         }
 
         val client = RelayClient("127.0.0.1", port, token, autoReconnect = false)
-        val archive = File(
-            context.cacheDir,
-            WebDavClient.PREFIX +
-                SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date()) +
-                WebDavClient.SUFFIX,
-        )
         return try {
             client.connect()
             if (!awaitConnection(client)) {
@@ -139,14 +129,13 @@ class WebDavBackupWorker(
                     return if (runAttemptCount < 3) Result.retry() else Result.failure()
                 }
             }
-            archive.outputStream().use { out ->
-                client.exportBackup(out, includeSessions = true, includeUi = true) { }
-            }
-            WebDavClient.upload(config, archive.name, archive)
-            val removed = runCatching { WebDavClient.prune(config, config.keep) }.getOrDefault(0)
+            // Incremental or full is decided against the index on the server;
+            // the worker only owns the relay connection.
+            val uploaded = WebDavBackupFlow.upload(client, config, context.cacheDir)
             AppLog.event(
                 "webdav",
-                "scheduled backup ok: ${archive.name} (${archive.length()} bytes), pruned $removed",
+                "scheduled backup ok: ${uploaded.name} kind=${uploaded.kind} " +
+                    "(${uploaded.bytes} bytes), pruned ${uploaded.pruned}",
             )
             prefs.edit()
                 .putLong(WebDavScheduler.PREF_LAST_SUCCESS, System.currentTimeMillis())
@@ -156,7 +145,6 @@ class WebDavBackupWorker(
             AppLog.event("webdav", "scheduled backup failed: ${error.message}")
             if (runAttemptCount < 3) Result.retry() else Result.failure()
         } finally {
-            archive.delete()
             client.close()
         }
     }

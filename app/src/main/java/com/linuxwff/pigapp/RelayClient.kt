@@ -190,6 +190,9 @@ class RelayClient(
         out: OutputStream,
         includeSessions: Boolean,
         includeUi: Boolean,
+        incremental: Boolean,
+        base: String?,
+        forceFull: Boolean,
         onProgress: (sent: Long) -> Unit,
     ): JSONObject = transferMutex.withLock {
         val id = "backup-${System.nanoTime()}"
@@ -205,7 +208,10 @@ class RelayClient(
                     .put("type", "relay_backup")
                     .put("id", id)
                     .put("sessions", includeSessions)
-                    .put("ui", includeUi),
+                    .put("ui", includeUi)
+                    .put("incremental", incremental)
+                    .put("full", forceFull)
+                    .apply { if (!base.isNullOrBlank()) put("base", base) },
             )
             ) {
                 error("连接已断开")
@@ -236,6 +242,7 @@ class RelayClient(
         input: InputStream,
         name: String,
         size: Long,
+        skipSafetyBackup: Boolean,
         onProgress: (sent: Long, total: Long) -> Unit,
     ): JSONObject = transferMutex.withLock {
         val id = "restore-${System.nanoTime()}"
@@ -250,7 +257,8 @@ class RelayClient(
                     .put("type", "relay_restore_begin")
                     .put("id", id)
                     .put("name", name)
-                    .put("size", size),
+                    .put("size", size)
+                    .put("skipSafetyBackup", skipSafetyBackup),
             )
             ) {
                 error("连接已断开")

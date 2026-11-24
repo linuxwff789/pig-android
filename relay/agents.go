@@ -1610,13 +1610,22 @@ func (s *session) handleClientLine(line []byte) {
 		Entry       map[string]any `json:"entry"`
 		Sessions    *bool          `json:"sessions"`
 		UI          *bool          `json:"ui"`
-		Size        int64          `json:"size"`
-		Sha256      string         `json:"sha256"`
-		Data        string         `json:"data"`
-		ImageMode   string         `json:"imageMode"`
-		Refs        []string       `json:"refs"`
-		Query       string         `json:"query"`
-		Offset      int            `json:"offset"`
+		// Incremental asks for an archive of only the files that changed
+		// since Base, which must name the archive the relay produced last.
+		Incremental bool   `json:"incremental"`
+		Base        string `json:"base"`
+		Full        bool   `json:"full"`
+		// SkipSafetyBackup is set on the second and later archive of a restore
+		// chain: the first one already backed up the live tree and stopped the
+		// agents.
+		SkipSafetyBackup bool     `json:"skipSafetyBackup"`
+		Size             int64    `json:"size"`
+		Sha256           string   `json:"sha256"`
+		Data             string   `json:"data"`
+		ImageMode        string   `json:"imageMode"`
+		Refs             []string `json:"refs"`
+		Query            string   `json:"query"`
+		Offset           int      `json:"offset"`
 	}
 	if err := json.Unmarshal(line, &head); err != nil {
 		_ = s.send(frame{"type": "relay_error", "message": "invalid json: " + err.Error()})
@@ -1802,14 +1811,20 @@ func (s *session) handleClientLine(line []byte) {
 		handleSettings(s, head.ID, head.Set)
 	case "relay_backup":
 		// Both default to on: a complete backup is the safe default, and the
-		// app sends explicit switches when the user unticks something.
+		// app sends explicit switches when the user unticked something.
 		includeSessions := head.Sessions == nil || *head.Sessions
 		includeUI := head.UI == nil || *head.UI
-		s.startBackup(head.ID, includeSessions, includeUI)
+		s.startBackupWithOptions(head.ID, backupOptions{
+			IncludeSessions: includeSessions,
+			IncludeUI:       includeUI,
+			Incremental:     head.Incremental,
+			Base:            head.Base,
+			ForceFull:       head.Full,
+		})
 	case "relay_backup_cancel":
 		s.transfer.cancel.Store(true)
 	case "relay_restore_begin":
-		s.beginRestore(head.ID, head.Name, head.Size)
+		s.beginRestore(head.ID, head.Name, head.Size, head.SkipSafetyBackup)
 	case "relay_restore_chunk":
 		s.restoreChunk(head.ID, head.Data)
 	case "relay_restore_end":

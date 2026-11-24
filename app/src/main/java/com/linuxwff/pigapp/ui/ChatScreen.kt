@@ -7449,7 +7449,8 @@ private fun WebDavArchiveDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                                 style = MaterialTheme.typography.labelMedium,
                             )
                             Text(
-                                webDavSize(backup.size) +
+                                (if (backup.kind == "inc") "增量" else "完整") + " · " +
+                                    webDavSize(backup.size) +
                                     if (backup.modified.isBlank()) "" else " · ${backup.modified.take(16)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = scheme.onSurfaceVariant,
@@ -7543,10 +7544,18 @@ private fun WebDavArchiveDialog(vm: AppViewModel, onDismiss: () -> Unit) {
 
 /** `pig-backup-20261028-221713.tar.gz` -> `2026-10-28 22:17:13`. */
 private fun webDavStamp(name: String): String {
-    val raw = name.removePrefix(WebDavClient.PREFIX).removeSuffix(WebDavClient.SUFFIX)
-    if (raw.length != 15 || raw[8] != '-') return raw
-    return raw.substring(0, 4) + "-" + raw.substring(4, 6) + "-" + raw.substring(6, 8) +
-        " " + raw.substring(9, 11) + ":" + raw.substring(11, 13) + ":" + raw.substring(13, 15)
+    val stem = when {
+        name.startsWith(WebDavClient.FULL_PREFIX) -> name.removePrefix(WebDavClient.FULL_PREFIX)
+        name.startsWith(WebDavClient.INC_PREFIX) -> name.removePrefix(WebDavClient.INC_PREFIX)
+        name.startsWith(WebDavClient.PREFIX) -> name.removePrefix(WebDavClient.PREFIX)
+        else -> name
+    }
+    val raw = stem.removeSuffix(WebDavClient.SUFFIX)
+    // `yyyyMMdd-HHmmss` followed by an optional millisecond part.
+    val base = raw.take(15)
+    if (base.length != 15 || base[8] != '-') return raw
+    return base.substring(0, 4) + "-" + base.substring(4, 6) + "-" + base.substring(6, 8) +
+        " " + base.substring(9, 11) + ":" + base.substring(11, 13) + ":" + base.substring(13, 15)
 }
 
 private fun webDavSize(bytes: Long): String = when {

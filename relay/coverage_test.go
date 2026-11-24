@@ -344,7 +344,7 @@ func TestBackupStreamAndCancel(t *testing.T) {
 	// A pre-set cancel flag stops before any data is written.
 	cancel := &atomic.Bool{}
 	cancel.Store(true)
-	s.streamBackup("b3", true, true, cancel)
+	s.streamBackup("b3", backupOptions{IncludeSessions: true, IncludeUI: true}, cancel)
 	frames := m.frames(t)
 	if len(frames) != 2 || frames[0]["type"] != "relay_backup_start" ||
 		frames[1]["type"] != "relay_backup_error" || frames[1]["cancelled"] != true {

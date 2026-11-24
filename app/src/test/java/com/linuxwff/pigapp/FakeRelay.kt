@@ -31,12 +31,16 @@ internal class FakeRelay : RelayConnection {
         out: OutputStream,
         includeSessions: Boolean,
         includeUi: Boolean,
+        incremental: Boolean,
+        base: String?,
+        forceFull: Boolean,
         onProgress: (Long) -> Unit,
     ): JSONObject = JSONObject()
     override suspend fun restoreBackup(
         input: InputStream,
         name: String,
         size: Long,
+        skipSafetyBackup: Boolean,
         onProgress: (Long, Long) -> Unit,
     ): JSONObject = JSONObject()
 

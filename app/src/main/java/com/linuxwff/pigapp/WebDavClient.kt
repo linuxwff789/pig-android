@@ -1,6 +1,12 @@
 package com.linuxwff.pigapp
 
 import android.content.SharedPreferences
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -13,7 +19,9 @@ import java.net.URLDecoder
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
@@ -107,6 +115,8 @@ data class WebDavBackup(
     val name: String,
     val size: Long,
     val modified: String,
+    /** `full` or `inc`; legacy `pig-backup-` archives count as full. */
+    val kind: String = if (name.startsWith(WebDavClient.INC_PREFIX)) "inc" else "full",
 )
 
 /**
@@ -116,8 +126,15 @@ data class WebDavBackup(
  * Alist, Synology and rclone serve.
  */
 object WebDavClient {
+    /** Legacy full archives written before incremental backups. */
     const val PREFIX = "pig-backup-"
+    /** Root of an incremental chain. */
+    const val FULL_PREFIX = "pig-full-"
+    /** Archive of only the files that changed since the previous one. */
+    const val INC_PREFIX = "pig-inc-"
     const val SUFFIX = ".tar.gz"
+    /** Chain metadata, small enough to fetch before every backup. */
+    const val INDEX_NAME = "pig-index.json"
 
     private const val MAX_REDIRECTS = 5
     private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
@@ -183,6 +200,127 @@ object WebDavClient {
         stream.use { input ->
             dest.outputStream().use { out -> input.copyTo(out) }
         }
+    }
+
+    /** True for every archive this app understands, including the old prefix. */
+    fun isBackupName(name: String): Boolean =
+        name.endsWith(SUFFIX) &&
+            (name.startsWith(PREFIX) || name.startsWith(FULL_PREFIX) || name.startsWith(INC_PREFIX))
+
+    /**
+     * The chain index, or null when the server has none yet (first backup) or
+     * it is unreadable. A missing index only forces the next backup to be a
+     * full one; it never deletes anything.
+     */
+    fun readIndex(config: WebDavConfig): BackupIndex? {
+        val response = request(config, "GET", "${config.dirUrl()}/$INDEX_NAME")
+        // Only "no index yet" is allowed to look like an empty chain. A
+        // network or server error must fail the backup instead: treating it as
+        // empty would upload a new root and overwrite the index, orphaning
+        // every archive that index described.
+        if (response.code == 404) return null
+        if (response.code !in 200..299) error("读取备份索引失败：${errorText(response)}")
+        val stream = response.stream ?: return null
+        val body = stream.use { it.readBytes().toString(Charsets.UTF_8) }
+        return if (body.isBlank()) null else BackupIndex.from(body)
+    }
+
+    fun writeIndex(config: WebDavConfig, index: BackupIndex) {
+        ensureDir(config)
+        val response = request(
+            config,
+            "PUT",
+            "${config.dirUrl()}/$INDEX_NAME",
+            body = index.toJson().toString().toByteArray(Charsets.UTF_8),
+            contentType = "application/json",
+        )
+        if (response.code !in 200..299) error("写入索引失败：${errorText(response)}")
+    }
+
+    /**
+     * Downloads several archives at once. The chain must be applied in order,
+     * but nothing forces its files to travel one at a time; four connections
+     * cut a seven-link chain's wait to about one link's on a high-latency
+     * mobile uplink.
+     */
+    suspend fun downloadMany(
+        config: WebDavConfig,
+        sizes: Map<String, Long>,
+        dir: File,
+        concurrency: Int = 4,
+        onProgress: (done: Long, total: Long) -> Unit = { _, _ -> },
+    ): Map<String, File> = coroutineScope {
+        // Names come from the server's index, which is untrusted input: a
+        // "../" entry would write outside the cache directory.
+        val invalid = sizes.keys.firstOrNull {
+            !isBackupName(it) || it.contains('/') || it.contains('\\') || it.contains("..")
+        }
+        if (invalid != null) error("备份索引里的文件名不合法：$invalid")
+        val total = sizes.values.sum()
+        val done = AtomicLong(0)
+        val semaphore = Semaphore(concurrency.coerceAtLeast(1))
+        val results = ConcurrentHashMap<String, File>()
+        try {
+            sizes.keys.map { name ->
+                async(Dispatchers.IO) {
+                    semaphore.withPermit {
+                        val dest = File(dir, name)
+                        downloadTo(config, name, dest) { chunk ->
+                            onProgress(done.addAndGet(chunk), total)
+                        }
+                        results[name] = dest
+                    }
+                }
+            }.awaitAll()
+        } catch (error: Throwable) {
+            // A failed chain download must not leave half a backup in the
+            // cache for the next restore to trip over.
+            results.values.forEach { runCatching { it.delete() } }
+            throw error
+        }
+        results.toMap()
+    }
+
+    private fun downloadTo(config: WebDavConfig, name: String, dest: File, onChunk: (Long) -> Unit) {
+        val response = request(config, "GET", "${config.dirUrl()}/${encodeName(name)}")
+        if (response.code !in 200..299) error("下载失败：${errorText(response)}")
+        val stream = response.stream ?: error("下载失败：没有响应内容")
+        stream.use { input ->
+            dest.outputStream().use { out ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    if (read == 0) continue
+                    out.write(buffer, 0, read)
+                    onChunk(read.toLong())
+                }
+            }
+        }
+    }
+
+    /**
+     * Splits the index into what to keep and what to delete. A chain is the
+     * unit of restore, so every chain a recent archive belongs to is kept whole
+     * (the newest one even when it alone exceeds [keep]). The caller writes the
+     * kept index before deleting the returned archives.
+     */
+    fun pruneChain(index: BackupIndex, keep: Int): Pair<BackupIndex, List<BackupEntry>> {
+        val newest = index.entries.lastOrNull() ?: return index to emptyList()
+        val limit = keep.coerceAtLeast(1)
+        val keepNames = LinkedHashSet<String>()
+        // Keep every chain that a recent archive belongs to. A chain is the
+        // unit that can be restored, so cutting at the limit would leave
+        // increments whose root is gone.
+        for (entry in index.entries.asReversed().take(limit)) {
+            index.chainFor(entry.name).forEach { keepNames += it.name }
+        }
+        // The newest chain is always restorable, even when it alone exceeds
+        // the limit.
+        index.chainFor(newest.name).forEach { keepNames += it.name }
+        val kept = index.entries.filter { it.name in keepNames }
+        val removed = index.entries.filter { it.name !in keepNames }
+        return index.copy(entries = kept) to removed
     }
 
     /** Deletes one archive; a missing file counts as deleted. */
@@ -373,7 +511,7 @@ object WebDavClient {
                 .find(block)?.groupValues?.get(1) ?: continue
             val rawName = href.trim().trimEnd('/').substringAfterLast('/')
             val name = runCatching { URLDecoder.decode(rawName, "UTF-8") }.getOrDefault(rawName)
-            if (!name.startsWith(PREFIX) || !name.endsWith(SUFFIX)) continue
+            if (!isBackupName(name)) continue
             val size = Regex("<(?:[A-Za-z0-9]+:)?getcontentlength[^>]*>([0-9]+)<")
                 .find(block)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
             val modified = Regex("<(?:[A-Za-z0-9]+:)?getlastmodified[^>]*>([^<]+)<")

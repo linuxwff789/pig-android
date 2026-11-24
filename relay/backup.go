@@ -19,6 +19,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
@@ -80,6 +81,11 @@ type restoreSession struct {
 	// id of the relay_restore_begin that opened this staging file. A replay
 	// of an older chunk must not be appended to a newer restore.
 	id string
+	// skipSafetyBackup is set for the second and later archive of an
+	// incremental chain. The first archive already stopped the agents and
+	// wrote the automatic backup, so repeating that per archive would write
+	// one full backup per chain link and restart the pig processes in between.
+	skipSafetyBackup bool
 }
 
 func (s *session) beginTransfer(id any, errorType string) bool {
@@ -373,7 +379,24 @@ func (w *chunkWriter) checksum() string {
 }
 
 // startBackup streams an archive in the background; cancel frames stop it.
+// backupOptions says what to include and whether the archive may be an
+// increment of the previous one.
+type backupOptions struct {
+	IncludeSessions bool
+	IncludeUI       bool
+	// Incremental allows an inc archive when Base names the package the
+	// previous export produced. Without it, or when Base does not match the
+	// relay's own state, a full archive is written instead.
+	Incremental bool
+	Base        string
+	ForceFull   bool
+}
+
 func (s *session) startBackup(id any, includeSessions, includeUI bool) {
+	s.startBackupWithOptions(id, backupOptions{IncludeSessions: includeSessions, IncludeUI: includeUI})
+}
+
+func (s *session) startBackupWithOptions(id any, opts backupOptions) {
 	if !s.beginTransfer(id, "relay_backup_error") {
 		return
 	}
@@ -381,23 +404,73 @@ func (s *session) startBackup(id any, includeSessions, includeUI bool) {
 	cancel := &s.transfer.cancel
 	go func() {
 		defer s.finishTransfer()
-		s.streamBackup(id, includeSessions, includeUI, cancel)
+		s.streamBackup(id, opts, cancel)
 	}()
 }
 
-func (s *session) streamBackup(id any, includeSessions, includeUI bool, cancel *atomic.Bool) {
-	filter := s.newBackupFilter(includeSessions, includeUI)
-	entries, total, _ := filter.walk(nil)
-	name := backupFileName("pig-backup")
+func (s *session) streamBackup(id any, opts backupOptions, cancel *atomic.Bool) {
+	filter := s.newBackupFilter(opts.IncludeSessions, opts.IncludeUI)
+	previous := loadBackupState(filter.home)
+
+	kind := backupKindFull
+	base := ""
+	var manifest *backupManifest
+	var include map[string]bool
+	var deleted []string
+	if opts.Incremental && !opts.ForceFull && previous != nil &&
+		previous.LastPackage != "" && previous.LastPackage == opts.Base {
+		manifest, include, deleted = filter.buildManifest(previous.Manifest)
+		kind = backupKindInc
+		base = previous.LastPackage
+	} else {
+		// A full archive still records a manifest, so the next run can be an
+		// increment without reading every file again.
+		manifest, _, _ = filter.buildManifest(nil)
+		if previous != nil {
+			// A full archive is a new chain root: nothing it does not contain
+			// may be treated as deleted.
+			deleted = nil
+		}
+	}
+
+	prefix := "pig-full"
+	if kind == backupKindInc {
+		prefix = "pig-inc"
+	}
+	name := backupFileName(prefix)
+
+	entries := 0
+	var total int64
+	for rel, meta := range manifest.Files {
+		if include != nil && !include[rel] {
+			continue
+		}
+		entries++
+		total += meta.Size
+	}
+
 	_ = s.send(frame{
 		"type":    "relay_backup_start",
 		"id":      id,
 		"name":    name,
+		"kind":    kind,
+		"base":    base,
+		"parent":  base,
 		"entries": entries,
 		"bytes":   total,
+		"deleted": len(deleted),
 	})
+
+	meta := backupArchiveMeta{
+		Version: backupManifestVersion,
+		Kind:    kind,
+		Base:    base,
+		Parent:  base,
+		Created: time.Now().Unix(),
+		Deleted: deleted,
+	}
 	w := newChunkWriter(s, id, cancel)
-	written, err := filter.write(w)
+	written, archived, err := filter.writePackage(w, meta, include)
 	if err == nil {
 		err = w.Close()
 	}
@@ -415,6 +488,28 @@ func (s *session) streamBackup(id any, includeSessions, includeUI bool, cancel *
 		})
 		return
 	}
+	// A file that vanished between the manifest walk and the package walk is
+	// not in the archive. Drop it from the recorded manifest so the next run
+	// treats it as new instead of assuming an archived copy exists.
+	skipped := 0
+	for rel := range manifest.Files {
+		if include != nil && !include[rel] {
+			continue
+		}
+		if !archived[rel] {
+			delete(manifest.Files, rel)
+			skipped++
+		}
+	}
+	if skipped > 0 {
+		logf("backup: %d file(s) vanished while archiving; they will be retried", skipped)
+	}
+	// Only record the new archive after it was written completely: a failed
+	// export must leave the previous manifest usable for the next attempt.
+	if err := saveBackupState(filter.home, &backupState{LastPackage: name, Manifest: manifest}); err != nil {
+		logf("backup: cannot record the incremental state: %v", err)
+	}
+
 	has := func(rel string) bool {
 		_, err := os.Stat(filepath.Join(filter.home, rel))
 		return err == nil
@@ -423,6 +518,11 @@ func (s *session) streamBackup(id any, includeSessions, includeUI bool, cancel *
 		"type":    "relay_backup_done",
 		"id":      id,
 		"name":    name,
+		"kind":    kind,
+		"base":    base,
+		"parent":  base,
+		"deleted": len(deleted),
+		"skipped": skipped,
 		"bytes":   w.total,
 		"entries": written,
 		"sha256":  w.checksum(),
@@ -438,13 +538,16 @@ func (s *session) streamBackup(id any, includeSessions, includeUI bool, cancel *
 }
 
 func backupFileName(prefix string) string {
-	return prefix + "-" + time.Now().Format("20060102-150405") + ".tar.gz"
+	// Milliseconds keep two backups started in the same second (a manual one
+	// racing the scheduled one) from colliding on the WebDAV folder.
+	return prefix + "-" + time.Now().Format("20060102-150405.000") + ".tar.gz"
 }
 
 // beginRestore opens the staging file. The archive is not extracted until the
 // client has finished sending and the checksum matches: a truncated transfer
 // must never overwrite live config.
-func (s *session) beginRestore(id any, name string, size int64) {
+func (s *session) beginRestore(id any, name string, size int64, skipSafetyBackup ...bool) {
+	skip := len(skipSafetyBackup) > 0 && skipSafetyBackup[0]
 	if !s.beginTransfer(id, "relay_restore_error") {
 		return
 	}
@@ -468,10 +571,11 @@ func (s *session) beginRestore(id any, name string, size int64) {
 	}
 	s.transfer.mu.Lock()
 	s.transfer.restore = &restoreSession{
-		file: file,
-		path: file.Name(),
-		size: size,
-		id:   fmt.Sprint(id),
+		file:             file,
+		path:             file.Name(),
+		size:             size,
+		id:               fmt.Sprint(id),
+		skipSafetyBackup: skip,
 	}
 	s.transfer.mu.Unlock()
 	_ = s.send(frame{
@@ -627,25 +731,31 @@ func (s *session) applyRestore(id any, r *restoreSession) {
 	// first produced a mixed transcript or let the exiting process overwrite
 	// the restored settings.
 	cutoff := time.Now()
-	s.stopAgentsStartedBefore(cutoff)
-	if s.transfer.applyCancel.Load() {
-		_ = os.Remove(r.path)
-		return
-	}
-	autoPath, autoErr := s.writeAutoBackup()
-	if s.transfer.applyCancel.Load() {
-		_ = os.Remove(r.path)
-		_ = os.Remove(autoPath)
-		return
-	}
-	if autoErr != nil {
-		_ = os.Remove(r.path)
-		_ = s.send(frame{
-			"type":    "relay_restore_error",
-			"id":      id,
-			"message": "automatic backup failed, nothing was changed: " + autoErr.Error(),
-		})
-		return
+	autoPath := ""
+	if !r.skipSafetyBackup {
+		// First archive of the restore: stop the pigs that cache settings and
+		// write the automatic full backup once for the whole chain.
+		s.stopAgentsStartedBefore(cutoff)
+		if s.transfer.applyCancel.Load() {
+			_ = os.Remove(r.path)
+			return
+		}
+		var autoErr error
+		autoPath, autoErr = s.writeAutoBackup()
+		if s.transfer.applyCancel.Load() {
+			_ = os.Remove(r.path)
+			_ = os.Remove(autoPath)
+			return
+		}
+		if autoErr != nil {
+			_ = os.Remove(r.path)
+			_ = s.send(frame{
+				"type":    "relay_restore_error",
+				"id":      id,
+				"message": "automatic backup failed, nothing was changed: " + autoErr.Error(),
+			})
+			return
+		}
 	}
 	entries, err := extractArchiveCancellable(r.path, s.cwd, s.transfer.applyCancel.Load)
 	_ = os.Remove(r.path)
@@ -673,13 +783,16 @@ func (s *session) applyRestore(id any, r *restoreSession) {
 	s.msgMu.Unlock()
 	// Anything started after `cutoff` belongs to a client that reconnected
 	// while the archive was extracting; leave it alone.
-	s.stopAgentsStartedBefore(cutoff)
+	if !r.skipSafetyBackup {
+		s.stopAgentsStartedBefore(cutoff)
+	}
 	done := frame{
-		"type":    "relay_restore_done",
-		"id":      id,
-		"entries": entries,
-		"bytes":   r.written,
-		"backup":  autoPath,
+		"type":      "relay_restore_done",
+		"id":        id,
+		"entries":   entries,
+		"bytes":     r.written,
+		"backup":    autoPath,
+		"increment": r.skipSafetyBackup,
 	}
 	if len(removed) > 0 {
 		done["settingsFixed"] = removed
@@ -801,6 +914,7 @@ func extractArchiveCancellable(path, home string, cancelled func() bool) (int, e
 	}
 	entries := 0
 	var extracted int64
+	var deleted []string
 	for {
 		if cancelled != nil && cancelled() {
 			return entries, errTransferCancelled
@@ -828,6 +942,21 @@ func extractArchiveCancellable(path, home string, cancelled func() bool) (int, e
 			}
 		case tar.TypeReg, tar.TypeRegA:
 			if hdr.Size < 0 || hdr.Size > backupMaxBytes {
+				continue
+			}
+			// Incremental metadata is read and applied, never written under
+			// ~/.pig: it lists the files this archive removed.
+			if filepath.ToSlash(cleanArchiveName(hdr.Name)) == backupMetaEntry {
+				if hdr.Size > backupMetaMaxBytes {
+					return entries, fmt.Errorf("backup metadata is too large")
+				}
+				data, readErr := io.ReadAll(io.LimitReader(tr, hdr.Size))
+				if readErr == nil {
+					var meta backupArchiveMeta
+					if json.Unmarshal(data, &meta) == nil {
+						deleted = append(deleted, meta.Deleted...)
+					}
+				}
 				continue
 			}
 			if entries >= backupMaxEntries {
@@ -866,7 +995,22 @@ func extractArchiveCancellable(path, home string, cancelled func() bool) (int, e
 			continue
 		}
 	}
+	// Removals go last: an archive that also adds a file at the same path (a
+	// rename is delete + create) must not delete the new copy.
+	for _, rel := range deleted {
+		dest, ok := safeArchivePath(root, rel)
+		if !ok {
+			continue
+		}
+		if info, err := os.Lstat(dest); err == nil && info.Mode().IsRegular() {
+			_ = os.Remove(dest)
+		}
+	}
 	return entries, nil
+}
+
+func cleanArchiveName(name string) string {
+	return strings.TrimPrefix(filepath.ToSlash(name), "./")
 }
 
 func safeArchivePath(root, name string) (string, bool) {

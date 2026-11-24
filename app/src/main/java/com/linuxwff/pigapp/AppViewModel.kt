@@ -1,5 +1,6 @@
 package com.linuxwff.pigapp
 
+import com.linuxwff.pigapp.WebDavBackupFlow.Restored
 import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -693,54 +694,137 @@ class AppViewModel @JvmOverloads constructor(
                 "restore ${if (result.isSuccess) "ok" else "failed: " +
                     (result.exceptionOrNull()?.message ?: "?")}",
             )
-            result.fold(
-                onSuccess = { done ->
-                    val warning = done.optString("warning")
-                    val fixed = done.optJSONArray("settingsFixed")?.length() ?: 0
-                    val base = str(
-                        "backup.imported",
-                        "已恢复 {entries} 个文件；原数据备份在 {backup}",
+            finishRestore(
+                result.map {
+                    Restored(
+                        entries = it.optInt("entries"),
+                        backup = it.optString("backup"),
+                        warning = it.optString("warning"),
+                        settingsFixed = it.optJSONArray("settingsFixed")?.length() ?: 0,
+                        chain = 1,
                     )
-                        .replace("{entries}", done.optInt("entries").toString())
-                        .replace(
-                            "{backup}",
-                            done.optString("backup").ifBlank { "~/.pig/backups" },
-                        )
-                    val extra = when {
-                        warning.isNotBlank() -> "\n$warning"
-                        fixed > 0 -> str(
-                            "backup.importedFixed",
-                            "；已自动移除 {n} 个冲突的扩展配置（保留 relay 内置副本）",
-                        ).replace("{n}", fixed.toString())
-                        else -> ""
-                    }
-                    ui = ui.copy(
-                        maintenanceBusy = false,
-                        maintenanceSent = 0,
-                        maintenanceTotal = 0,
-                        toast = base + extra,
-                    )
-                    // The relay stopped its pig processes; a fresh connection
-                    // loads the restored settings, models and UI pack.
-                    client.close()
-                    client.connect()
-                },
-                onFailure = { error ->
-                    ui = ui.copy(
-                        maintenanceBusy = false,
-                        maintenanceSent = 0,
-                        maintenanceTotal = 0,
-                        toast = str("backup.importFailed", "恢复失败：{error}")
-                            .replace("{error}", error.message ?: error.toString()),
-                    )
-                    // RelayClient closes the socket on a failed restore so the
-                    // relay abandons its busy transfer; bring the transcript
-                    // connection back instead of leaving the app offline.
-                    if (!client.connected.value) reconnect()
                 },
             )
         }
         return true
+    }
+
+    /**
+     * Downloads the chain of [name] concurrently, then applies its links to the
+     * relay oldest first. The first link does the automatic backup and stops
+     * the agents; the relay skips both for the rest.
+     */
+    private fun startChainRestore(config: WebDavConfig, name: String): Boolean {
+        if (ui.maintenanceBusy) {
+            ui = ui.copy(toast = str("backup.busy", "已有备份任务在进行"))
+            return false
+        }
+        if (!client.connected.value || !ui.backupRemote) {
+            ui = ui.copy(
+                toast = str(
+                    "backup.needRelay",
+                    "需要新版 relay 才能导出备份：重装 Termux 组件后重启 relay",
+                ),
+            )
+            return false
+        }
+        AppLog.event("backup", "chain restore start $name dir=${config.dir}")
+        ui = ui.copy(
+            maintenanceBusy = true,
+            maintenanceLabel = str("backup.importing", "正在恢复备份…"),
+            maintenanceSent = 0,
+            maintenanceTotal = 0,
+            webdavBusy = false,
+            webdavMessage = str("webdav.downloading", "正在下载 {name}…")
+                .replace("{name}", name),
+            webdavMessageError = false,
+        )
+        viewModelScope.launch {
+            var lastUi = 0L
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    WebDavBackupFlow.restore(
+                        client,
+                        config,
+                        name,
+                        getApplication<Application>().cacheDir,
+                    ) { _, done, total ->
+                        val now = System.currentTimeMillis()
+                        if (now - lastUi > 400) {
+                            lastUi = now
+                            viewModelScope.launch {
+                                ui = ui.copy(
+                                    maintenanceSent = done,
+                                    maintenanceTotal = total,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            ui = ui.copy(webdavMessage = "")
+            finishRestore(result)
+        }
+        return true
+    }
+
+    /** Shared post-restore state handling for local files and WebDAV chains. */
+    private fun finishRestore(result: Result<Restored>) {
+        AppLog.event(
+            "backup",
+            "restore ${if (result.isSuccess) "ok" else "failed: " +
+                (result.exceptionOrNull()?.message ?: "?")}",
+        )
+        result.fold(
+            onSuccess = { done ->
+                val warning = done.warning
+                val fixed = done.settingsFixed
+                val base = str(
+                    "backup.imported",
+                    "已恢复 {entries} 个文件；原数据备份在 {backup}",
+                )
+                    .replace("{entries}", done.entries.toString())
+                    .replace(
+                        "{backup}",
+                        done.backup.ifBlank { "~/.pig/backups" },
+                    )
+                val extra = when {
+                    warning.isNotBlank() -> "\n$warning"
+                    fixed > 0 -> str(
+                        "backup.importedFixed",
+                        "；已自动移除 {n} 个冲突的扩展配置（保留 relay 内置副本）",
+                    ).replace("{n}", fixed.toString())
+                    else -> ""
+                }
+                ui = ui.copy(
+                    maintenanceBusy = false,
+                    maintenanceSent = 0,
+                    maintenanceTotal = 0,
+                    toast = base + extra,
+                )
+                // The relay stopped its pig processes; a fresh connection
+                // loads the restored settings, models and UI pack.
+                client.close()
+                client.connect()
+            },
+            onFailure = { error ->
+                ui = ui.copy(
+                    maintenanceBusy = false,
+                    maintenanceSent = 0,
+                    maintenanceTotal = 0,
+                    toast = str("backup.importFailed", "恢复失败：{error}")
+                        .replace("{error}", error.message ?: error.toString()) +
+                        str(
+                            "backup.importFailedHint",
+                            "\n若已开始应用，原数据备份在 ~/.pig/backups",
+                        ),
+                )
+                // RelayClient closes the socket on a failed restore so the
+                // relay abandons its busy transfer; bring the transcript
+                // connection back instead of leaving the app offline.
+                if (!client.connected.value) reconnect()
+            },
+        )
     }
 
     // ---- WebDAV backup ---------------------------------------------------
@@ -833,36 +917,28 @@ class AppViewModel @JvmOverloads constructor(
             val ctx = getApplication<Application>()
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    val name = WebDavClient.PREFIX +
-                        SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date()) +
-                        WebDavClient.SUFFIX
-                    val file = File(ctx.cacheDir, name)
-                    try {
-                        file.outputStream().use { out ->
-                            client.exportBackup(out, includeSessions = true, includeUi = true) { }
-                        }
-                        WebDavClient.upload(config, name, file)
-                        val removed = runCatching { WebDavClient.prune(config, config.keep) }
-                            .getOrDefault(0)
-                        name to removed to file.length()
-                    } finally {
-                        file.delete()
-                    }
+                    WebDavBackupFlow.upload(client, config, ctx.cacheDir)
                 }
             }
             ui = result.fold(
-                onSuccess = { (pair, bytes) ->
-                    val (name, removed) = pair
+                onSuccess = { uploaded ->
+                    val name = uploaded.name
+                    val removed = uploaded.pruned
                     val extra = if (removed > 0) {
                         str("webdav.pruned", "，清理 {n} 个旧备份").replace("{n}", removed.toString())
                     } else {
                         ""
                     }
+                    val kind = if (uploaded.kind == "inc") {
+                        str("webdav.kindInc", "增量")
+                    } else {
+                        str("webdav.kindFull", "完整")
+                    }
                     val message = str("webdav.uploaded", "已上传 {name}（{size}）{extra}")
                         .replace("{name}", name)
-                        .replace("{size}", formatSize(bytes))
-                        .replace("{extra}", extra)
-                    AppLog.event("webdav", "backup ok: $name ($bytes bytes), pruned $removed")
+                        .replace("{size}", formatSize(uploaded.bytes))
+                        .replace("{extra}", "（$kind）$extra")
+                    AppLog.event("webdav", "backup ok: $name (${uploaded.bytes} bytes), pruned $removed")
                     if (notify) bubble(message)
                     ui.copy(
                         webdavBusy = false,
@@ -909,30 +985,35 @@ class AppViewModel @JvmOverloads constructor(
     /** Removes one archive from the server and drops it from the list. */
     fun deleteWebDav(config: WebDavConfig, name: String) {
         webDavRun {
+            // The delete itself must work when the index is unreadable; the
+            // dependency check is a safety net, not a prerequisite.
+            val index = runCatching { WebDavClient.readIndex(config) }.getOrNull()
+            val dependents = index?.entries?.filter { it.base == name }.orEmpty()
+            if (dependents.isNotEmpty()) {
+                throw IllegalStateException(
+                    "有更新的增量备份依赖它：${dependents.joinToString { it.name }}",
+                )
+            }
             AppLog.event("webdav", "delete $name")
             WebDavClient.delete(config, name)
+            if (index != null) {
+                WebDavClient.writeIndex(
+                    config,
+                    index.copy(entries = index.entries.filterNot { it.name == name }),
+                )
+            }
             ui = ui.copy(webdavBackups = ui.webdavBackups.filterNot { it.name == name })
             str("webdav.deleted", "已删除 {name}").replace("{name}", name)
         }
     }
 
-    /** Downloads an archive and hands it to the normal restore path. */
+    /**
+     * Restores a WebDAV archive. An increment is never restored alone: its
+     * whole chain is downloaded concurrently (four at a time) and applied to
+     * the relay oldest first, so the tree matches the moment that archive was
+     * written.
+     */
     fun restoreWebDav(config: WebDavConfig, name: String) {
-        if (!client.connected.value || !ui.backupRemote) {
-            ui = ui.copy(
-                toast = str(
-                    "backup.needRelay",
-                    "需要新版 relay 才能导出备份：重装 Termux 组件后重启 relay",
-                ),
-            )
-            return
-        }
-        if (ui.webdavBusy || ui.maintenanceBusy) return
-        ui = ui.copy(
-            webdavBusy = true,
-            webdavMessage = str("webdav.downloading", "正在下载 {name}…").replace("{name}", name),
-            webdavMessageError = false,
-        )
         // The name comes from the server's PROPFIND listing. Reject anything
         // that could escape cacheDir after URL-decoding.
         if (name.contains('/') || name.contains('\\') || name.contains("..")) {
@@ -943,46 +1024,8 @@ class AppViewModel @JvmOverloads constructor(
             )
             return
         }
-        viewModelScope.launch {
-            val ctx = getApplication<Application>()
-            val file = File(ctx.cacheDir, name)
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    WebDavClient.download(config, name, file)
-                    file.length()
-                }
-            }
-            ui = ui.copy(webdavBusy = false, webdavMessage = "")
-            result.fold(
-                onSuccess = { size ->
-                    val started = startRestore(
-                        name = name,
-                        size = { size },
-                        // startRestore reads the stream on IO and closes it when
-                        // done; deleting the download here keeps cacheDir from
-                        // growing by a full backup per restore.
-                        open = {
-                            object : java.io.FilterInputStream(file.inputStream()) {
-                                override fun close() {
-                                    try {
-                                        super.close()
-                                    } finally {
-                                        file.delete()
-                                    }
-                                }
-                            }
-                        },
-                    )
-                    if (!started) file.delete()
-                },
-                onFailure = { error ->
-                    ui = ui.copy(
-                        webdavMessage = error.message ?: error.toString(),
-                        webdavMessageError = true,
-                    )
-                },
-            )
-        }
+        if (ui.webdavBusy || ui.maintenanceBusy) return
+        startChainRestore(config, name)
     }
 
     /**
@@ -993,23 +1036,9 @@ class AppViewModel @JvmOverloads constructor(
      */
     suspend fun scheduledWebDavBackup(config: WebDavConfig): String? {
         if (!client.connected.value || !ui.backupRemote) return null
-        return withContext(Dispatchers.IO) {
-            val ctx = getApplication<Application>()
-            val name = WebDavClient.PREFIX +
-                SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date()) +
-                WebDavClient.SUFFIX
-            val file = File(ctx.cacheDir, name)
-            try {
-                file.outputStream().use { out ->
-                    client.exportBackup(out, includeSessions = true, includeUi = true) { }
-                }
-                WebDavClient.upload(config, name, file)
-                runCatching { WebDavClient.prune(config, config.keep) }
-                name
-            } finally {
-                file.delete()
-            }
-        }
+        val ctx = getApplication<Application>()
+        val uploaded = WebDavBackupFlow.upload(client, config, ctx.cacheDir)
+        return uploaded.name
     }
 
     /** Scheme + host + port only: no credentials, no path, no query. */

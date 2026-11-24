@@ -45,9 +45,9 @@
 | `relay_model_override` | `id`、`provider`、`model`、`contextWindow` | `relay_model_override`（`provider`、`model`、`contextWindow`） |
 | `relay_model_override` | `contextWindow` 超出 0…10 000 000 或 provider 未知 | `relay_model_override_error`（`message`） |
 | `relay_restart` | | 杀死并按同一 session 文件重新启动 pig（`relay_restarted`）；用于固定上下文窗口后 |
-| `relay_backup` | `id`，可选 `sessions`/`ui` 布尔值（默认 true） | `relay_backup_start`，然后若干 `relay_backup_chunk`，最后 `relay_backup_done` 或 `relay_backup_error` |
+| `relay_backup` | `id`，可选 `sessions`/`ui` 布尔值（默认 true），可选 `incremental`、`base`、`full` | `relay_backup_start`，然后若干 `relay_backup_chunk`，最后 `relay_backup_done` 或 `relay_backup_error` |
 | `relay_backup_cancel` | `id` | 正在运行的导出以 `relay_backup_error`（`cancelled: true`）结束 |
-| `relay_restore_begin` | `id`、`name`、`size` | `relay_restore_ready`（`max` 为归档大小上限）或 `relay_restore_error` |
+| `relay_restore_begin` | `id`、`name`、`size`，可选 `skipSafetyBackup` | `relay_restore_ready`（`max` 为归档大小上限）或 `relay_restore_error` |
 | `relay_restore_chunk` | `id`、`data`（base64） | 无；出错时以 `relay_restore_error` 中止 |
 | `relay_restore_end` | `id`、已上传字节的 `sha256` | `relay_restore_done`（`entries`、`bytes`、`backup`）或 `relay_restore_error` |
 | `relay_stop` | | 关闭连接 |
@@ -182,11 +182,11 @@ App 原生的 模型供应商 页面通过这些帧读写
 分块在同一条连接上流式发送：
 
 ```
-→ {"type":"relay_backup","id":"b1","sessions":true,"ui":true}
-← {"type":"relay_backup_start","id":"b1","name":"pig-backup-20261027-120000.tar.gz","entries":312,"bytes":68123456}
+→ {"type":"relay_backup","id":"b1","sessions":true,"ui":true,"incremental":true,"base":"pig-full-20261026-030000.tar.gz"}
+← {"type":"relay_backup_start","id":"b1","name":"pig-inc-20261027-030000.tar.gz","kind":"inc","base":"pig-full-20261026-030000.tar.gz","parent":"pig-full-20261026-030000.tar.gz","entries":8,"bytes":512345,"deleted":1}
 ← {"type":"relay_backup_chunk","id":"b1","seq":0,"data":"H4sI…"}
 ← {"type":"relay_backup_chunk","id":"b1","seq":1,"data":"…"}
-← {"type":"relay_backup_done","id":"b1","name":"…","entries":312,"bytes":9123456,"sha256":"…"}
+← {"type":"relay_backup_done","id":"b1","name":"…","kind":"inc","base":"pig-full-20261026-030000.tar.gz","deleted":1,"entries":8,"bytes":204800,"sha256":"…"}
 ```
 
 - `start` 里的 `bytes` 是未压缩大小（用于进度条）；`done` 里的 `bytes` 和
@@ -202,11 +202,30 @@ App 原生的 模型供应商 页面通过这些帧读写
   （`$PREFIX/bin/pig`、`pig-relay`）和 `~/.pig/cache` 从来就不在归档里。
 - 每个 chunk 最多 48 KiB 原始字节；归档上限 1 GiB，同一时间只允许一个传输。
 
+### 增量归档
+
+带 `incremental: true` 和 `base`（relay 上次产出的包名）的导出只写入自那以后
+变化的文件。`base` 不被 relay 识别、或者带 `full: true` 时，会改为写完整归档，
+所以 relay 状态丢失也不会产生断开的链。`relay_backup_start` 和
+`relay_backup_done` 都带 `kind`（`full` 或 `inc`）、`base`/`parent`，以及
+`deleted`（被删除的文件数）。
+
+每个归档的第一个条目都是 `.pig/.backup-meta.json`，记录类型、基线和消失的路径。
+解压器会删除这些路径，并且从不会把这个条目写到磁盘，所以增量恢复不依赖 App 的
+索引是否正确。
+
+App 把链记录在归档旁的 `pig-index.json` 里，每个包一条（`name`、`kind`、
+`base`、`ts`、`bytes`、`sha256`、`entries`）。恢复一个增量会并发下载整条链，
+再按从旧到新的顺序应用。只有链中的第一个 `relay_restore_begin` 省略
+`skipSafetyBackup`：由它写自动备份并停止 pig 进程，其余只覆盖文件。
+
+
 恢复就是同样的字节反着走。relay 先写入暂存文件，校验声明的 `size` 和
 SHA-256，通过后才动现有数据：
 
 ```
-→ {"type":"relay_restore_begin","id":"r1","name":"pig-backup.tar.gz","size":9123456}
+→ {"type":"relay_restore_begin","id":"r1","name":"pig-full-20261026-030000.tar.gz","size":9123456}
+→ {"type":"relay_restore_begin","id":"r2","name":"pig-inc-20261027-030000.tar.gz","size":204800,"skipSafetyBackup":true}
 ← {"type":"relay_restore_ready","id":"r1","max":1073741824}
 → {"type":"relay_restore_chunk","id":"r1","data":"H4sI…"}        （重复）
 → {"type":"relay_restore_end","id":"r1","sha256":"…"}
